@@ -263,18 +263,7 @@
 <footer class="admin-foot">OPC — công cụ quản lý nội bộ, không chia sẻ công khai.</footer>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-  import {
-    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-  import {
-    getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-    onSnapshot, query, orderBy, serverTimestamp
-  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-  import {
-    getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject
-  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
-
+(async function(){
   // ============================================================
   // 1) DÁN Firebase config của project "Chinh Phục Vật Lý" vào đây.
   //    Lấy tại: Firebase Console → ⚙️ Project settings → mục "Your apps"
@@ -303,9 +292,26 @@
 
   var CONFIG_READY = !!(firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("DÁN_") !== 0);
 
-  var OPC = { ADMIN_EMAILS: ADMIN_EMAILS, configReady: CONFIG_READY };
+  var OPC = { ADMIN_EMAILS: ADMIN_EMAILS, configReady: CONFIG_READY, sdkError: null };
 
   if(CONFIG_READY){
+   try{
+    var appMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js");
+    var authMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js");
+    var fsMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js");
+    var stMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js");
+
+    var initializeApp = appMod.initializeApp;
+    var getAuth = authMod.getAuth, GoogleAuthProvider = authMod.GoogleAuthProvider,
+        signInWithPopup = authMod.signInWithPopup, signOut = authMod.signOut,
+        onAuthStateChanged = authMod.onAuthStateChanged;
+    var getFirestore = fsMod.getFirestore, collection = fsMod.collection, doc = fsMod.doc,
+        addDoc = fsMod.addDoc, setDoc = fsMod.setDoc, updateDoc = fsMod.updateDoc,
+        deleteDoc = fsMod.deleteDoc, onSnapshot = fsMod.onSnapshot, query = fsMod.query,
+        orderBy = fsMod.orderBy, serverTimestamp = fsMod.serverTimestamp;
+    var getStorage = stMod.getStorage, ref = stMod.ref, uploadBytesResumable = stMod.uploadBytesResumable,
+        getDownloadURL = stMod.getDownloadURL, deleteObject = stMod.deleteObject;
+
     var app = initializeApp(firebaseConfig);
     var auth = getAuth(app);
     var db = getFirestore(app);
@@ -367,10 +373,15 @@
       },
       deleteStorageFile: function(path){ return deleteObject(ref(storage, path)); }
     };
+   }catch(err){
+    OPC.configReady = false;
+    OPC.sdkError = (err && err.message) ? err.message : String(err);
+   }
   }
 
   window.OPC = OPC;
   window.OPCReady = Promise.resolve(OPC);
+})();
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -467,11 +478,21 @@
     );
   }
 
-  function SetupNeededScreen(){
+  function SetupNeededScreen(props){
+    var sdkError = props && props.sdkError;
+    if(sdkError){
+      return h('div',{className:'login-wrap'},
+        h('div',{className:'login-card', style:{maxWidth:460, textAlign:'left'}},
+          h('h2',{style:{textAlign:'center'}},'Không tải được Firebase SDK'),
+          h('p',null,'Trang không tải được thư viện Firebase từ mạng (gstatic.com) — không phải do thiếu cấu hình. Thường do mạng/trình duyệt chặn: tường lửa công ty/trường học, VPN, hoặc tiện ích chặn quảng cáo (ad-blocker). Thử tắt tạm ad-blocker, đổi mạng (vd. dùng 4G thay vì wifi trường), hoặc mở bằng trình duyệt khác rồi tải lại trang.'),
+          h('p',{style:{marginTop:10, fontFamily:'"IBM Plex Mono",monospace', fontSize:'0.78rem', color:'var(--muted)', wordBreak:'break-word'}}, 'Chi tiết lỗi: ' + sdkError)
+        )
+      );
+    }
     return h('div',{className:'login-wrap'},
       h('div',{className:'login-card', style:{maxWidth:460, textAlign:'left'}},
         h('h2',{style:{textAlign:'center'}},'Chưa cấu hình Firebase'),
-        h('p',null,'File này cần dán cấu hình Firebase thật vào phần đầu của script trước khi dùng được. Mở file admin/index.html, tìm dòng "DÁN_API_KEY_VÀO_ĐÂY" và thay bằng config lấy từ Firebase Console → Project settings → Your apps → SDK setup and configuration.'),
+        h('p',null,'File này cần dán cấu hình Firebase thật vào phần đầu của script trước khi dùng được. Mở file admin.html, tìm dòng "DÁN_API_KEY_VÀO_ĐÂY" và thay bằng config lấy từ Firebase Console → Project settings → Your apps → SDK setup and configuration.'),
         h('p',{style:{marginTop:10}},'Sau khi dán config và đẩy lại lên GitHub, tải lại trang này để đăng nhập.')
       )
     );
@@ -900,6 +921,13 @@
 
   // ================= Root app (auth gate + tabs + toast) =================
   function AdminApp(){
+    // The Firebase module script is deferred by the browser and always
+    // finishes executing AFTER this classic script runs (module scripts
+    // wait for the document to finish parsing; classic scripts run inline
+    // as encountered) — so window.OPC is guaranteed to still be undefined
+    // on this component's very first render, even on a fast connection.
+    // Poll briefly for it instead of assuming it is there already.
+    var opcLoadedState = React.useState(!!window.OPC); var opcLoaded = opcLoadedState[0], setOpcLoaded = opcLoadedState[1];
     var authStatusState = React.useState('checking'); var authStatus = authStatusState[0], setAuthStatus = authStatusState[1]; // checking | signed-out | not-admin | admin
     var userState = React.useState(null); var user = userState[0], setUser = userState[1];
     var tabState = React.useState('students'); var tab = tabState[0], setTab = tabState[1];
@@ -908,7 +936,16 @@
     function fireToast(msg, isErr){ setToast({msg:msg, err:!!isErr}); setTimeout(function(){ setToast(null); }, 3400); }
 
     React.useEffect(function(){
-      if(!window.OPC || !window.OPC.configReady) return;
+      if(opcLoaded) return;
+      var iv = setInterval(function(){
+        if(window.OPC){ setOpcLoaded(true); clearInterval(iv); }
+      }, 50);
+      var giveUp = setTimeout(function(){ clearInterval(iv); setOpcLoaded(true); }, 20000);
+      return function(){ clearInterval(iv); clearTimeout(giveUp); };
+    }, [opcLoaded]);
+
+    React.useEffect(function(){
+      if(!opcLoaded || !window.OPC || !window.OPC.configReady) return;
       var unsub = window.OPC.onAuthStateChanged(function(u){
         if(!u){ setUser(null); window.OPC_currentUser = null; setAuthStatus('signed-out'); return; }
         var email = (u.email || '').toLowerCase();
@@ -922,7 +959,7 @@
         setUser(u); setAuthStatus('admin');
       });
       return function(){ unsub(); };
-    }, []);
+    }, [opcLoaded]);
 
     var headerRight = document.getElementById('admin-header-right');
     React.useEffect(function(){
@@ -940,7 +977,10 @@
       }
     }, [authStatus, user]);
 
-    if(!window.OPC || !window.OPC.configReady){ return h(SetupNeededScreen); }
+    if(!opcLoaded){
+      return h('div',{className:'login-wrap'}, h('p',{style:{color:'var(--ink-2)'}}, 'Đang tải…'));
+    }
+    if(!window.OPC || !window.OPC.configReady){ return h(SetupNeededScreen, {sdkError: window.OPC && window.OPC.sdkError}); }
     if(authStatus === 'checking'){
       return h('div',{className:'login-wrap'}, h('p',{style:{color:'var(--ink-2)'}}, 'Đang kiểm tra đăng nhập…'));
     }
@@ -961,10 +1001,15 @@
   function boot(){
     var mountEl = document.getElementById('admin-root');
     if(!mountEl) return;
+    // Mount right away — do not wait on window.OPCReady here. The Firebase
+    // module script (type="module") is always deferred until after this
+    // classic script has run, so window.OPCReady is never set yet at this
+    // point even on a fast connection; AdminApp itself polls for it after
+    // mounting (see the opcLoaded effect above).
     if(ReactDOM.createRoot){ ReactDOM.createRoot(mountEl).render(h(AdminApp)); }
     else { ReactDOM.render(h(AdminApp), mountEl); }
   }
-  if(window.OPCReady){ window.OPCReady.then(boot); } else { boot(); }
+  boot();
 })();
 </script>
 </body>
