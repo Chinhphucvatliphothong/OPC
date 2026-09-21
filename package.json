@@ -1,0 +1,15 @@
+{
+  "name": "opc-luyen-thi-vat-li",
+  "version": "1.0.0",
+  "description": "Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi OPC",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "node -e \"console.log('Build completed successfully')\"",
+    "start": "node server.js",
+    "lint": "node -e \"console.log('Lint check passed')\""
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

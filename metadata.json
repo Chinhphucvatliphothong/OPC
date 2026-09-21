@@ -1,0 +1,8 @@
+{
+  "name": "OPC Luyện Thi Vật Lí",
+  "description": "Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi OPC",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
