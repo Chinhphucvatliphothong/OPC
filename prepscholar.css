@@ -1,0 +1,640 @@
+/* =========================================================
+   OPC Luyện Thi Vật Lí - PrepScholar Adaptive UI Stylesheet
+   Theo phong cách thiết kế PrepScholar: Tinh tế, rõ ràng,
+   phản xạ cao, màu sắc chuẩn xác theo trạng thái năng lực.
+   ========================================================= */
+
+.ps-wrapper {
+  margin-top: 24px;
+}
+
+/* Header & Student Profile Bar */
+.ps-profile-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 20px;
+}
+.ps-student-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ps-avatar-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
+  color: var(--accent-strong);
+  font-weight: 700;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.ps-student-meta h4 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.ps-student-meta p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.ps-student-select {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 0.85rem "Be Vietnam Pro", sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ps-student-select:focus {
+  outline: 2px solid var(--accent);
+}
+
+/* Metric Cards Grid */
+.ps-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+@media (max-width: 900px) {
+  .ps-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 500px) {
+  .ps-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.ps-metric-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  position: relative;
+  overflow: hidden;
+}
+.ps-metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--line);
+}
+.ps-metric-card.accent::before { background: var(--accent); }
+.ps-metric-card.good::before { background: var(--good); }
+.ps-metric-card.warning::before { background: var(--warning); }
+.ps-metric-card.critical::before { background: var(--critical); }
+
+.ps-metric-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.ps-metric-val {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.ps-metric-sub {
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+
+/* Tab Switcher */
+.ps-nav-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 20px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.ps-tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 18px;
+  font: 0.88rem "Be Vietnam Pro", sans-serif;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: all 140ms ease;
+  position: relative;
+}
+.ps-tab-btn:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.ps-tab-btn.active {
+  color: var(--accent-strong);
+  font-weight: 700;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-color: var(--surface);
+  margin-bottom: -2px;
+}
+.ps-tab-badge {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.ps-tab-btn.active .ps-tab-badge {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent-strong);
+}
+
+/* Topic Drill Cards */
+.ps-topic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 14px;
+}
+@media (max-width: 768px) {
+  .ps-topic-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.ps-topic-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+.ps-topic-card:hover {
+  border-color: var(--ink-2);
+  transform: translateY(-2px);
+}
+.ps-topic-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ps-topic-title {
+  font-family: "Literata", serif;
+  font-size: 1.12rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ps-topic-status-badge {
+  font-family: "Be Vietnam Pro", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.ps-topic-status-badge.critical {
+  background: color-mix(in srgb, var(--critical) 15%, transparent);
+  color: var(--critical);
+}
+.ps-topic-status-badge.warning {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  color: var(--warning);
+}
+.ps-topic-status-badge.good {
+  background: color-mix(in srgb, var(--good) 15%, transparent);
+  color: var(--good);
+}
+
+.ps-meter-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  margin: 14px 0 8px;
+  overflow: hidden;
+}
+.ps-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 300ms ease;
+}
+.ps-meter-fill.critical { background: var(--critical); }
+.ps-meter-fill.warning { background: var(--warning); }
+.ps-meter-fill.good { background: var(--good); }
+
+.ps-topic-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ps-drill-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Active Exam Taking Room */
+.ps-exam-screen {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+}
+.ps-exam-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 18px;
+}
+.ps-exam-title-group h3 {
+  font-family: "Literata", serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+.ps-exam-title-group p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.ps-exam-timer {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ps-exam-timer.urgent {
+  background: color-mix(in srgb, var(--critical) 12%, transparent);
+  color: var(--critical);
+  border-color: var(--critical);
+  animation: pulse 1s infinite;
+}
+
+/* Question Navigator Grid */
+.ps-q-nav-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+.ps-q-nav-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 120ms ease;
+}
+.ps-q-nav-btn:hover {
+  border-color: var(--ink-2);
+}
+.ps-q-nav-btn.answered {
+  background: color-mix(in srgb, var(--good) 15%, var(--surface));
+  border-color: var(--good);
+  color: var(--good);
+}
+.ps-q-nav-btn.flagged::after {
+  content: "🚩";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 0.65rem;
+}
+.ps-q-nav-btn.current {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  font-weight: 700;
+  border-color: var(--accent);
+}
+
+/* Question Body */
+.ps-question-box {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.ps-q-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.ps-q-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ps-q-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.ps-q-badge.level-m1 { color: #0369a1; border-color: #0369a1; }
+.ps-q-badge.level-m2 { color: #15803d; border-color: #15803d; }
+.ps-q-badge.level-m3 { color: #b45309; border-color: #b45309; }
+.ps-q-badge.level-m4 { color: #b91c1c; border-color: #b91c1c; }
+
+.ps-q-stem {
+  font-size: 0.96rem;
+  line-height: 1.65;
+  color: var(--ink);
+  margin-bottom: 18px;
+}
+
+/* Part I: Choice Rows */
+.ps-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ps-choice-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.ps-choice-item:hover {
+  border-color: var(--ink-2);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+.ps-choice-item.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  font-weight: 600;
+}
+.ps-choice-key {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 700;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.ps-choice-item.selected .ps-choice-key {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Part II: Statements Table */
+.ps-stmt-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.ps-stmt-row {
+  border-bottom: 1px solid var(--line);
+}
+.ps-stmt-row:last-child {
+  border-bottom: none;
+}
+.ps-stmt-text {
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.ps-stmt-key {
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 700;
+  margin-right: 8px;
+  color: var(--accent-strong);
+}
+.ps-stmt-actions {
+  padding: 12px 16px;
+  text-align: right;
+  white-space: nowrap;
+  width: 160px;
+}
+.ps-stmt-toggle {
+  display: inline-flex;
+  gap: 6px;
+}
+.ps-stmt-btn {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: "Be Vietnam Pro", sans-serif;
+  transition: all 120ms ease;
+}
+.ps-stmt-btn:hover {
+  color: var(--ink);
+}
+.ps-stmt-btn.active-true {
+  background: color-mix(in srgb, var(--good) 18%, transparent);
+  color: var(--good);
+  border-color: var(--good);
+}
+.ps-stmt-btn.active-false {
+  background: color-mix(in srgb, var(--critical) 18%, transparent);
+  color: var(--critical);
+  border-color: var(--critical);
+}
+
+/* Part III: Short Answer */
+.ps-short-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+}
+.ps-short-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.ps-short-input {
+  max-width: 220px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.ps-short-input:focus {
+  outline: 2px solid var(--accent);
+}
+.ps-short-unit {
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* Exam Controls Bottom Bar */
+.ps-exam-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* Result / Graded Screen */
+.ps-result-banner {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 22px;
+}
+.ps-result-score-val {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.ps-result-sub {
+  font-size: 0.9rem;
+  color: var(--ink-2);
+}
+.ps-impact-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--good) 15%, transparent);
+  color: var(--good);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-top: 12px;
+}
+
+/* Solution Box */
+.ps-solution-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.ps-solution-card.wrong {
+  border-left: 4px solid var(--critical);
+}
+.ps-solution-card.correct {
+  border-left: 4px solid var(--good);
+}
+.ps-solution-body {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+.ps-trap-tip {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-left: 3px solid var(--warning);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  line-height: 1.5;
+}

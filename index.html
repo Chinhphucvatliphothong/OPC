@@ -10,6 +10,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;0,7..72,700;1,7..72,500&family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<link rel="stylesheet" href="/prepscholar.css">
 <style>
   :root{
     color-scheme: light;
@@ -614,9 +617,22 @@
   .sm-profile-head h4{ font-family:"Literata",serif; font-size:1.2rem; font-weight:600; }
   .sm-profile-head p{ font-size:0.82rem; color:var(--muted); margin-top:4px; }
 
-  .sm-stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:20px; padding:14px; background:var(--surface-2); border-radius:12px; text-align:center; }
+  .sm-stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:20px; padding:14px; background:var(--surface-2); border-radius:12px; text-align:center; }
+  @media (max-width:520px){ .sm-stat-grid{ grid-template-columns:repeat(2,1fr); } }
   .sm-stat-grid .sm-stat-label{ font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em; }
   .sm-stat-grid .sm-stat-value{ font-family:"IBM Plex Mono",monospace; font-variant-numeric: tabular-nums; font-weight:700; font-size:1.05rem; margin-top:4px; }
+
+  .sm-summary-card{ margin-top:18px; padding:16px 20px; border-radius:14px; background:var(--surface-2); border:1px solid var(--line); }
+  .sm-summary-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--line); }
+  .sm-summary-title{ font-family:"Be Vietnam Pro",sans-serif; font-size:0.88rem; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:8px; }
+  .sm-summary-badge{ font-size:0.72rem; font-weight:600; color:var(--muted); font-family:"IBM Plex Mono",monospace; background:var(--surface); border:1px solid var(--line); padding:2px 8px; border-radius:999px; }
+  .sm-summary-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+  @media (max-width:820px){ .sm-summary-grid{ grid-template-columns:repeat(2,1fr); gap:14px; } }
+  @media (max-width:480px){ .sm-summary-grid{ grid-template-columns:1fr; gap:12px; } }
+  .sm-summary-item{ display:flex; flex-direction:column; justify-content:space-between; }
+  .sm-summary-label{ font-size:0.7rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:5px; }
+  .sm-summary-val{ font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-size:1.45rem; font-weight:700; color:var(--ink); line-height:1.2; }
+  .sm-summary-sub{ font-size:0.74rem; color:var(--ink-2); margin-top:4px; line-height:1.4; }
 
   .sm-info-block{ margin-top:16px; padding:14px 16px; border-radius:12px; background:var(--surface-2); border:1px solid var(--line); font-size:0.83rem; line-height:1.75; }
   .sm-info-title{ font-weight:700; font-size:0.8rem; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
@@ -633,6 +649,27 @@
   .sm-form-section{ margin-top:18px; padding-top:18px; border-top:1px solid var(--line); }
   .sm-form-section-title{ font-size:0.82rem; font-weight:700; margin-bottom:10px; color:var(--ink); }
   .sm-form-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:22px; padding-top:18px; border-top:1px solid var(--line); }
+
+  /* CSV Bulk Import */
+  .sm-dropzone{ border:2px dashed var(--line); border-radius:14px; padding:32px 20px; text-align:center; background:var(--surface-2); cursor:pointer; transition:all 180ms ease; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
+  .sm-dropzone:hover, .sm-dropzone.dragover{ border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
+  .sm-dropzone-icon{ width:48px; height:48px; border-radius:50%; background:color-mix(in srgb, var(--accent) 15%, var(--surface)); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; font-size:1.4rem; margin-bottom:4px; }
+  .sm-dropzone-title{ font-size:0.95rem; font-weight:700; color:var(--ink); }
+  .sm-dropzone-sub{ font-size:0.8rem; color:var(--muted); max-width:46ch; line-height:1.5; }
+
+  .sm-import-summary{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin:14px 0; }
+  @media(max-width:560px){ .sm-import-summary{ grid-template-columns:1fr; } }
+  .sm-summary-card{ background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:10px 14px; }
+  .sm-summary-val{ font-family:"IBM Plex Mono",monospace; font-size:1.35rem; font-weight:700; line-height:1.2; }
+  .sm-summary-lbl{ font-size:0.75rem; color:var(--ink-2); font-weight:600; margin-top:2px; }
+
+  .sm-preview-table-wrap{ max-height:280px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; margin-top:12px; background:var(--surface); }
+  .sm-preview-table{ width:100%; border-collapse:collapse; font-size:0.8rem; text-align:left; }
+  .sm-preview-table th{ background:var(--surface-2); color:var(--ink-2); font-weight:700; padding:8px 10px; position:sticky; top:0; z-index:2; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .sm-preview-table td{ padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  .sm-row-valid{ background:transparent; }
+  .sm-row-warning{ background:color-mix(in srgb, var(--warning) 9%, transparent); }
+  .sm-row-error{ background:color-mix(in srgb, var(--critical) 9%, transparent); }
 </style>
 </head>
 <body>
@@ -645,13 +682,14 @@
       <span class="brand-sub">Luyện Thi Vật Lí</span>
     </div>
     <div class="navlinks">
+      <a href="#luyen-thi-prepscholar" style="font-weight:700; color:var(--accent-strong);">⚡ Luyện thi PrepScholar</a>
       <a href="#cach-hoat-dong">Cách hoạt động</a>
       <a href="#tao-de">Tạo đề</a>
       <a href="#quan-ly-hoc-sinh">Quản lý học sinh</a>
       <a href="#giang-day">Giảng dạy</a>
       <a href="#ban-do-nang-luc">Bản đồ năng lực</a>
-      <a href="#bao-cao">Báo cáo phụ huynh</a>
-      <a href="#goi-dich-vu">Gói dịch vụ</a>
+      <a href="#lo-trinh">Lộ trình tuần</a>
+      <a href="/admin.html" class="cta" style="background:var(--navy-2); color:var(--on-navy); border:1px solid var(--navy-line);">Trang Giáo Viên / Admin ➔</a>
       <a class="cta" href="#lien-he">Đăng ký thử nghiệm</a>
     </div>
   </div>
@@ -720,6 +758,16 @@
         <p>Cuối tuần, hệ thống tự tổng hợp điểm và chuyên đề cần chú ý, gửi tự động cho phụ huynh.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="luyen-thi-prepscholar" style="background:var(--surface); border-block:1px solid var(--line);">
+  <div class="wrap">
+    <div class="demo-label"><span class="dot"></span>Phương pháp thích ứng chuẩn PrepScholar · Trải nghiệm học &amp; thi trực tuyến</div>
+    <div class="kicker">Phòng Luyện Thi &amp; Kiểm Tra Thích Ứng</div>
+    <h2 class="section-title">Hệ thống học thích ứng chuẩn PrepScholar</h2>
+    <p class="section-sub">Tập trung tối đa thời gian vào điểm yếu nhất. Học sinh làm bài trực tiếp trên hệ thống với 3 chế độ: <b>Luyện tập trọng tâm (Focused Drill)</b>, <b>Kiểm tra chẩn đoán / Thi thử chuẩn Bộ GD</b>, và <b>Sổ tay câu sai (Lặp lại giãn cách)</b>. Điểm số, độ thành thạo và lộ trình học tự động cập nhật ngay sau khi nộp bài.</p>
+    <div id="prepscholar-app-root"></div>
   </div>
 </section>
 
@@ -1630,6 +1678,363 @@
     return {name:'', username:'', password:'123', email:'', phone:'', school:'', parentName:'', parentPhone:'', parentEmail:'', targetScore:9.0};
   }
 
+  // ================= CSV Utilities for Student Import/Export =================
+  function csvEscape(v){
+    var s = (v===null || v===undefined) ? '' : String(v);
+    if(/[",\n\r;]/.test(s)){
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function downloadCSV(filename, text){
+    var blob = new Blob(['\uFEFF' + text], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 150);
+  }
+
+  function parseCSV(text){
+    if(!text) return [];
+    var firstLine = text.split(/\r\n|\n|\r/)[0] || '';
+    var commaCount = (firstLine.match(/,/g) || []).length;
+    var semiCount = (firstLine.match(/;/g) || []).length;
+    var tabCount = (firstLine.match(/\t/g) || []).length;
+    var delimiter = ',';
+    if(semiCount > commaCount && semiCount > tabCount) delimiter = ';';
+    else if(tabCount > commaCount && tabCount > semiCount) delimiter = '\t';
+
+    var rows = [];
+    var curRow = [];
+    var curField = '';
+    var inQuotes = false;
+    var i = 0;
+    var len = text.length;
+
+    while(i < len){
+      var ch = text[i];
+      if(inQuotes){
+        if(ch === '"'){
+          if(i + 1 < len && text[i+1] === '"'){
+            curField += '"';
+            i += 2;
+            continue;
+          } else {
+            inQuotes = false;
+            i++;
+            continue;
+          }
+        } else {
+          curField += ch;
+          i++;
+          continue;
+        }
+      } else {
+        if(ch === '"'){
+          inQuotes = true;
+          i++;
+          continue;
+        } else if(ch === delimiter){
+          curRow.push(curField.trim());
+          curField = '';
+          i++;
+          continue;
+        } else if(ch === '\r'){
+          if(i + 1 < len && text[i+1] === '\n') i++;
+          curRow.push(curField.trim());
+          rows.push(curRow);
+          curRow = [];
+          curField = '';
+          i++;
+          continue;
+        } else if(ch === '\n'){
+          curRow.push(curField.trim());
+          rows.push(curRow);
+          curRow = [];
+          curField = '';
+          i++;
+          continue;
+        } else {
+          curField += ch;
+          i++;
+          continue;
+        }
+      }
+    }
+    if(curField.length > 0 || curRow.length > 0){
+      curRow.push(curField.trim());
+      rows.push(curRow);
+    }
+    return rows;
+  }
+
+  function downloadStudentSampleCSV(){
+    var headers = ['Họ và tên','Email','Số điện thoại','Trường THPT','Tên đăng nhập','Mật khẩu','Mục tiêu điểm','Họ tên phụ huynh','SĐT phụ huynh','Email phụ huynh'];
+    var samples = [
+      ['Nguyễn Văn An','vanan.nguyen@gmail.com','0912 345 678','THPT Chuyên Lê Hồng Phong','vanan12','123','9.5','Nguyễn Văn Bình','0903 111 222','binh.nguyen@gmail.com'],
+      ['Trần Thị Mai','mai.tran@gmail.com','0988 765 432','THPT Bùi Thị Xuân','maitran','123','8.5','Trần Văn Hưng','0918 333 444','hung.tran@gmail.com'],
+      ['Lê Hoàng Long','long.le@gmail.com','0977 123 456','THPT Chuyên Trần Đại Nghĩa','hoanglong','123','9.0','Lê Thị Thu','0938 555 666','thu.le@gmail.com']
+    ];
+    var csv = [headers].concat(samples).map(function(r){ return r.map(csvEscape).join(','); }).join('\n');
+    downloadCSV('mau_danh_sach_hoc_sinh.csv', csv);
+  }
+
+  function detectStudentCSVHeaders(headerRow){
+    var colMap = {};
+    headerRow.forEach(function(col, idx){
+      var norm = (col || '').toLowerCase().replace(/[\s_\-*]/g, '');
+      if(norm.indexOf('tên')>-1 || norm.indexOf('name')>-1 || norm.indexOf('họvàtên')>-1 || norm.indexOf('hovaten')>-1){
+        if(norm.indexOf('phụhuynh')>-1 || norm.indexOf('bố')>-1 || norm.indexOf('mẹ')>-1 || norm.indexOf('parent')>-1){
+          colMap.parentName = idx;
+        } else if(norm.indexOf('đăngnhập')>-1 || norm.indexOf('username')>-1){
+          colMap.username = idx;
+        } else if(colMap.name === undefined){
+          colMap.name = idx;
+        }
+      }
+      else if(norm.indexOf('email')>-1 || norm.indexOf('mail')>-1){
+        if(norm.indexOf('phụhuynh')>-1 || norm.indexOf('parent')>-1){
+          colMap.parentEmail = idx;
+        } else if(colMap.email === undefined){
+          colMap.email = idx;
+        }
+      }
+      else if(norm.indexOf('thoại')>-1 || norm.indexOf('sđt')>-1 || norm.indexOf('phone')>-1 || norm.indexOf('tel')>-1){
+        if(norm.indexOf('phụhuynh')>-1 || norm.indexOf('parent')>-1 || norm.indexOf('bố')>-1 || norm.indexOf('mẹ')>-1){
+          colMap.parentPhone = idx;
+        } else if(colMap.phone === undefined){
+          colMap.phone = idx;
+        }
+      }
+      else if(norm.indexOf('trường')>-1 || norm.indexOf('school')>-1){
+        colMap.school = idx;
+      }
+      else if(norm.indexOf('đăngnhập')>-1 || norm.indexOf('username')>-1){
+        colMap.username = idx;
+      }
+      else if(norm.indexOf('mậtkhẩu')>-1 || norm.indexOf('pass')>-1){
+        colMap.password = idx;
+      }
+      else if(norm.indexOf('mụctiêu')>-1 || norm.indexOf('target')>-1 || norm.indexOf('điểm')>-1){
+        colMap.targetScore = idx;
+      }
+    });
+
+    if(colMap.name === undefined && colMap.email === undefined){
+      colMap = { name:0, email:1, phone:2, school:3, username:4, password:5, targetScore:6, parentName:7, parentPhone:8, parentEmail:9 };
+      return { map: colMap, isFallback: true };
+    }
+    return { map: colMap, isFallback: false };
+  }
+
+  function mapStudentCSVRow(row, map){
+    var get = function(k){ var idx = map[k]; return (idx !== undefined && row[idx] !== undefined) ? String(row[idx]).trim() : ''; };
+    return {
+      name: get('name'),
+      email: get('email'),
+      phone: get('phone'),
+      school: get('school'),
+      username: get('username'),
+      password: get('password'),
+      targetScore: get('targetScore'),
+      parentName: get('parentName'),
+      parentPhone: get('parentPhone'),
+      parentEmail: get('parentEmail')
+    };
+  }
+
+  function validateStudentRow(raw, existingEmailSet, batchEmailSet){
+    var errors = [];
+    var warnings = [];
+    if(!raw.name){
+      errors.push('Thiếu họ tên học sinh');
+    }
+    if(!raw.email){
+      errors.push('Thiếu email');
+    } else {
+      var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if(!emailRegex.test(raw.email)){
+        errors.push('Email không đúng định dạng');
+      } else {
+        var lowerEmail = raw.email.toLowerCase();
+        if(existingEmailSet.has(lowerEmail)){
+          warnings.push('Email đã có trong hệ thống');
+        } else if(batchEmailSet.has(lowerEmail)){
+          warnings.push('Email bị lặp trong file CSV');
+        }
+      }
+    }
+
+    var targetScore = parseFloat(raw.targetScore);
+    if(isNaN(targetScore) || targetScore <= 0 || targetScore > 10){
+      targetScore = 9.0;
+    }
+
+    var lastName = (raw.name || 'HOCSINH').trim().split(/\s+/).pop().toUpperCase();
+    var code = lastName + Math.floor(100 + Math.random() * 900) + 'VLY';
+
+    var studentObj = {
+      id: 's' + Date.now() + Math.floor(Math.random()*1000),
+      name: raw.name || '',
+      email: raw.email || '',
+      phone: raw.phone || '',
+      school: raw.school || 'Chưa cập nhật',
+      username: raw.username || (raw.email ? raw.email.split('@')[0] : 'user' + Math.floor(Math.random()*10000)),
+      password: raw.password || '123',
+      targetScore: targetScore,
+      completedExamsCount: 0,
+      averageScore: 0,
+      highestScore: 0,
+      status: 'active',
+      parentName: raw.parentName || 'Chưa cập nhật',
+      parentPhone: raw.parentPhone || '',
+      parentEmail: raw.parentEmail || '',
+      referralCode: code,
+      commissionBalance: 0
+    };
+
+    var status = 'valid';
+    if(errors.length > 0) status = 'error';
+    else if(warnings.length > 0) status = 'warning';
+
+    return {
+      status: status,
+      student: studentObj,
+      errors: errors,
+      warnings: warnings,
+      raw: raw
+    };
+  }
+
+  function calculateStudentKPIs(s){
+    s = s || {};
+    var completed = Number(s.completedExamsCount) || 0;
+    // Standard PrepScholar / OPC roadmap package is 20 practice exams
+    var totalAssigned = Number(s.assignedExamsCount) || Number(s.totalExams) || 20;
+    var completionRate = Math.min(100, Math.round((completed / totalAssigned) * 100));
+
+    var avg = Number(s.averageScore) || 0;
+    var highest = Number(s.highestScore) || 0;
+    var target = Number(s.targetScore) || 9.0;
+    var targetProgress = target > 0 ? Math.min(100, Math.round((avg / target) * 100)) : 0;
+
+    var predicted = s.predictedScore !== undefined && s.predictedScore !== null
+      ? Number(s.predictedScore)
+      : (avg > 0 ? Math.min(10, Math.round(((avg * 0.95) + 0.3) * 10) / 10) : 7.0);
+
+    var rating = 'Chưa có dữ liệu';
+    if(completed > 0 || avg > 0){
+      if(avg >= 8.5) rating = 'Xuất sắc (Mục tiêu 9+)';
+      else if(avg >= 7.5) rating = 'Giỏi (Vững vàng)';
+      else if(avg >= 6.5) rating = 'Khá (Cần tăng tốc)';
+      else if(avg >= 5.0) rating = 'Trung bình (Cần phụ đạo)';
+      else rating = 'Yếu (Cảnh báo học tập)';
+    } else {
+      rating = 'Mới nhập học';
+    }
+
+    var weakTopic = 'Chưa xác định';
+    if(s.mastery){
+      var tNhiet = s.mastery.nhiet !== undefined ? s.mastery.nhiet : 75;
+      var tKhi = s.mastery.khi !== undefined ? s.mastery.khi : 65;
+      var tTu = s.mastery.tutruong !== undefined ? s.mastery.tutruong : (s.mastery['tu-truong'] !== undefined ? s.mastery['tu-truong'] : 60);
+      var tHn = s.mastery.hatnhan !== undefined ? s.mastery.hatnhan : (s.mastery['hat-nhan'] !== undefined ? s.mastery['hat-nhan'] : 45);
+      var topics = [
+        { name: 'Vật lí nhiệt', val: tNhiet },
+        { name: 'Khí lí tưởng', val: tKhi },
+        { name: 'Từ trường & Cảm ứng', val: tTu },
+        { name: 'Vật lí hạt nhân', val: tHn }
+      ];
+      topics.sort(function(a, b){ return a.val - b.val; });
+      weakTopic = topics[0].name + ' (' + topics[0].val + '%)';
+    } else if(avg > 0 && avg < 7.0){
+      weakTopic = 'Vật lí hạt nhân & Từ trường';
+    } else if(avg >= 7.0 && avg < 8.5){
+      weakTopic = 'Câu hỏi Vận dụng cao (M4)';
+    } else if(avg >= 8.5){
+      weakTopic = 'Duy trì phong độ & Tối ưu tốc độ';
+    }
+
+    var mistakes = Number(s.mistakeCount) || (completed > 0 ? Math.max(1, Math.round((10 - avg) * 2)) : 0);
+
+    return {
+      completed: completed,
+      totalAssigned: totalAssigned,
+      completionRate: completionRate,
+      completionRatePct: completionRate + '%',
+      avgScore: avg.toFixed(1),
+      highestScore: highest.toFixed(1),
+      targetScore: target.toFixed(1),
+      predictedScore: predicted.toFixed(1),
+      targetProgressPct: targetProgress + '%',
+      rating: rating,
+      weakTopic: weakTopic,
+      mistakes: mistakes
+    };
+  }
+
+  function renderClassSummaryCard(students){
+    students = students || [];
+    var totalStudents = students.length;
+    var activeStudents = students.filter(function(s){ return s.status === 'active'; }).length;
+
+    var sumAvgScore = students.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
+    var avgClassScore = totalStudents > 0 ? (sumAvgScore / totalStudents).toFixed(1) : '0.0';
+
+    var totalCompleted = students.reduce(function(acc, s){ return acc + (Number(s.completedExamsCount) || 0); }, 0);
+    var totalAssigned = students.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || Number(s.totalExams) || 20); }, 0);
+    var avgCompletionRate = totalAssigned > 0 ? Math.min(100, Math.round((totalCompleted / totalAssigned) * 100)) : 0;
+
+    var maxScore = students.reduce(function(max, s){ return Math.max(max, Number(s.highestScore) || 0); }, 0);
+    var highestClassScore = maxScore > 0 ? (maxScore.toFixed ? maxScore.toFixed(1) : maxScore) : '0.0';
+
+    var sumTarget = students.reduce(function(acc, s){ return acc + (Number(s.targetScore) || 9.0); }, 0);
+    var avgTarget = totalStudents > 0 ? (sumTarget / totalStudents).toFixed(1) : '9.0';
+
+    return h('div',{id:'student-class-summary-card', className:'sm-summary-card'},
+      h('div',{className:'sm-summary-head'},
+        h('div',{className:'sm-summary-title'},
+          h('span',null,'📊 Tổng quan chỉ số lớp học')
+        ),
+        h('span',{className:'sm-summary-badge'}, totalStudents + ' học sinh')
+      ),
+      h('div',{className:'sm-summary-grid'},
+        h('div',{id:'metric-active-students', className:'sm-summary-item'},
+          h('div',{className:'sm-summary-label'}, 'Học sinh đang học'),
+          h('div',{className:'sm-summary-val', style:{color:'var(--ink)'}}, activeStudents + ' / ' + totalStudents),
+          h('div',{className:'sm-summary-sub'}, 'Đang kích hoạt tài khoản học tập')
+        ),
+        h('div',{id:'metric-avg-score', className:'sm-summary-item'},
+          h('div',{className:'sm-summary-label'}, 'Điểm trung bình lớp'),
+          h('div',{className:'sm-summary-val', style:{color:'var(--accent-strong)'}}, avgClassScore),
+          h('div',{className:'sm-summary-sub'}, 'Mục tiêu trung bình: ' + avgTarget + '+')
+        ),
+        h('div',{id:'metric-completion-rate', className:'sm-summary-item'},
+          h('div',{className:'sm-summary-label'}, 'Tỷ lệ hoàn thành TB'),
+          h('div',{className:'sm-summary-val', style:{color:'var(--accent)'}}, avgCompletionRate + '%'),
+          h('div',{style:{display:'flex', alignItems:'center', gap:6, marginTop:4}},
+            h('div',{style:{width:48, height:5, background:'var(--line)', borderRadius:3, overflow:'hidden', display:'inline-block'}},
+              h('div',{style:{height:'100%', width:avgCompletionRate + '%', background:'var(--accent)'}})
+            ),
+            h('span',{className:'sm-summary-sub', style:{marginTop:0}}, totalCompleted + '/' + totalAssigned + ' đề')
+          )
+        ),
+        h('div',{id:'metric-top-score', className:'sm-summary-item'},
+          h('div',{className:'sm-summary-label'}, 'Điểm cao nhất khóa'),
+          h('div',{className:'sm-summary-val', style:{color:'var(--good)'}}, highestClassScore),
+          h('div',{className:'sm-summary-sub'}, 'Kỷ lục thi thử cao nhất')
+        )
+      )
+    );
+  }
+
   function StudentManager(){
     var React_ = React;
     var useState = React_.useState;
@@ -1641,21 +2046,33 @@
     var toastState = useState(''); var toast = toastState[0], setToast = toastState[1];
     var formState = useState(blankForm); var form = formState[0], setForm = formState[1];
 
+    // CSV Bulk Import State
+    var importOpenState = useState(false); var importOpen = importOpenState[0], setImportOpen = importOpenState[1];
+    var importDataState = useState(null); var importData = importDataState[0], setImportData = importDataState[1];
+    var importingState = useState(false); var importing = importingState[0], setImporting = importingState[1];
+    var importProgressState = useState(0); var importProgress = importProgressState[0], setImportProgress = importProgressState[1];
+    var skipDuplicatesState = useState(true); var skipDuplicates = skipDuplicatesState[0], setSkipDuplicates = skipDuplicatesState[1];
+    var isDraggingState = useState(false); var isDragging = isDraggingState[0], setIsDragging = isDraggingState[1];
+
     useEffect(function(){
-      if(!selected && !addOpen) return;
+      if(!selected && !addOpen && !importOpen) return;
       function onKey(e){
-        if(e.key === 'Escape'){ setSelected(null); setAddOpen(false); }
+        if(e.key === 'Escape'){
+          setSelected(null);
+          setAddOpen(false);
+          if(!importing) setImportOpen(false);
+        }
       }
       window.addEventListener('keydown', onKey);
       return function(){ window.removeEventListener('keydown', onKey); };
-    }, [selected, addOpen]);
+    }, [selected, addOpen, importOpen, importing]);
 
     function setField(key, val){
       setForm(function(prev){ var next = Object.assign({}, prev); next[key] = val; return next; });
     }
     function fireToast(msg){
       setToast(msg);
-      setTimeout(function(){ setToast(''); }, 3000);
+      setTimeout(function(){ setToast(''); }, 3500);
     }
 
     var q = search.trim().toLowerCase();
@@ -1671,7 +2088,215 @@
     }
 
     function handleExport(){
-      fireToast('Đã chuẩn bị dữ liệu CSV — ở bản dữ liệu thật, file sẽ tải trực tiếp về máy thầy.');
+      if(!students.length){ fireToast('Chưa có học sinh để xuất file CSV.'); return; }
+
+      var headers = [
+        'STT',
+        'Mã học sinh',
+        'Họ và tên',
+        'Email',
+        'Số điện thoại',
+        'Trường THPT',
+        'Tên đăng nhập',
+        'Trạng thái học tập',
+        'Mục tiêu điểm thi',
+        'Điểm trung bình (GPA)',
+        'Điểm thi cao nhất',
+        'Điểm dự đoán tốt nghiệp',
+        'Số đề đã hoàn thành',
+        'Mục tiêu tổng số đề (Lộ trình)',
+        'Tỷ lệ hoàn thành lộ trình (%)',
+        'Tiến độ đạt mục tiêu điểm (%)',
+        'Đánh giá học lực',
+        'Chuyên đề trọng tâm cần ôn',
+        'Số câu sai trong sổ tay',
+        'Họ tên phụ huynh',
+        'SĐT / Zalo phụ huynh',
+        'Email phụ huynh',
+        'Mã giới thiệu',
+        'Số dư hoa hồng (VNĐ)'
+      ];
+
+      var rows = students.map(function(s, idx){
+        var kpi = calculateStudentKPIs(s);
+        return [
+          idx + 1,
+          s.id || ('s' + (idx + 1)),
+          s.name || '',
+          s.email || '',
+          s.phone || '',
+          s.school || 'Chưa cập nhật',
+          s.username || '',
+          s.status === 'active' ? 'Đang học' : 'Tạm khoá',
+          kpi.targetScore,
+          kpi.avgScore,
+          kpi.highestScore,
+          kpi.predictedScore,
+          kpi.completed,
+          kpi.totalAssigned,
+          kpi.completionRatePct,
+          kpi.targetProgressPct,
+          kpi.rating,
+          kpi.weakTopic,
+          kpi.mistakes,
+          s.parentName || 'Chưa cập nhật',
+          s.parentPhone || '',
+          s.parentEmail || '',
+          s.referralCode || '',
+          (s.commissionBalance || 0).toLocaleString('vi-VN')
+        ];
+      });
+
+      // Calculate class-wide summary KPI row
+      var totalCompleted = students.reduce(function(acc, s){ return acc + (Number(s.completedExamsCount) || 0); }, 0);
+      var totalAssigned = students.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || 20); }, 0);
+      var classAvgCompletion = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
+      var sumAvgScore = students.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
+      var classAvgScore = students.length > 0 ? (sumAvgScore / students.length).toFixed(1) : '0.0';
+      var sumTargetScore = students.reduce(function(acc, s){ return acc + (Number(s.targetScore) || 9.0); }, 0);
+      var classAvgTarget = students.length > 0 ? (sumTargetScore / students.length).toFixed(1) : '9.0';
+      var maxClassScore = students.reduce(function(max, s){ return Math.max(max, Number(s.highestScore) || 0); }, 0).toFixed(1);
+
+      var dividerRow = new Array(headers.length).fill('---');
+      var summaryRow = [
+        'TỔNG KẾT',
+        'TOÀN BỘ ' + students.length + ' HỌC SINH',
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Đang học: ' + students.filter(function(s){ return s.status === 'active'; }).length + ' em',
+        'TB Mục tiêu: ' + classAvgTarget,
+        'Điểm TB lớp: ' + classAvgScore,
+        'Điểm cao nhất: ' + maxClassScore,
+        'Dự đoán TB: ' + (Number(classAvgScore) * 0.96 + 0.2).toFixed(1),
+        'Tổng đề: ' + totalCompleted,
+        'Tổng mục tiêu: ' + totalAssigned,
+        'Tỷ lệ HT chung: ' + classAvgCompletion + '%',
+        'Đạt MT: ' + (Number(classAvgTarget) > 0 ? Math.round((Number(classAvgScore) / Number(classAvgTarget)) * 100) : 0) + '%',
+        'Khảo sát toàn khóa',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        ''
+      ];
+
+      var allRows = [headers].concat(rows).concat([dividerRow, summaryRow]);
+      var csv = allRows.map(function(r){ return r.map(csvEscape).join(','); }).join('\n');
+
+      var now = new Date();
+      var y = now.getFullYear();
+      var m = ('0' + (now.getMonth() + 1)).slice(-2);
+      var d = ('0' + now.getDate()).slice(-2);
+      var fileName = 'danh_sach_hoc_sinh_kpi_' + y + m + d + '.csv';
+
+      downloadCSV(fileName, csv);
+      fireToast('Đã tải file CSV toàn bộ ' + students.length + ' học sinh kèm chỉ số KPI (Điểm TB: ' + classAvgScore + ', Hoàn thành: ' + classAvgCompletion + '%).');
+    }
+
+    function handleCSVFile(file){
+      if(!file) return;
+      var fName = (file.name || '').toLowerCase();
+      if(!fName.endsWith('.csv') && !fName.endsWith('.txt') && !file.type.includes('csv') && !file.type.includes('text')){
+        fireToast('Vui lòng chọn file định dạng .csv hoặc .txt');
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var content = e.target.result;
+        var parsedRows = parseCSV(content);
+        if(!parsedRows || parsedRows.length < 1){
+          fireToast('File CSV không có nội dung hợp lệ.');
+          setImportData(null);
+          return;
+        }
+
+        var headerRow = parsedRows[0];
+        var headerInfo = detectStudentCSVHeaders(headerRow);
+        var startIdx = 1;
+        if(headerInfo.isFallback && headerRow.some(function(c){ return (c||'').indexOf('@') > -1; })){
+          startIdx = 0;
+        }
+
+        var existingEmailSet = new Set();
+        students.forEach(function(s){
+          if(s.email) existingEmailSet.add(s.email.toLowerCase().trim());
+        });
+
+        var batchEmailSet = new Set();
+        var evaluatedRows = [];
+        var validCount = 0;
+        var warnCount = 0;
+        var errCount = 0;
+
+        for(var i = startIdx; i < parsedRows.length; i++){
+          var row = parsedRows[i];
+          if(!row || !row.length || (row.length === 1 && !row[0].trim())) continue;
+          var raw = mapStudentCSVRow(row, headerInfo.map);
+          var evaluated = validateStudentRow(raw, existingEmailSet, batchEmailSet);
+          evaluated.lineNum = i + 1;
+          evaluatedRows.push(evaluated);
+          if(evaluated.status === 'valid'){
+            validCount++;
+            if(raw.email) batchEmailSet.add(raw.email.toLowerCase().trim());
+          } else if(evaluated.status === 'warning'){
+            warnCount++;
+          } else {
+            errCount++;
+          }
+        }
+
+        if(!evaluatedRows.length){
+          fireToast('Không tìm thấy dòng học sinh nào trong file.');
+          setImportData(null);
+          return;
+        }
+
+        setImportData({
+          fileName: file.name,
+          fileSize: (file.size / 1024).toFixed(1) + ' KB',
+          rows: evaluatedRows,
+          validCount: validCount,
+          warnCount: warnCount,
+          errCount: errCount,
+          totalCount: evaluatedRows.length
+        });
+      };
+      reader.onerror = function(){
+        fireToast('Không đọc được tệp — vui lòng thử lại.');
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    function executeBulkImport(){
+      if(!importData || !importData.rows.length) return;
+      var toImport = importData.rows.filter(function(r){
+        if(r.status === 'valid') return true;
+        if(!skipDuplicates && r.status === 'warning') return true;
+        return false;
+      }).map(function(r){ return r.student; });
+
+      if(!toImport.length){
+        fireToast('Không có học sinh hợp lệ nào để nhập.');
+        return;
+      }
+
+      setImporting(true);
+      setImportProgress(100);
+
+      setTimeout(function(){
+        setStudents(function(prev){
+          return prev.concat(toImport);
+        });
+        setImporting(false);
+        setImportOpen(false);
+        setImportData(null);
+        fireToast('Đã nhập thành công ' + toImport.length + ' học sinh từ file CSV!');
+      }, 400);
     }
 
     function handleCreate(e){
@@ -1710,13 +2335,16 @@
     var toolbar = h('div',{className:'sm-toolbar'},
       h('div',null,
         h('h3',null,'Danh sách học sinh'),
-        h('p',{className:'sm-sub'}, 'Theo dõi tiến độ luyện đề, thông tin đăng nhập và liên hệ phụ huynh của từng em trong danh sách đang phụ trách.')
+        h('p',{className:'sm-sub'}, 'Theo dõi tiến độ luyện đề, chỉ số KPI học tập và thông tin của từng học sinh trong danh sách phụ trách.')
       ),
       h('div',{className:'sm-actions'},
-        h('button',{type:'button', className:'btn btn-secondary', onClick:handleExport}, 'Xuất CSV'),
+        h('button',{type:'button', className:'btn btn-secondary', onClick:handleExport, title:'Xuất toàn bộ danh sách học sinh kèm đầy đủ chỉ số KPI ra file CSV'}, '📊 Xuất CSV & KPI'),
+        h('button',{type:'button', className:'btn btn-secondary', onClick:function(){ setImportOpen(true); }}, '📥 Nhập từ CSV'),
         h('button',{type:'button', className:'btn btn-primary', onClick:function(){ setAddOpen(true); }}, '+ Thêm học sinh')
       )
     );
+
+    var summaryCard = renderClassSummaryCard(students);
 
     var searchRow = h('div',{className:'sm-search-row'},
       h('div',{className:'sm-search'},
@@ -1730,20 +2358,29 @@
       h('table',{className:'sm-table'},
         h('thead',null, h('tr',null,
           h('th',{scope:'col'},'Học sinh'), h('th',{scope:'col'},'Trường THPT'), h('th',{scope:'col', style:{textAlign:'center'}},'Đề đã làm'),
+          h('th',{scope:'col', style:{textAlign:'center'}},'Hoàn thành'),
           h('th',{scope:'col', style:{textAlign:'center'}},'Điểm TB'), h('th',{scope:'col', style:{textAlign:'center'}},'Cao nhất'),
           h('th',{scope:'col', style:{textAlign:'center'}},'Trạng thái'), h('th',{scope:'col', style:{textAlign:'right'}},'Chi tiết')
         )),
         h('tbody',null,
           filtered.map(function(s){
+            var kpi = calculateStudentKPIs(s);
             return h('tr',{key:s.id},
               h('td',null, h('div',{className:'sm-student-cell'},
                 h('div',{className:'sm-avatar'}, initials(s.name)),
                 h('div',null, h('div',{className:'sm-student-name'}, s.name), h('div',{className:'sm-student-email'}, s.email))
               )),
               h('td',null, s.school),
-              h('td',{className:'sm-num', style:{textAlign:'center'}}, s.completedExamsCount+' đề'),
-              h('td',{className:'sm-num', style:{textAlign:'center', fontWeight:700, color:'var(--accent-strong)'}}, s.averageScore.toFixed(1)),
-              h('td',{className:'sm-num', style:{textAlign:'center', color:'var(--good)', fontWeight:700}}, s.highestScore.toFixed(1)),
+              h('td',{className:'sm-num', style:{textAlign:'center'}}, (s.completedExamsCount||0)+' đề'),
+              h('td',{style:{textAlign:'center'}},
+                h('div',{style:{display:'inline-flex', alignItems:'center', gap:6}},
+                  h('div',{style:{width:40, height:6, background:'var(--line)', borderRadius:3, overflow:'hidden', display:'inline-block'}},
+                    h('div',{style:{height:'100%', width:kpi.completionRatePct, background:'var(--accent)'}})),
+                  h('span',{style:{fontFamily:'"IBM Plex Mono",monospace', fontSize:'0.78rem', fontWeight:700, color:'var(--ink)'}}, kpi.completionRatePct)
+                )
+              ),
+              h('td',{className:'sm-num', style:{textAlign:'center', fontWeight:700, color:'var(--accent-strong)'}}, kpi.avgScore),
+              h('td',{className:'sm-num', style:{textAlign:'center', color:'var(--good)', fontWeight:700}}, kpi.highestScore),
               h('td',{style:{textAlign:'center'}},
                 h('button',{type:'button', className:cx('sm-status-pill', s.status), onClick:function(){ toggleStatus(s); }},
                   s.status==='active' ? 'Đang học' : 'Tạm khoá')
@@ -1757,10 +2394,11 @@
       )
     );
 
+    var selKpi = selected ? calculateStudentKPIs(selected) : null;
     var detailModal = selected ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget) setSelected(null); }},
       h('div',{className:'sm-modal', role:'dialog', 'aria-modal':'true', 'aria-label':'Hồ sơ học sinh'},
         h('div',{className:'sm-modal-head'},
-          h('h3',null,'Hồ sơ học sinh'),
+          h('h3',null,'Hồ sơ học sinh & KPI'),
           h('button',{type:'button', className:'sm-modal-close', onClick:function(){ setSelected(null); }}, h(IconClose))
         ),
         h('div',{className:'sm-profile-head'},
@@ -1769,9 +2407,18 @@
           h('p',null, selected.school)
         ),
         h('div',{className:'sm-stat-grid'},
-          h('div',null, h('div',{className:'sm-stat-label'},'Đã làm'), h('div',{className:'sm-stat-value'}, selected.completedExamsCount+' đề')),
-          h('div',null, h('div',{className:'sm-stat-label'},'Điểm TB'), h('div',{className:'sm-stat-value', style:{color:'var(--accent-strong)'}}, selected.averageScore.toFixed(1))),
-          h('div',null, h('div',{className:'sm-stat-label'},'Mục tiêu'), h('div',{className:'sm-stat-value', style:{color:'var(--good)'}}, selected.targetScore.toFixed(1)+'+'))
+          h('div',null, h('div',{className:'sm-stat-label'},'Đã làm'), h('div',{className:'sm-stat-value'}, (selected.completedExamsCount||0)+' đề')),
+          h('div',null, h('div',{className:'sm-stat-label'},'Hoàn thành'), h('div',{className:'sm-stat-value', style:{color:'var(--accent)'}}, selKpi.completionRatePct)),
+          h('div',null, h('div',{className:'sm-stat-label'},'Điểm TB'), h('div',{className:'sm-stat-value', style:{color:'var(--accent-strong)'}}, selKpi.avgScore)),
+          h('div',null, h('div',{className:'sm-stat-label'},'Mục tiêu'), h('div',{className:'sm-stat-value', style:{color:'var(--good)'}}, (selected.targetScore||0).toFixed(1)+'+'))
+        ),
+        h('div',{className:'sm-info-block'},
+          h('div',{className:'sm-info-title'}, '📈 Chỉ số hiệu suất học tập (KPI)'),
+          h('p',null, h('b',null,'Đánh giá học lực: '), h('span',{style:{fontWeight:600, color:'var(--accent-strong)'}}, selKpi.rating)),
+          h('p',null, h('b',null,'Điểm dự đoán tốt nghiệp: '), h('span',{className:'sm-mono-pill'}, selKpi.predictedScore + '/10')),
+          h('p',null, h('b',null,'Tiến độ đạt mục tiêu điểm: '), h('span',{className:'sm-mono-pill'}, selKpi.targetProgressPct)),
+          h('p',null, h('b',null,'Chuyên đề trọng tâm cần ôn: '), h('span',{style:{color:'var(--warning)', fontWeight:600}}, selKpi.weakTopic)),
+          h('p',null, h('b',null,'Số câu sai trong sổ tay: '), h('span',{className:'sm-mono-pill'}, selKpi.mistakes + ' câu'))
         ),
         h('div',{className:'sm-info-block'},
           h('div',{className:'sm-info-title'}, '🔐 Thông tin đăng nhập'),
@@ -1847,8 +2494,185 @@
       )
     ) : null;
 
+    var importModal = importOpen ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget && !importing) setImportOpen(false); }},
+      h('div',{className:'sm-modal sm-modal-wide', style:{maxWidth:'780px'}, role:'dialog', 'aria-modal':'true', 'aria-label':'Nhập danh sách học sinh từ file CSV'},
+        h('div',{className:'sm-modal-head'},
+          h('div',null,
+            h('h3',null,'📥 Nhập học sinh hàng loạt từ file CSV'),
+            h('p',{style:{fontSize:'0.8rem', color:'var(--muted)', marginTop:2}}, 'Thêm nhanh nhiều tài khoản học sinh và thông tin liên hệ phụ huynh cùng lúc.')
+          ),
+          h('button',{type:'button', className:'sm-modal-close', onClick:function(){ if(!importing) setImportOpen(false); }}, h(IconClose))
+        ),
+
+        // Template download banner
+        h('div',{style:{background:'var(--surface-2)', border:'1px solid var(--line)', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10, marginBottom:16}},
+          h('div',null,
+            h('div',{style:{fontSize:'0.85rem', fontWeight:700, color:'var(--ink)'}}, '📄 Mẫu file CSV chuẩn hệ thống'),
+            h('div',{style:{fontSize:'0.78rem', color:'var(--muted)', marginTop:2}}, 'Bao gồm các cột: Họ và tên, Email, Số điện thoại, Trường THPT, Tên đăng nhập, Mật khẩu, Mục tiêu, Họ tên phụ huynh, SĐT phụ huynh, Email phụ huynh.')
+          ),
+          h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.78rem', padding:'6px 14px'}, onClick:downloadStudentSampleCSV}, '⬇ Tải file mẫu .CSV')
+        ),
+
+        // File dropzone or preview
+        !importData ? (
+          h('div',{
+            className: 'sm-dropzone ' + (isDragging ? 'dragover' : ''),
+            onDragOver: function(e){ e.preventDefault(); setIsDragging(true); },
+            onDragLeave: function(){ setIsDragging(false); },
+            onDrop: function(e){
+              e.preventDefault();
+              setIsDragging(false);
+              if(e.dataTransfer.files && e.dataTransfer.files[0]){
+                handleCSVFile(e.dataTransfer.files[0]);
+              }
+            },
+            onClick: function(){
+              var input = document.getElementById('sm-csv-file-input-public');
+              if(input) input.click();
+            }
+          },
+            h('input',{
+              id: 'sm-csv-file-input-public',
+              type: 'file',
+              accept: '.csv,text/csv,text/plain',
+              style: { display:'none' },
+              onChange: function(e){
+                if(e.target.files && e.target.files[0]){
+                  handleCSVFile(e.target.files[0]);
+                }
+              }
+            }),
+            h('div',{className:'sm-dropzone-icon'}, '📁'),
+            h('div',{className:'sm-dropzone-title'}, 'Kéo thả file CSV vào đây hoặc bấm để duyệt tệp'),
+            h('div',{className:'sm-dropzone-sub'}, 'Tương thích định dạng CSV xuất từ Microsoft Excel, Google Sheets, phần mềm quản lý trường học (UTF-8, phân cách bằng dấu phẩy hoặc chấm phẩy).')
+          )
+        ) : (
+          h('div',null,
+            // File info row
+            h('div',{style:{display:'flex', alignItems:'center', justifyContent:'space-between', background:'var(--surface-2)', padding:'10px 14px', borderRadius:8, border:'1px solid var(--line)'}},
+              h('div',{style:{display:'flex', alignItems:'center', gap:8}},
+                h('span',{style:{fontSize:'1.2rem'}}, '📊'),
+                h('div',null,
+                  h('b',{style:{fontSize:'0.86rem', color:'var(--ink)'}}, importData.fileName),
+                  h('span',{style:{fontSize:'0.76rem', color:'var(--muted)', marginLeft:8}}, '(' + importData.fileSize + ')')
+                )
+              ),
+              h('button',{
+                type:'button',
+                className:'sm-link-btn',
+                style:{fontSize:'0.8rem', color:'var(--accent-strong)'},
+                disabled: importing,
+                onClick:function(){ setImportData(null); }
+              }, 'Chọn tệp khác ↺')
+            ),
+
+            // Summary metrics
+            h('div',{className:'sm-import-summary'},
+              h('div',{className:'sm-summary-card'},
+                h('div',{className:'sm-summary-val', style:{color:'var(--accent-strong)'}}, importData.totalCount),
+                h('div',{className:'sm-summary-lbl'}, 'Tổng số dòng đọc được')
+              ),
+              h('div',{className:'sm-summary-card'},
+                h('div',{className:'sm-summary-val', style:{color:'var(--good)'}}, importData.validCount),
+                h('div',{className:'sm-summary-lbl'}, 'Học sinh hợp lệ sẵn sàng tạo')
+              ),
+              h('div',{className:'sm-summary-card'},
+                h('div',{className:'sm-summary-val', style:{color: importData.warnCount ? 'var(--warning)' : (importData.errCount ? 'var(--critical)' : 'var(--muted)')}},
+                  (importData.warnCount + importData.errCount) + ' dòng'
+                ),
+                h('div',{className:'sm-summary-lbl'}, 'Trùng email (' + importData.warnCount + ') · Lỗi (' + importData.errCount + ')')
+              )
+            ),
+
+            // Preview Table
+            h('div',{className:'sm-preview-table-wrap'},
+              h('table',{className:'sm-preview-table'},
+                h('thead',null,
+                  h('tr',null,
+                    h('th',null,'#'),
+                    h('th',null,'Trạng thái'),
+                    h('th',null,'Họ và tên'),
+                    h('th',null,'Email'),
+                    h('th',null,'Trường THPT'),
+                    h('th',null,'Mục tiêu'),
+                    h('th',null,'Phụ huynh'),
+                    h('th',null,'Ghi chú')
+                  )
+                ),
+                h('tbody',null,
+                  importData.rows.map(function(item, idx){
+                    var badgeLabel = item.status === 'valid' ? '✓ Hợp lệ' : (item.status === 'warning' ? '⚠ Trùng email' : '✗ Lỗi');
+                    var note = item.errors.length ? item.errors.join(', ') : (item.warnings.length ? item.warnings.join(', ') : 'Sẵn sàng nạp');
+
+                    return h('tr',{key:idx, className:'sm-row-' + item.status},
+                      h('td',{style:{fontFamily:'"IBM Plex Mono",monospace', color:'var(--muted)'}}, item.lineNum),
+                      h('td',null,
+                        h('span',{style:{
+                          fontSize:'0.72rem', fontWeight:700, padding:'2px 6px', borderRadius:4,
+                          background: item.status === 'valid' ? 'color-mix(in srgb, var(--good) 14%, transparent)' : (item.status === 'warning' ? 'color-mix(in srgb, var(--warning) 14%, transparent)' : 'color-mix(in srgb, var(--critical) 14%, transparent)'),
+                          color: item.status === 'valid' ? 'var(--good)' : (item.status === 'warning' ? 'var(--warning)' : 'var(--critical)')
+                        }}, badgeLabel)
+                      ),
+                      h('td',{style:{fontWeight:600}}, item.student.name || h('i',{style:{color:'var(--critical)'}}, '(Chưa có tên)')),
+                      h('td',null, item.student.email || h('i',{style:{color:'var(--critical)'}}, '(Thiếu email)')),
+                      h('td',null, item.student.school),
+                      h('td',{style:{fontFamily:'"IBM Plex Mono",monospace', fontWeight:700, color:'var(--accent-strong)'}}, item.student.targetScore),
+                      h('td',null, item.student.parentName + (item.student.parentPhone ? ' (' + item.student.parentPhone + ')' : '')),
+                      h('td',{style:{fontSize:'0.75rem', color: item.status === 'valid' ? 'var(--muted)' : (item.status === 'warning' ? 'var(--warning)' : 'var(--critical)')}}, note)
+                    );
+                  })
+                )
+              )
+            ),
+
+            // Duplicates checkbox option
+            importData.warnCount > 0 ? (
+              h('label',{style:{display:'flex', alignItems:'center', gap:8, fontSize:'0.82rem', marginTop:12, cursor:'pointer', color:'var(--ink-2)'}},
+                h('input',{
+                  type:'checkbox',
+                  checked: skipDuplicates,
+                  onChange:function(e){ setSkipDuplicates(e.target.checked); }
+                }),
+                'Bỏ qua các học sinh có email đã tồn tại (chỉ nhập ' + importData.validCount + ' học sinh mới)'
+              )
+            ) : null,
+
+            // Progress bar
+            importing ? (
+              h('div',{style:{marginTop:14}},
+                h('div',{style:{height:6, background:'var(--line)', borderRadius:3, overflow:'hidden'}},
+                  h('div',{style:{height:'100%', width: importProgress + '%', background:'var(--accent)', transition:'width 200ms ease'}})
+                ),
+                h('div',{style:{fontSize:'0.76rem', color:'var(--muted)', marginTop:4, textAlign:'center'}}, 'Đang nhập học sinh vào danh sách... ' + importProgress + '%')
+              )
+            ) : null
+          )
+        ),
+
+        // Bottom actions
+        h('div',{className:'sm-form-actions', style:{marginTop:20}},
+          h('button',{
+            type:'button',
+            className:'btn btn-secondary',
+            disabled: importing,
+            onClick:function(){ setImportOpen(false); }
+          }, 'Đóng'),
+          h('div',{className:'sm-right'},
+            importData && importData.validCount > 0 ? (
+              h('button',{
+                type:'button',
+                className:'btn btn-primary',
+                disabled: importing,
+                onClick: executeBulkImport
+              }, importing ? 'Đang lưu…' : 'Xác nhận nhập ' + (skipDuplicates ? importData.validCount : (importData.validCount + importData.warnCount)) + ' học sinh ➔')
+            ) : null
+          )
+        )
+      )
+    ) : null;
+
     return h('div',{className:'card'},
-      toolbar, searchRow, table, detailModal, addModal,
+      toolbar, summaryCard, searchRow, table, detailModal, addModal, importModal,
       h('div',{className: cx('rq-toast', toast && 'show')}, h('span',{className:'tk'},'✓'), toast || ' ')
     );
   }
@@ -1860,5 +2684,7 @@
   }
 })();
 </script>
+<script src="/prepscholar.js"></script>
+<script src="/prepscholar-ui.js"></script>
 </body>
 </html>
