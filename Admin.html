@@ -225,6 +225,50 @@
   .eb-title-cell{ font-weight:600; color:var(--ink); }
   .eb-bai-cell{ color:var(--ink-2); font-size:0.82rem; margin-top:2px; }
 
+  /* Mức độ M1 - M4 & Ma trận đề thi chuẩn Bộ GD */
+  .eb-level-badge{ display:inline-flex; align-items:center; gap:4px; font-size:0.72rem; font-weight:700; padding:2px 7px; border-radius:5px; font-family:"IBM Plex Mono",monospace; letter-spacing:0.02em; }
+  .eb-level-m1{ background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
+  .eb-level-m2{ background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .eb-level-m3{ background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+  .eb-level-m4{ background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+
+  .eb-badges-row{ display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin-top:4px; }
+  .eb-part-pill{ font-size:0.7rem; font-weight:600; padding:1px 6px; border-radius:4px; background:var(--surface-2); color:var(--ink-2); border:1px solid var(--line); }
+  .eb-tag-topic{ font-size:0.73rem; background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--accent-strong); border:1px solid color-mix(in srgb, var(--accent) 25%, transparent); padding:2px 8px; border-radius:999px; display:inline-block; font-weight:600; }
+  .eb-tag-sub{ font-size:0.72rem; background:var(--surface-2); color:var(--ink-2); border:1px solid var(--line); padding:1px 7px; border-radius:4px; display:inline-block; }
+
+  /* Live analysis card in upload modal */
+  .eb-analysis-card{ background:var(--surface-2); border:1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius:12px; padding:14px 16px; margin-top:14px; }
+  .eb-analysis-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .eb-analysis-title{ font-size:0.86rem; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:6px; }
+  .eb-matrix-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:10px; }
+  @media(max-width:520px){ .eb-matrix-grid{ grid-template-columns:repeat(2, 1fr); } }
+  .eb-matrix-cell{ background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:8px 10px; text-align:center; }
+  .eb-matrix-val{ font-family:"IBM Plex Mono",monospace; font-size:1.2rem; font-weight:700; }
+  .eb-matrix-lbl{ font-size:0.72rem; color:var(--ink-2); margin-top:2px; font-weight:600; }
+
+  /* Question list in modal */
+  .eb-q-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px; margin-top:12px; transition:border-color 150ms; }
+  .eb-q-card:hover{ border-color:var(--ink-2); }
+  .eb-q-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .eb-q-left{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .eb-q-idx{ font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:0.88rem; color:var(--ink); }
+  .eb-q-stem{ font-size:0.9rem; line-height:1.6; color:var(--ink); margin-top:6px; white-space:pre-wrap; }
+  .eb-q-opts{ margin-top:10px; display:flex; flex-direction:column; gap:5px; }
+  .eb-q-opt{ display:flex; align-items:flex-start; gap:8px; padding:7px 11px; border-radius:6px; background:var(--surface-2); border:1px solid transparent; font-size:0.86rem; line-height:1.5; }
+  .eb-q-opt.correct{ background:color-mix(in srgb, var(--good) 14%, var(--surface)); border-color:color-mix(in srgb, var(--good) 45%, var(--line)); font-weight:600; }
+  .eb-q-opt-key{ font-family:"IBM Plex Mono",monospace; font-weight:700; flex:none; width:22px; color:var(--ink-2); }
+  .eb-q-opt.correct .eb-q-opt-key{ color:var(--good); }
+  .eb-q-loigiai{ margin-top:10px; padding:9px 13px; background:color-mix(in srgb, var(--accent) 8%, var(--surface)); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; font-size:0.84rem; color:var(--ink); line-height:1.55; }
+  .eb-q-loigiai b{ color:var(--accent-strong); }
+
+  /* Generator panel */
+  .gen-grid{ display:grid; grid-template-columns:320px 1fr; gap:20px; margin-top:18px; }
+  @media(max-width:840px){ .gen-grid{ grid-template-columns:1fr; } }
+  .gen-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px; box-shadow:var(--shadow); }
+  .gen-card-title{ font-family:"Be Vietnam Pro",sans-serif; font-size:1rem; font-weight:700; margin-bottom:14px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+  .gen-preview-box{ max-height:560px; overflow-y:auto; padding-right:6px; }
+
   .rq-toast{
     position:fixed; left:50%; bottom:26px; transform: translateX(-50%) translateY(12px);
     background: var(--navy); color: var(--on-navy); font-size:0.85rem; padding:12px 18px;
@@ -263,18 +307,7 @@
 <footer class="admin-foot">OPC — công cụ quản lý nội bộ, không chia sẻ công khai.</footer>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-  import {
-    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-  import {
-    getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-    onSnapshot, query, orderBy, serverTimestamp
-  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-  import {
-    getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject
-  } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
-
+(async function(){
   // ============================================================
   // 1) DÁN Firebase config của project "Chinh Phục Vật Lý" vào đây.
   //    Lấy tại: Firebase Console → ⚙️ Project settings → mục "Your apps"
@@ -303,9 +336,26 @@
 
   var CONFIG_READY = !!(firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("DÁN_") !== 0);
 
-  var OPC = { ADMIN_EMAILS: ADMIN_EMAILS, configReady: CONFIG_READY };
+  var OPC = { ADMIN_EMAILS: ADMIN_EMAILS, configReady: CONFIG_READY, sdkError: null };
 
   if(CONFIG_READY){
+   try{
+    var appMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js");
+    var authMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js");
+    var fsMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js");
+    var stMod = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js");
+
+    var initializeApp = appMod.initializeApp;
+    var getAuth = authMod.getAuth, GoogleAuthProvider = authMod.GoogleAuthProvider,
+        signInWithPopup = authMod.signInWithPopup, signOut = authMod.signOut,
+        onAuthStateChanged = authMod.onAuthStateChanged;
+    var getFirestore = fsMod.getFirestore, collection = fsMod.collection, doc = fsMod.doc,
+        addDoc = fsMod.addDoc, setDoc = fsMod.setDoc, updateDoc = fsMod.updateDoc,
+        deleteDoc = fsMod.deleteDoc, onSnapshot = fsMod.onSnapshot, query = fsMod.query,
+        orderBy = fsMod.orderBy, serverTimestamp = fsMod.serverTimestamp;
+    var getStorage = stMod.getStorage, ref = stMod.ref, uploadBytesResumable = stMod.uploadBytesResumable,
+        getDownloadURL = stMod.getDownloadURL, deleteObject = stMod.deleteObject;
+
     var app = initializeApp(firebaseConfig);
     var auth = getAuth(app);
     var db = getFirestore(app);
@@ -339,9 +389,26 @@
           var path = "de-thi/" + examId + "/" + kind + "-" + Date.now() + "-" + safeName;
           var storageRef = ref(storage, path);
           var task = uploadBytesResumable(storageRef, file);
+          var settled = false;
+          var TIMEOUT_MS = 25000;
+          var timer = setTimeout(function(){
+            if(settled) return;
+            settled = true;
+            try{ task.cancel(); }catch(e){}
+            reject(new Error("Hết thời gian chờ (quá " + Math.round(TIMEOUT_MS/1000) + "s không có phản hồi từ Storage). Khả năng cao Storage chưa được bật (cần gói Blaze) hoặc storage.rules chưa Publish — kiểm tra lại 2 mục này trong Firebase Console."));
+          }, TIMEOUT_MS);
           task.on("state_changed", function(snap){
+            if(settled) return;
             if(onProgress) onProgress(snap.bytesTransferred / snap.totalBytes);
-          }, function(err){ reject(err); }, function(){
+          }, function(err){
+            if(settled) return;
+            settled = true;
+            clearTimeout(timer);
+            reject(err);
+          }, function(){
+            if(settled) return;
+            settled = true;
+            clearTimeout(timer);
             getDownloadURL(task.snapshot.ref).then(function(url){
               resolve({ url: url, path: path, name: file.name, size: file.size });
             }).catch(reject);
@@ -350,10 +417,15 @@
       },
       deleteStorageFile: function(path){ return deleteObject(ref(storage, path)); }
     };
+   }catch(err){
+    OPC.configReady = false;
+    OPC.sdkError = (err && err.message) ? err.message : String(err);
+   }
   }
 
   window.OPC = OPC;
   window.OPCReady = Promise.resolve(OPC);
+})();
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -396,12 +468,195 @@
 
   var CHU_DE_LIST = ['Vật lí nhiệt', 'Khí lí tưởng', 'Từ trường', 'Vật lí hạt nhân'];
   var MUC_DO_LIST = [
-    {v:1, label:'1 · Nhận biết'}, {v:2, label:'2 · Thông hiểu'},
-    {v:3, label:'3 · Vận dụng'}, {v:4, label:'4 · Vận dụng cao'}
+    {v:1, code:'M1', label:'M1 · Nhận biết', desc:'Hỏi định nghĩa, khái niệm, công thức cơ bản', color:'#0369a1'},
+    {v:2, code:'M2', label:'M2 · Thông hiểu', desc:'Hiểu bản chất, tính toán 1 bước đơn giản, đọc đồ thị cơ bản', color:'#15803d'},
+    {v:3, code:'M3', label:'M3 · Vận dụng', desc:'Tính toán từ 2-3 bước, kết hợp công thức, bài toán thực tế mức vừa', color:'#b45309'},
+    {v:4, code:'M4', label:'M4 · Vận dụng cao', desc:'Bài toán phức tạp, nhiều hiện tượng, số liệu thực tế khó, hàm số', color:'#b91c1c'}
   ];
   var MAX_TEX_BYTES = 8 * 1024 * 1024;
   var MAX_IMAGE_BYTES = 6 * 1024 * 1024;
   var MAX_IMAGES = 15;
+
+  // Trích xuất các khối ngoặc nhọn {...} an toàn ngay cả khi có ngoặc nhọn lồng nhau như $\dfrac{a}{b}$
+  function extractBraceBlocks(str, startIndex, maxBlocks){
+    maxBlocks = maxBlocks || 4;
+    var blocks = [];
+    var i = startIndex;
+    while(i < str.length && blocks.length < maxBlocks){
+      if(str[i] === '{'){
+        var depth = 1;
+        var start = i + 1;
+        i++;
+        while(i < str.length && depth > 0){
+          if(str[i] === '{' && str[i-1] !== '\\') depth++;
+          else if(str[i] === '}' && str[i-1] !== '\\') depth--;
+          i++;
+        }
+        if(depth === 0){
+          blocks.push(str.substring(start, i - 1).trim());
+        }
+      } else {
+        i++;
+      }
+    }
+    return blocks;
+  }
+
+  // Parser bóc tách file .tex ngân hàng đề theo chuẩn Bộ Giáo Dục & tag: % [Mức độ][Chủ đề lớn][Dạng bài/Chủ đề nhỏ]
+  function parseTexBank(content, filename){
+    var lines = content.split(/\r?\n/);
+    var currentPart = 'I';
+    var questions = [];
+    var inEx = false;
+    var exBuffer = [];
+    var lastCommentTag = null;
+    var titleCand = '';
+
+    var tagRegex = /%\s*\[(M[1-4])\]\s*\[([^\]]+)\]\s*\[([^\]]+)\]/i;
+    var subsecRegex = /\\subsubsection\{([^}]+)\}/i;
+
+    for(var i = 0; i < lines.length; i++){
+      var line = lines[i];
+
+      if(!titleCand){
+        var sm = line.match(subsecRegex);
+        if(sm) titleCand = sm[1].trim();
+      }
+
+      // Nhận diện phân đoạn đề thi chuẩn Bộ GD: Phần I, Phần II, Phần III
+      if(/\\tieuephan\{.*?I.*?\}/i.test(line) || /PHẦN\s+I\b/i.test(line)){
+        if(/\\tieuephan\{.*?III.*?\}/i.test(line) || /PHẦN\s+III\b/i.test(line)){
+          currentPart = 'III';
+        } else if(/\\tieuephan\{.*?II.*?\}/i.test(line) || /PHẦN\s+II\b/i.test(line)){
+          currentPart = 'II';
+        } else {
+          currentPart = 'I';
+        }
+      } else if(/\\tieuephan\{.*?II.*?\}/i.test(line) || /PHẦN\s+II\b/i.test(line)){
+        currentPart = 'II';
+      } else if(/\\tieuephan\{.*?III.*?\}/i.test(line) || /PHẦN\s+III\b/i.test(line)){
+        currentPart = 'III';
+      }
+
+      var tm = line.match(tagRegex);
+      if(tm){
+        lastCommentTag = {
+          level: tm[1].toUpperCase(),
+          chuDeLon: tm[2].trim(),
+          dangBai: tm[3].trim()
+        };
+      }
+
+      if(/\\begin\{ex\}/.test(line)){
+        inEx = true;
+        exBuffer = [line];
+      } else if(inEx){
+        exBuffer.push(line);
+        if(/\\end\{ex\}/.test(line)){
+          inEx = false;
+          var full = exBuffer.join('\n');
+          var tag = lastCommentTag || { level: 'M2', chuDeLon: 'Vật lí', dangBai: 'Chung' };
+          lastCommentTag = null;
+
+          var qType = 'choice';
+          if(/\\choiceTF/i.test(full)) qType = 'choiceTF';
+          else if(/\\shortans/i.test(full)) qType = 'shortans';
+
+          // Bóc tách nội dung câu hỏi (bỏ bớt cú pháp bao bọc)
+          var stemRaw = full.replace(/^[\s\S]*?\\begin\{ex\}/, '').replace(/\\end\{ex\}[\s\S]*?$/, '');
+          var stemCutIdx = stemRaw.search(/\\choice|\\choiceTF|\\shortans|\\dongke|\\loigiai/);
+          var stem = (stemCutIdx > -1 ? stemRaw.substring(0, stemCutIdx) : stemRaw).trim();
+          stem = stem.replace(/\\immini\{?/, '').trim();
+
+          // Bóc tách phương án lựa chọn
+          var options = [];
+          if(qType === 'choice'){
+            var cIdx = full.indexOf('\\choice');
+            if(cIdx > -1){
+              var rawOpts = extractBraceBlocks(full, cIdx + 7, 4);
+              options = rawOpts.map(function(opt, oIdx){
+                var isTrue = /\\True\b/.test(opt);
+                var text = opt.replace(/\\True\b/, '').trim();
+                return { key: String.fromCharCode(65 + oIdx), text: text, isTrue: isTrue };
+              });
+            }
+          } else if(qType === 'choiceTF'){
+            var tfIdx = full.search(/\\choiceTF(?:\[.*?\])?/);
+            if(tfIdx > -1){
+              var tfMatch = full.match(/\\choiceTF(?:\[.*?\])?/);
+              var rawTf = extractBraceBlocks(full, tfIdx + (tfMatch ? tfMatch[0].length : 9), 4);
+              options = rawTf.map(function(opt, oIdx){
+                var isTrue = /\\True\b/.test(opt);
+                var text = opt.replace(/\\True\b/, '').trim();
+                return { key: ['a', 'b', 'c', 'd'][oIdx], text: text, isTrue: isTrue };
+              });
+            }
+          }
+
+          // Bóc tách trả lời ngắn
+          var shortansVal = null;
+          if(qType === 'shortans'){
+            var sMatch = full.match(/\\shortans\{([^}]+)\}/);
+            if(sMatch) shortansVal = sMatch[1].trim();
+          }
+
+          // Bóc tách lời giải
+          var loigiaiMatch = full.match(/\\loigiai\{([\s\S]*?)\}\s*(?:\\end\{ex\}|$)/);
+          var loigiai = loigiaiMatch ? loigiaiMatch[1].trim() : '';
+
+          // Bóc tách tên hình ảnh
+          var imgMatches = [];
+          var imgRegex = /\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g;
+          var im;
+          while((im = imgRegex.exec(full)) !== null){
+            imgMatches.push(im[1]);
+          }
+
+          questions.push({
+            index: questions.length + 1,
+            part: currentPart,
+            type: qType,
+            level: tag.level,
+            chuDeLon: tag.chuDeLon,
+            dangBai: tag.dangBai,
+            stem: stem,
+            options: options,
+            shortans: shortansVal,
+            loigiai: loigiai,
+            images: imgMatches,
+            raw: full
+          });
+        }
+      }
+    }
+
+    var stats = {
+      total: questions.length,
+      p1: questions.filter(function(q){ return q.part === 'I'; }).length,
+      p2: questions.filter(function(q){ return q.part === 'II'; }).length,
+      p3: questions.filter(function(q){ return q.part === 'III'; }).length,
+      m1: questions.filter(function(q){ return q.level === 'M1'; }).length,
+      m2: questions.filter(function(q){ return q.level === 'M2'; }).length,
+      m3: questions.filter(function(q){ return q.level === 'M3'; }).length,
+      m4: questions.filter(function(q){ return q.level === 'M4'; }).length,
+      topics: Array.from(new Set(questions.map(function(q){ return q.chuDeLon; }).filter(Boolean))),
+      subTopics: Array.from(new Set(questions.map(function(q){ return q.dangBai; }).filter(Boolean)))
+    };
+
+    var suggestedChuDe = CHU_DE_LIST[0];
+    var fullText = ((filename||'') + ' ' + (titleCand||'') + ' ' + stats.topics.join(' ')).toLowerCase();
+    if(/khí|boyle|charles|nhiệt động|chất khí|piston|xilanh/i.test(fullText)) suggestedChuDe = 'Khí lí tưởng';
+    else if(/nhiệt|sôi|nóng chảy|ngưng tụ|nội năng|đông đặc/i.test(fullText)) suggestedChuDe = 'Vật lí nhiệt';
+    else if(/từ trường|cảm ứng|lorentz|dòng điện|flen|từ thông/i.test(fullText)) suggestedChuDe = 'Từ trường';
+    else if(/hạt nhân|phóng xạ|năng lượng liên kết|phản ứng/i.test(fullText)) suggestedChuDe = 'Vật lí hạt nhân';
+
+    return {
+      title: titleCand || (filename ? filename.replace(/\.tex$/i, '').replace(/[_-]+/g, ' ') : ''),
+      suggestedChuDe: suggestedChuDe,
+      stats: stats,
+      questions: questions
+    };
+  }
 
   function IconSearch(){
     return h('svg',{viewBox:'0 0 24 24', fill:'none'},
@@ -450,11 +705,21 @@
     );
   }
 
-  function SetupNeededScreen(){
+  function SetupNeededScreen(props){
+    var sdkError = props && props.sdkError;
+    if(sdkError){
+      return h('div',{className:'login-wrap'},
+        h('div',{className:'login-card', style:{maxWidth:460, textAlign:'left'}},
+          h('h2',{style:{textAlign:'center'}},'Không tải được Firebase SDK'),
+          h('p',null,'Trang không tải được thư viện Firebase từ mạng (gstatic.com) — không phải do thiếu cấu hình. Thường do mạng/trình duyệt chặn: tường lửa công ty/trường học, VPN, hoặc tiện ích chặn quảng cáo (ad-blocker). Thử tắt tạm ad-blocker, đổi mạng (vd. dùng 4G thay vì wifi trường), hoặc mở bằng trình duyệt khác rồi tải lại trang.'),
+          h('p',{style:{marginTop:10, fontFamily:'"IBM Plex Mono",monospace', fontSize:'0.78rem', color:'var(--muted)', wordBreak:'break-word'}}, 'Chi tiết lỗi: ' + sdkError)
+        )
+      );
+    }
     return h('div',{className:'login-wrap'},
       h('div',{className:'login-card', style:{maxWidth:460, textAlign:'left'}},
         h('h2',{style:{textAlign:'center'}},'Chưa cấu hình Firebase'),
-        h('p',null,'File này cần dán cấu hình Firebase thật vào phần đầu của script trước khi dùng được. Mở file admin/index.html, tìm dòng "DÁN_API_KEY_VÀO_ĐÂY" và thay bằng config lấy từ Firebase Console → Project settings → Your apps → SDK setup and configuration.'),
+        h('p',null,'File này cần dán cấu hình Firebase thật vào phần đầu của script trước khi dùng được. Mở file admin.html, tìm dòng "DÁN_API_KEY_VÀO_ĐÂY" và thay bằng config lấy từ Firebase Console → Project settings → Your apps → SDK setup and configuration.'),
         h('p',{style:{marginTop:10}},'Sau khi dán config và đẩy lại lên GitHub, tải lại trang này để đăng nhập.')
       )
     );
@@ -645,7 +910,7 @@
   }
 
   // ================= Exam bank panel =================
-  function blankExamForm(){ return {title:'', chuDe: CHU_DE_LIST[0], bai:'', mucDo: 1}; }
+  function blankExamForm(){ return {title:'', chuDe: CHU_DE_LIST[0], bai:'', mucDo: 2}; }
 
   function ExamBankPanel(props){
     var OPCref = window.OPC;
@@ -656,9 +921,13 @@
     var filterChuDeState = React.useState('Tất cả'); var filterChuDe = filterChuDeState[0], setFilterChuDe = filterChuDeState[1];
     var filterMucDoState = React.useState('Tất cả'); var filterMucDo = filterMucDoState[0], setFilterMucDo = filterMucDoState[1];
     var selectedState = React.useState(null); var selected = selectedState[0], setSelected = selectedState[1];
+    var detailTabState = React.useState('overview'); var detailTab = detailTabState[0], setDetailTab = detailTabState[1]; // overview | questions
+    var modalLevelFilterState = React.useState('ALL'); var modalLevelFilter = modalLevelFilterState[0], setModalLevelFilter = modalLevelFilterState[1];
+    var modalPartFilterState = React.useState('ALL'); var modalPartFilter = modalPartFilterState[0], setModalPartFilter = modalPartFilterState[1];
     var addOpenState = React.useState(false); var addOpen = addOpenState[0], setAddOpen = addOpenState[1];
     var formState = React.useState(blankExamForm); var form = formState[0], setForm = formState[1];
     var texFileState = React.useState(null); var texFile = texFileState[0], setTexFile = texFileState[1];
+    var parsedAnalysisState = React.useState(null); var parsedAnalysis = parsedAnalysisState[0], setParsedAnalysis = parsedAnalysisState[1];
     var imgFilesState = React.useState([]); var imgFiles = imgFilesState[0], setImgFiles = imgFilesState[1];
     var uploadingState = React.useState(false); var uploading = uploadingState[0], setUploading = uploadingState[1];
     var progressState = React.useState(0); var progress = progressState[0], setProgress = progressState[1];
@@ -685,19 +954,45 @@
     var filtered = exams.filter(function(x){
       if(filterChuDe !== 'Tất cả' && x.chuDe !== filterChuDe) return false;
       if(filterMucDo !== 'Tất cả' && String(x.mucDo) !== String(filterMucDo)) return false;
-      if(q && (x.title||'').toLowerCase().indexOf(q) === -1 && (x.bai||'').toLowerCase().indexOf(q) === -1) return false;
+      if(q){
+        var inTitle = (x.title||'').toLowerCase().indexOf(q) > -1;
+        var inBai = (x.bai||'').toLowerCase().indexOf(q) > -1;
+        var inTopics = (x.stats && x.stats.topics && x.stats.topics.some(function(t){ return t.toLowerCase().indexOf(q) > -1; }));
+        if(!inTitle && !inBai && !inTopics) return false;
+      }
       return true;
     });
 
-    function resetForm(){ setForm(blankExamForm()); setTexFile(null); setImgFiles([]); setFormErr(''); setProgress(0); }
+    function resetForm(){
+      setForm(blankExamForm());
+      setTexFile(null);
+      setParsedAnalysis(null);
+      setImgFiles([]);
+      setFormErr('');
+      setProgress(0);
+    }
 
-    function onPickTex(e){
+    async function onPickTex(e){
       var f = e.target.files && e.target.files[0];
-      if(!f) { setTexFile(null); return; }
+      if(!f){ setTexFile(null); setParsedAnalysis(null); return; }
       if(!/\.tex$/i.test(f.name)){ setFormErr('File đề phải có đuôi .tex.'); e.target.value=''; return; }
       if(f.size > MAX_TEX_BYTES){ setFormErr('File .tex vượt quá ' + fmtBytes(MAX_TEX_BYTES) + '.'); e.target.value=''; return; }
       setFormErr(''); setTexFile(f);
+      try{
+        var txt = await f.text();
+        var analysis = parseTexBank(txt, f.name);
+        setParsedAnalysis(analysis);
+        if(!form.title.trim() && analysis.title){
+          setField('title', analysis.title);
+        }
+        if(analysis.suggestedChuDe && form.chuDe === CHU_DE_LIST[0]){
+          setField('chuDe', analysis.suggestedChuDe);
+        }
+      }catch(err){
+        console.warn('Lỗi đọc và phân tích file .tex:', err);
+      }
     }
+
     function onPickImages(e){
       var files = Array.prototype.slice.call(e.target.files || []);
       if(!files.length) return;
@@ -739,13 +1034,19 @@
         }
 
         await OPCref.examBank.save(examRef, {
-          title: form.title.trim(), chuDe: form.chuDe, bai: form.bai.trim(), mucDo: Number(form.mucDo),
-          tex: texResult, images: images,
+          title: form.title.trim(),
+          chuDe: form.chuDe,
+          bai: form.bai.trim(),
+          mucDo: Number(form.mucDo),
+          tex: texResult,
+          images: images,
+          stats: parsedAnalysis ? parsedAnalysis.stats : null,
+          questions: parsedAnalysis ? parsedAnalysis.questions : [],
           createdByEmail: (window.OPC_currentUser && window.OPC_currentUser.email) || ''
         });
 
         setProgress(100);
-        props.fireToast('Đã nạp đề "' + form.title.trim() + '".');
+        props.fireToast('Đã nạp đề "' + form.title.trim() + '" vào ngân hàng câu hỏi.');
         resetForm(); setAddOpen(false);
       }catch(err){
         setFormErr('Nạp đề thất bại: ' + (err && err.message ? err.message : 'lỗi không rõ') + '. Kiểm tra lại Storage rules / kết nối mạng.');
@@ -755,7 +1056,7 @@
     }
 
     async function handleDeleteExam(exam){
-      if(!window.confirm('Xoá đề "' + exam.title + '" và toàn bộ file đính kèm? Không thể hoàn tác.')) return;
+      if(!window.confirm('Xoá đề "' + exam.title + '" và toàn bộ câu hỏi, file đính kèm? Không thể hoàn tác.')) return;
       try{
         var filesToDelete = [];
         if(exam.tex && exam.tex.path) filesToDelete.push(exam.tex.path);
@@ -776,14 +1077,18 @@
     }
 
     var toolbar = h('div',{className:'sm-toolbar'},
-      h('div',null, h('h3',null,'Ngân hàng đề'),
-        h('p',{className:'sm-sub'}, 'Nạp file .tex kèm hình ảnh minh hoạ, gắn thẻ theo chuyên đề / bài / mức độ để lọc lại khi trộn đề.')),
-      h('div',{className:'sm-actions'}, h('button',{type:'button', className:'btn btn-primary', onClick:function(){ resetForm(); setAddOpen(true); }}, '+ Nạp đề mới')));
+      h('div',null, h('h3',null,'Ngân hàng đề & câu hỏi'),
+        h('p',{className:'sm-sub'}, 'Nạp file .tex chuẩn Bộ GD kèm tag % [Mức độ][Chủ đề lớn][Dạng bài] (M1: Nhận biết, M2: Thông hiểu, M3: Vận dụng, M4: Vận dụng cao) để tạo đề theo lộ trình cá nhân hóa.')),
+      h('div',{className:'sm-actions'},
+        props.onGoToGenerator ? h('button',{type:'button', className:'btn btn-secondary', onClick:props.onGoToGenerator}, '🎯 Tạo đề cá nhân hóa') : null,
+        h('button',{type:'button', className:'btn btn-primary', onClick:function(){ resetForm(); setAddOpen(true); }}, '+ Nạp đề .tex mới')
+      )
+    );
 
     var filterRow = h('div',{className:'sm-search-row'},
       h('div',{className:'eb-filter-row'},
         h('div',{className:'sm-search'}, h(IconSearch),
-          h('input',{type:'text', value:search, placeholder:'Tìm theo tiêu đề, bài...', onChange:function(e){ setSearch(e.target.value); }})),
+          h('input',{type:'text', value:search, placeholder:'Tìm theo tiêu đề, bài, chủ đề...', onChange:function(e){ setSearch(e.target.value); }})),
         h('select',{className:'eb-select', value:filterChuDe, onChange:function(e){ setFilterChuDe(e.target.value); }},
           h('option',null,'Tất cả'), CHU_DE_LIST.map(function(c){ return h('option',{key:c, value:c}, c); })),
         h('select',{className:'eb-select', value:filterMucDo, onChange:function(e){ setFilterMucDo(e.target.value); }},
@@ -794,75 +1099,250 @@
 
     var tableOrEmpty = exams.length === 0
       ? h('div',{className:'sm-empty'},
-          h('p',null, 'Chưa có đề nào trong ngân hàng. Bấm "Nạp đề mới" để tải lên file .tex đầu tiên.'),
+          h('p',null, 'Chưa có đề nào trong ngân hàng. Bấm "Nạp đề .tex mới" để tải lên file đầu tiên theo cấu trúc chuẩn Bộ Giáo Dục.'),
           h('button',{type:'button', className:'btn btn-primary', onClick:function(){ resetForm(); setAddOpen(true); }}, '+ Nạp đề đầu tiên'))
       : h('div',{className:'sm-table-wrap'},
           h('table',{className:'sm-table'},
             h('thead',null, h('tr',null,
-              h('th',{scope:'col'},'Đề'), h('th',{scope:'col'},'Chuyên đề'), h('th',{scope:'col', style:{textAlign:'center'}},'Mức độ'),
-              h('th',{scope:'col', style:{textAlign:'center'}},'Ảnh'), h('th',{scope:'col'},'Ngày nạp'), h('th',{scope:'col', style:{textAlign:'right'}},'Chi tiết'))),
+              h('th',{scope:'col'},'Đề thi & Cấu trúc'),
+              h('th',{scope:'col'},'Chuyên đề'),
+              h('th',{scope:'col', style:{textAlign:'center'}},'Ma trận câu hỏi (M1 - M4)'),
+              h('th',{scope:'col', style:{textAlign:'center'}},'Ảnh'),
+              h('th',{scope:'col'},'Ngày nạp'),
+              h('th',{scope:'col', style:{textAlign:'right'}},'Thao tác'))),
             h('tbody',null, filtered.map(function(x){
-              var lvl = MUC_DO_LIST.filter(function(m){ return m.v === Number(x.mucDo); })[0];
+              var stats = x.stats;
+              var qCount = (x.questions && x.questions.length) || (stats && stats.total) || 0;
               return h('tr',{key:x.id},
-                h('td',null, h('div',{className:'eb-title-cell'}, x.title), x.bai ? h('div',{className:'eb-bai-cell'}, x.bai) : null),
-                h('td',null, x.chuDe),
-                h('td',{style:{textAlign:'center'}}, h('span',{className:'eb-level eb-level-'+x.mucDo}, lvl ? lvl.label : ('Mức '+x.mucDo))),
+                h('td',null,
+                  h('div',{className:'eb-title-cell'}, x.title),
+                  x.bai ? h('div',{className:'eb-bai-cell'}, x.bai) : null,
+                  h('div',{className:'eb-badges-row'},
+                    qCount ? h('span',{className:'eb-part-pill'}, qCount + ' câu') : null,
+                    stats && (stats.p1 || stats.p2 || stats.p3) ? h('span',{className:'eb-part-pill'}, 'P1:'+stats.p1+' · P2:'+stats.p2+' · P3:'+stats.p3) : null
+                  )
+                ),
+                h('td',null, h('span',{className:'eb-tag-topic'}, x.chuDe)),
+                h('td',{style:{textAlign:'center'}},
+                  stats ? h('div',{style:{display:'inline-flex', gap:'4px', flexWrap:'wrap', justifyContent:'center'}},
+                    h('span',{className:'eb-level-badge eb-level-m1', title:'Nhận biết'}, 'M1:' + stats.m1),
+                    h('span',{className:'eb-level-badge eb-level-m2', title:'Thông hiểu'}, 'M2:' + stats.m2),
+                    h('span',{className:'eb-level-badge eb-level-m3', title:'Vận dụng'}, 'M3:' + stats.m3),
+                    h('span',{className:'eb-level-badge eb-level-m4', title:'Vận dụng cao'}, 'M4:' + stats.m4)
+                  ) : (
+                    h('span',{className:'eb-level-badge eb-level-m'+(x.mucDo||1)}, 'Mức ' + (x.mucDo||1))
+                  )
+                ),
                 h('td',{className:'sm-num', style:{textAlign:'center'}}, (x.images||[]).length),
                 h('td',null, fmtDate(x.createdAt)),
-                h('td',{style:{textAlign:'right'}}, h('button',{type:'button', className:'sm-link-btn', onClick:function(){ setSelected(x); }}, 'Xem chi tiết'))
+                h('td',{style:{textAlign:'right'}},
+                  h('button',{type:'button', className:'sm-link-btn', onClick:function(){ setSelected(x); setDetailTab('overview'); }}, 'Xem chi tiết')
+                )
               );
             }))
           )
         );
 
-    var detailModal = selected ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget) setSelected(null); }},
-      h('div',{className:'sm-modal sm-modal-wide', role:'dialog', 'aria-modal':'true', 'aria-label':'Chi tiết đề'},
-        h('div',{className:'sm-modal-head'}, h('h3',null, selected.title),
-          h('button',{type:'button', className:'sm-modal-close', onClick:function(){ setSelected(null); }}, h(IconClose))),
-        h('div',{className:'sm-info-block'},
-          h('p',null, h('b',null,'Chuyên đề: '), selected.chuDe),
-          h('p',null, h('b',null,'Bài: '), selected.bai || 'Chưa ghi'),
-          h('p',null, h('b',null,'Mức độ: '), (MUC_DO_LIST.filter(function(m){return m.v===Number(selected.mucDo);})[0]||{}).label || selected.mucDo),
-          h('p',null, h('b',null,'Ngày nạp: '), fmtDate(selected.createdAt)),
-          selected.createdByEmail ? h('p',null, h('b',null,'Người nạp: '), selected.createdByEmail) : null
-        ),
-        selected.tex ? h('p',{style:{marginTop:14}},
-          h('a',{className:'eb-tex-link', href:selected.tex.url, target:'_blank', rel:'noopener noreferrer'}, '📄 Tải file .tex ('+fmtBytes(selected.tex.size)+')')
-        ) : null,
-        (selected.images && selected.images.length) ? h('div',null,
-          h('p',{style:{marginTop:14, fontSize:'0.82rem', fontWeight:700, color:'var(--ink-2)'}}, 'Hình ảnh đính kèm ('+selected.images.length+')'),
-          h('div',{className:'eb-thumbs'}, selected.images.map(function(im, idx){
-            return h('a',{key:idx, className:'eb-thumb', href:im.url, target:'_blank', rel:'noopener noreferrer', title:im.name},
-              h('img',{src:im.url, alt:im.name||('Hình '+(idx+1))}));
-          }))
-        ) : null,
-        h('div',{style:{marginTop:'18px', display:'flex', gap:'10px'}},
-          h('button',{type:'button', className:'btn btn-danger', onClick:function(){ handleDeleteExam(selected); }}, 'Xoá đề'),
-          h('button',{type:'button', className:'btn btn-secondary', style:{flex:1, justifyContent:'center'}, onClick:function(){ setSelected(null); }}, 'Đóng'))
-      )
-    ) : null;
+    // Detail Modal with Tabs: Overview vs Parsed Question Bank
+    var detailModal = selected ? (function(){
+      var selStats = selected.stats || {
+        total: (selected.questions||[]).length,
+        p1: (selected.questions||[]).filter(function(q){return q.part==='I';}).length,
+        p2: (selected.questions||[]).filter(function(q){return q.part==='II';}).length,
+        p3: (selected.questions||[]).filter(function(q){return q.part==='III';}).length,
+        m1: (selected.questions||[]).filter(function(q){return q.level==='M1';}).length,
+        m2: (selected.questions||[]).filter(function(q){return q.level==='M2';}).length,
+        m3: (selected.questions||[]).filter(function(q){return q.level==='M3';}).length,
+        m4: (selected.questions||[]).filter(function(q){return q.level==='M4';}).length,
+        topics: []
+      };
+      var rawQuestions = selected.questions || [];
+      var filteredQuestions = rawQuestions.filter(function(q){
+        if(modalLevelFilter !== 'ALL' && q.level !== modalLevelFilter) return false;
+        if(modalPartFilter !== 'ALL' && q.part !== modalPartFilter) return false;
+        return true;
+      });
+
+      return h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget) setSelected(null); }},
+        h('div',{className:'sm-modal sm-modal-wide', style:{maxWidth:'780px'}, role:'dialog', 'aria-modal':'true', 'aria-label':'Chi tiết đề'},
+          h('div',{className:'sm-modal-head'},
+            h('div',null,
+              h('h3',null, selected.title),
+              h('div',{style:{display:'flex', gap:'6px', marginTop:'4px'}},
+                h('span',{className:'eb-tag-topic'}, selected.chuDe),
+                selected.bai ? h('span',{className:'eb-tag-sub'}, selected.bai) : null
+              )
+            ),
+            h('button',{type:'button', className:'sm-modal-close', onClick:function(){ setSelected(null); }}, h(IconClose))
+          ),
+
+          // Sub-tabs
+          h('div',{style:{display:'flex', gap:'8px', borderBottom:'1px solid var(--line)', paddingBottom:'10px', marginTop:'12px'}},
+            h('button',{type:'button', className:cx('tab-btn', detailTab==='overview' && 'active'), onClick:function(){ setDetailTab('overview'); }}, '📌 Tổng quan & Tệp'),
+            h('button',{type:'button', className:cx('tab-btn', detailTab==='questions' && 'active'), onClick:function(){ setDetailTab('questions'); }}, '📚 Ngân hàng câu hỏi (' + rawQuestions.length + ')')
+          ),
+
+          detailTab === 'overview' ? h('div',null,
+            h('div',{className:'sm-info-block', style:{marginTop:'14px'}},
+              h('p',null, h('b',null,'Chuyên đề: '), selected.chuDe),
+              h('p',null, h('b',null,'Bài: '), selected.bai || 'Chưa ghi'),
+              h('p',null, h('b',null,'Ngày nạp: '), fmtDate(selected.createdAt)),
+              selected.createdByEmail ? h('p',null, h('b',null,'Người nạp: '), selected.createdByEmail) : null
+            ),
+
+            h('div',{style:{marginTop:'14px'}},
+              h('div',{style:{fontWeight:700, fontSize:'0.86rem', color:'var(--ink)'}}, '📊 Ma trận 4 mức độ nhận thức (Chuẩn BGD)'),
+              h('div',{className:'eb-matrix-grid'},
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#0369a1'}}, selStats.m1),
+                  h('div',{className:'eb-matrix-lbl'}, 'M1 · Nhận biết')),
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#15803d'}}, selStats.m2),
+                  h('div',{className:'eb-matrix-lbl'}, 'M2 · Thông hiểu')),
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#b45309'}}, selStats.m3),
+                  h('div',{className:'eb-matrix-lbl'}, 'M3 · Vận dụng')),
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#b91c1c'}}, selStats.m4),
+                  h('div',{className:'eb-matrix-lbl'}, 'M4 · Vận dụng cao'))
+              )
+            ),
+
+            selected.tex ? h('p',{style:{marginTop:'16px'}},
+              h('a',{className:'eb-tex-link', href:selected.tex.url, target:'_blank', rel:'noopener noreferrer'}, '📄 Tải file .tex gốc ('+fmtBytes(selected.tex.size)+')')
+            ) : null,
+
+            (selected.images && selected.images.length) ? h('div',null,
+              h('p',{style:{marginTop:14, fontSize:'0.82rem', fontWeight:700, color:'var(--ink-2)'}}, 'Hình ảnh minh họa đính kèm ('+selected.images.length+')'),
+              h('div',{className:'eb-thumbs'}, selected.images.map(function(im, idx){
+                return h('a',{key:idx, className:'eb-thumb', href:im.url, target:'_blank', rel:'noopener noreferrer', title:im.name},
+                  h('img',{src:im.url, alt:im.name||('Hình '+(idx+1))}));
+              }))
+            ) : null
+          ) : (
+            // Questions tab
+            h('div',null,
+              h('div',{style:{display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center', justifyContent:'space-between', marginTop:'14px'}},
+                h('div',{style:{display:'flex', gap:'6px', flexWrap:'wrap'}},
+                  h('select',{className:'eb-select', value:modalPartFilter, onChange:function(e){ setModalPartFilter(e.target.value); }},
+                    h('option',{value:'ALL'}, 'Tất cả các phần'),
+                    h('option',{value:'I'}, 'Phần I (Trắc nghiệm 4 lựa chọn)'),
+                    h('option',{value:'II'}, 'Phần II (Đúng / Sai)'),
+                    h('option',{value:'III'}, 'Phần III (Trả lời ngắn)')
+                  ),
+                  h('select',{className:'eb-select', value:modalLevelFilter, onChange:function(e){ setModalLevelFilter(e.target.value); }},
+                    h('option',{value:'ALL'}, 'Tất cả mức độ (M1 - M4)'),
+                    h('option',{value:'M1'}, 'M1 · Nhận biết'),
+                    h('option',{value:'M2'}, 'M2 · Thông hiểu'),
+                    h('option',{value:'M3'}, 'M3 · Vận dụng'),
+                    h('option',{value:'M4'}, 'M4 · Vận dụng cao')
+                  )
+                ),
+                h('span',{style:{fontSize:'0.82rem', color:'var(--ink-2)'}}, 'Hiển thị ', h('b',null, filteredQuestions.length), ' câu')
+              ),
+
+              filteredQuestions.length === 0 ? (
+                h('div',{style:{padding:'30px', textAlign:'center', color:'var(--muted)', fontSize:'0.88rem'}},
+                  'Không có câu hỏi nào khớp với bộ lọc này.')
+              ) : (
+                h('div',{style:{maxHeight:'480px', overflowY:'auto', marginTop:'12px', paddingRight:'6px'}},
+                  filteredQuestions.map(function(q, qIdx){
+                    var lvlObj = MUC_DO_LIST.filter(function(m){ return m.code === q.level; })[0] || {};
+                    return h('div',{key:qIdx, className:'eb-q-card'},
+                      h('div',{className:'eb-q-head'},
+                        h('div',{className:'eb-q-left'},
+                          h('span',{className:'eb-q-idx'}, 'Câu ' + (q.index || (qIdx+1))),
+                          h('span',{className:'eb-part-pill'}, 'Phần ' + q.part),
+                          h('span',{className:'eb-level-badge eb-level-' + (q.level ? q.level.toLowerCase() : 'm1')}, q.level + ' · ' + (lvlObj.label ? lvlObj.label.split('·')[1].trim() : 'Mức')),
+                          q.chuDeLon ? h('span',{className:'eb-tag-topic'}, q.chuDeLon) : null,
+                          q.dangBai ? h('span',{className:'eb-tag-sub'}, q.dangBai) : null
+                        )
+                      ),
+                      h('div',{className:'eb-q-stem'}, q.stem || q.raw),
+
+                      // Options for choice or choiceTF
+                      (q.options && q.options.length) ? h('div',{className:'eb-q-opts'},
+                        q.options.map(function(opt, optIdx){
+                          return h('div',{key:optIdx, className:cx('eb-q-opt', opt.isTrue && 'correct')},
+                            h('span',{className:'eb-q-opt-key'}, opt.key + '.'),
+                            h('span',{style:{flex:1}}, opt.text),
+                            opt.isTrue ? h('span',{style:{fontSize:'0.76rem', color:'var(--good)', fontWeight:700}}, '✓ Đáp án đúng') : null
+                          );
+                        })
+                      ) : null,
+
+                      // Shortans if Part III
+                      q.shortans ? h('div',{style:{marginTop:'8px', padding:'6px 10px', background:'var(--surface-2)', borderRadius:'6px', fontSize:'0.84rem'}},
+                        h('b',null,'Điền số ngắn: '), h('span',{className:'sm-mono-pill'}, q.shortans)
+                      ) : null,
+
+                      // Solution block
+                      q.loigiai ? h('div',{className:'eb-q-loigiai'},
+                        h('b',null,'💡 Lời giải: '), q.loigiai
+                      ) : null
+                    );
+                  })
+                )
+              )
+            )
+          ),
+
+          h('div',{style:{marginTop:'18px', display:'flex', gap:'10px'}},
+            h('button',{type:'button', className:'btn btn-danger', onClick:function(){ handleDeleteExam(selected); }}, 'Xoá đề'),
+            h('button',{type:'button', className:'btn btn-secondary', style:{flex:1, justifyContent:'center'}, onClick:function(){ setSelected(null); }}, 'Đóng')
+          )
+        )
+      );
+    })() : null;
 
     var addModal = addOpen ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget && !uploading) setAddOpen(false); }},
       h('div',{className:'sm-modal sm-modal-wide', role:'dialog', 'aria-modal':'true', 'aria-label':'Nạp đề mới'},
-        h('div',{className:'sm-modal-head'}, h('h3',null,'Nạp đề mới'),
+        h('div',{className:'sm-modal-head'}, h('h3',null,'Nạp đề mới theo cấu trúc chuẩn Bộ Giáo Dục'),
           h('button',{type:'button', className:'sm-modal-close', onClick:function(){ if(!uploading) setAddOpen(false); }}, h(IconClose))),
         h('form',{onSubmit:handleUpload},
           h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-title'},'Tiêu đề đề thi *'),
-            h('input',{id:'eb-title', type:'text', required:true, value:form.title, placeholder:'Đề luyện chuyên đề Từ trường số 3',
+            h('input',{id:'eb-title', type:'text', required:true, value:form.title, placeholder:'Đề luyện chuyên đề Định luật Boyle số 1',
               onChange:function(e){ setField('title', e.target.value); }})),
           h('div',{className:'sm-form-grid', style:{marginTop:12}},
-            h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-chude'},'Chuyên đề *'),
+            h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-chude'},'Chuyên đề chính *'),
               h('select',{id:'eb-chude', value:form.chuDe, onChange:function(e){ setField('chuDe', e.target.value); }},
                 CHU_DE_LIST.map(function(c){ return h('option',{key:c, value:c}, c); }))),
-            h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-mucdo'},'Mức độ *'),
+            h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-mucdo'},'Mức độ tổng quan *'),
               h('select',{id:'eb-mucdo', value:form.mucDo, onChange:function(e){ setField('mucDo', Number(e.target.value)); }},
                 MUC_DO_LIST.map(function(m){ return h('option',{key:m.v, value:m.v}, m.label); })))),
           h('div',{className:'sm-field', style:{marginTop:12}}, h('label',{htmlFor:'eb-bai'},'Bài (tuỳ chọn)'),
-            h('input',{id:'eb-bai', type:'text', value:form.bai, placeholder:'Bài 3: Cảm ứng từ', onChange:function(e){ setField('bai', e.target.value); }})),
+            h('input',{id:'eb-bai', type:'text', value:form.bai, placeholder:'Bài 2: Định luật Boyle', onChange:function(e){ setField('bai', e.target.value); }})),
+
           h('div',{className:'sm-form-section'},
-            h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-tex'},'File đề (.tex) *'),
+            h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-tex'},'File đề (.tex chuẩn cấu trúc Bộ GD) *'),
               h('input',{id:'eb-tex', type:'file', accept:'.tex', className:'eb-file-input', onChange:onPickTex, disabled:uploading}),
-              h('div',{className:'eb-hint'}, texFile ? ('Đã chọn: '+texFile.name+' ('+fmtBytes(texFile.size)+')') : ('Tối đa '+fmtBytes(MAX_TEX_BYTES)+'.'))),
+              h('div',{className:'eb-hint'}, 'Hỗ trợ tag phân loại: % [Mức độ][Chủ đề lớn][Dạng bài] (M1: Nhận biết, M2: Thông hiểu, M3: Vận dụng, M4: Vận dụng cao).')),
+
+            // Real-time analysis card if parsed
+            parsedAnalysis ? h('div',{className:'eb-analysis-card'},
+              h('div',{className:'eb-analysis-head'},
+                h('div',{className:'eb-analysis-title'}, '✨ Đã phân tích tự động cấu trúc đề: ' + parsedAnalysis.stats.total + ' câu hỏi'),
+                h('span',{className:'eb-part-pill'}, 'Phần I: ' + parsedAnalysis.stats.p1 + ' · Phần II: ' + parsedAnalysis.stats.p2 + ' · Phần III: ' + parsedAnalysis.stats.p3)
+              ),
+              h('div',{className:'eb-matrix-grid'},
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#0369a1'}}, parsedAnalysis.stats.m1),
+                  h('div',{className:'eb-matrix-lbl'}, 'M1 · Nhận biết')),
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#15803d'}}, parsedAnalysis.stats.m2),
+                  h('div',{className:'eb-matrix-lbl'}, 'M2 · Thông hiểu')),
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#b45309'}}, parsedAnalysis.stats.m3),
+                  h('div',{className:'eb-matrix-lbl'}, 'M3 · Vận dụng')),
+                h('div',{className:'eb-matrix-cell'},
+                  h('div',{className:'eb-matrix-val', style:{color:'#b91c1c'}}, parsedAnalysis.stats.m4),
+                  h('div',{className:'eb-matrix-lbl'}, 'M4 · Vận dụng cao'))
+              ),
+              (parsedAnalysis.stats.topics && parsedAnalysis.stats.topics.length) ? h('div',{style:{marginTop:'10px', display:'flex', gap:'5px', flexWrap:'wrap'}},
+                parsedAnalysis.stats.topics.map(function(t){ return h('span',{key:t, className:'eb-tag-topic'}, '📌 ' + t); })
+              ) : null
+            ) : null,
+
             h('div',{className:'sm-field', style:{marginTop:12}}, h('label',{htmlFor:'eb-images'},'Hình ảnh kèm theo (tuỳ chọn, chọn nhiều)'),
               h('input',{id:'eb-images', type:'file', accept:'image/*', multiple:true, className:'eb-file-input', onChange:onPickImages, disabled:uploading}),
               h('div',{className:'eb-hint'}, imgFiles.length ? (imgFiles.length+' hình đã chọn, tối đa '+fmtBytes(MAX_IMAGE_BYTES)+'/hình') : ('Tối đa '+MAX_IMAGES+' hình, mỗi hình ≤ '+fmtBytes(MAX_IMAGE_BYTES)+'.')))
@@ -881,17 +1361,439 @@
     return h('div',null, h('div',{className:'card'}, toolbar, filterRow, tableOrEmpty), detailModal, addModal);
   }
 
+  // ================= Personalized Exam Generator Panel =================
+  function PersonalizedExamGeneratorPanel(props){
+    var OPCref = window.OPC;
+    var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var examsState = React.useState([]); var exams = examsState[0], setExams = examsState[1];
+    var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
+
+    var selectedStudentIdState = React.useState(''); var selectedStudentId = selectedStudentIdState[0], setSelectedStudentId = selectedStudentIdState[1];
+    var goalProfileState = React.useState('foundation'); var goalProfile = goalProfileState[0], setGoalProfile = goalProfileState[1];
+    var selectedTopicState = React.useState('Tất cả'); var selectedTopic = selectedTopicState[0], setSelectedTopic = selectedTopicState[1];
+    var examStructureState = React.useState('moet28'); var examStructure = examStructureState[0], setExamStructure = examStructureState[1]; // moet28 | quick15 | custom
+    var examCodeState = React.useState('101'); var examCode = examCodeState[0], setExamCode = examCodeState[1];
+
+    var generatedState = React.useState(null); var generated = generatedState[0], setGenerated = generatedState[1];
+
+    React.useEffect(function(){
+      var unsub1 = OPCref.students.subscribe(function(snap){
+        var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
+        setStudents(rows);
+        if(rows.length && !selectedStudentId) setSelectedStudentId(rows[0].id);
+      }, function(){});
+
+      var unsub2 = OPCref.examBank.subscribe(function(snap){
+        var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
+        setExams(rows);
+        setLoading(false);
+      }, function(){ setLoading(false); });
+
+      return function(){ unsub1(); unsub2(); };
+    }, []);
+
+    // Pool of all questions across all uploaded exams
+    var questionPool = React.useMemo(function(){
+      var pool = [];
+      exams.forEach(function(exam){
+        (exam.questions || []).forEach(function(q){
+          pool.push(Object.assign({}, q, {examTitle: exam.title, chuDe: exam.chuDe}));
+        });
+      });
+      return pool;
+    }, [exams]);
+
+    var student = students.filter(function(s){ return s.id === selectedStudentId; })[0];
+
+    // Generate personalized exam based on the selected profile and matrix
+    function handleGenerate(){
+      var pool = questionPool.slice();
+      if(selectedTopic !== 'Tất cả'){
+        pool = pool.filter(function(q){ return q.chuDe === selectedTopic || q.chuDeLon === selectedTopic; });
+      }
+
+      if(!pool.length){
+        props.fireToast('Chưa có câu hỏi nào trong ngân hàng đề phù hợp với bộ lọc.', true);
+        return;
+      }
+
+      // Desired question counts by Part
+      var targetP1 = examStructure === 'quick15' ? 10 : 18;
+      var targetP2 = examStructure === 'quick15' ? 2 : 4;
+      var targetP3 = examStructure === 'quick15' ? 3 : 6;
+
+      // Group pool by Part and Level
+      function filterPool(part, levelArray){
+        return pool.filter(function(q){
+          return q.part === part && (!levelArray || levelArray.indexOf(q.level) > -1);
+        });
+      }
+
+      // Shuffle array
+      function shuffle(arr){
+        var a = arr.slice();
+        for(var i = a.length - 1; i > 0; i--){
+          var j = Math.floor(Math.random() * (i + 1));
+          var temp = a[i]; a[i] = a[j]; a[j] = temp;
+        }
+        return a;
+      }
+
+      var chosenP1 = [];
+      var chosenP2 = [];
+      var chosenP3 = [];
+
+      // Define ratios based on goalProfile:
+      // foundation: 70% M1-M2, 30% M3
+      // breakthrough: 25% M2, 55% M3, 20% M4
+      // advanced: 30% M3, 70% M4
+      // moet_standard: 45% M1-M2, 40% M3, 15% M4
+      if(goalProfile === 'foundation'){
+        var m12Pool = shuffle(filterPool('I', ['M1', 'M2']));
+        var m3Pool = shuffle(filterPool('I', ['M3']));
+        chosenP1 = m12Pool.slice(0, Math.round(targetP1 * 0.7)).concat(m3Pool.slice(0, Math.round(targetP1 * 0.3)));
+        chosenP2 = shuffle(filterPool('II', ['M1', 'M2', 'M3'])).slice(0, targetP2);
+        chosenP3 = shuffle(filterPool('III', ['M2', 'M3'])).slice(0, targetP3);
+      } else if(goalProfile === 'advanced'){
+        var m3PoolA = shuffle(filterPool('I', ['M3']));
+        var m4PoolA = shuffle(filterPool('I', ['M4']));
+        chosenP1 = m3PoolA.slice(0, Math.round(targetP1 * 0.35)).concat(m4PoolA.slice(0, Math.round(targetP1 * 0.65)));
+        chosenP2 = shuffle(filterPool('II', ['M3', 'M4'])).slice(0, targetP2);
+        chosenP3 = shuffle(filterPool('III', ['M3', 'M4'])).slice(0, targetP3);
+      } else if(goalProfile === 'breakthrough'){
+        var m2PoolB = shuffle(filterPool('I', ['M2']));
+        var m3PoolB = shuffle(filterPool('I', ['M3']));
+        var m4PoolB = shuffle(filterPool('I', ['M4']));
+        chosenP1 = m2PoolB.slice(0, Math.round(targetP1 * 0.25))
+          .concat(m3PoolB.slice(0, Math.round(targetP1 * 0.55)))
+          .concat(m4PoolB.slice(0, Math.round(targetP1 * 0.20)));
+        chosenP2 = shuffle(filterPool('II', ['M2', 'M3', 'M4'])).slice(0, targetP2);
+        chosenP3 = shuffle(filterPool('III', ['M2', 'M3', 'M4'])).slice(0, targetP3);
+      } else {
+        // moet_standard or others
+        chosenP1 = shuffle(filterPool('I')).slice(0, targetP1);
+        chosenP2 = shuffle(filterPool('II')).slice(0, targetP2);
+        chosenP3 = shuffle(filterPool('III')).slice(0, targetP3);
+      }
+
+      // If any part was underfilled, backfill from remaining of that part
+      function backfill(chosen, part, targetCount){
+        if(chosen.length < targetCount){
+          var remaining = shuffle(pool.filter(function(q){
+            return q.part === part && chosen.indexOf(q) === -1;
+          }));
+          chosen = chosen.concat(remaining.slice(0, targetCount - chosen.length));
+        }
+        return chosen;
+      }
+
+      chosenP1 = backfill(chosenP1, 'I', targetP1);
+      chosenP2 = backfill(chosenP2, 'II', targetP2);
+      chosenP3 = backfill(chosenP3, 'III', targetP3);
+
+      var allSelected = chosenP1.concat(chosenP2).concat(chosenP3);
+
+      var stats = {
+        total: allSelected.length,
+        p1: chosenP1.length,
+        p2: chosenP2.length,
+        p3: chosenP3.length,
+        m1: allSelected.filter(function(q){ return q.level === 'M1'; }).length,
+        m2: allSelected.filter(function(q){ return q.level === 'M2'; }).length,
+        m3: allSelected.filter(function(q){ return q.level === 'M3'; }).length,
+        m4: allSelected.filter(function(q){ return q.level === 'M4'; }).length
+      };
+
+      setGenerated({
+        student: student,
+        examCode: examCode,
+        title: 'Đề Luyện Thi Cá Nhân Hóa - ' + (student ? student.name : 'Học Sinh'),
+        createdAt: new Date(),
+        p1: chosenP1,
+        p2: chosenP2,
+        p3: chosenP3,
+        stats: stats
+      });
+
+      props.fireToast('Đã tạo xong đề theo lộ trình gồm ' + allSelected.length + ' câu hỏi!');
+    }
+
+    // Export .tex file adhering strictly to the official MOET physics exam template
+    function handleExportTeX(){
+      if(!generated) return;
+
+      var s = generated.student || {};
+      var code = generated.examCode || '101';
+      var lines = [];
+
+      lines.push('\\documentclass[12pt,a4paper]{article}');
+      lines.push('\\usepackage[utf8]{inputenc}');
+      lines.push('\\usepackage[vietnamese]{babel}');
+      lines.push('\\usepackage{amsmath,amssymb,amsfonts}');
+      lines.push('\\usepackage{graphicx}');
+      lines.push('\\usepackage{geometry}');
+      lines.push('\\geometry{top=1.8cm,bottom=1.8cm,left=1.8cm,right=1.8cm}');
+      lines.push('\\usepackage{tikz}');
+      lines.push('\\usepackage{answers}');
+      lines.push('');
+      lines.push('% ==========================================');
+      lines.push('% ĐỀ LUYỆN THI VẬT LÍ CÁ NHÂN HÓA - HỆ THỐNG OPC');
+      lines.push('% Học sinh: ' + (s.name || 'Học sinh'));
+      lines.push('% Mục tiêu điểm: ' + (s.targetScore || 8) + '+ | Mã đề: ' + code);
+      lines.push('% Ma trận: M1(' + generated.stats.m1 + ') - M2(' + generated.stats.m2 + ') - M3(' + generated.stats.m3 + ') - M4(' + generated.stats.m4 + ')');
+      lines.push('% ==========================================');
+      lines.push('');
+      lines.push('\\Newassociation{sol}{Solution}{ans}');
+      lines.push('\\Opensolutionfile{ans}[ans/ansbook-' + code + ']');
+      lines.push('');
+      lines.push('\\begin{document}');
+      lines.push('');
+      lines.push('\\noindent\\begin{minipage}{0.48\\textwidth}');
+      lines.push('  \\textbf{HỆ THỐNG LUYỆN THI VẬT LÍ OPC}\\\\');
+      lines.push('  \\textbf{LỘ TRÌNH CÁ NHÂN HÓA 2025 - 2026}');
+      lines.push('\\end{minipage}');
+      lines.push('\\hfill');
+      lines.push('\\begin{minipage}{0.48\\textwidth}');
+      lines.push('  \\raggedleft');
+      lines.push('  \\textbf{KÌ THI TỐT NGHIỆP THPT}\\\\');
+      lines.push('  \\textbf{BÀI THI: VẬT LÍ}\\\\');
+      lines.push('  \\textit{Thời gian làm bài: 50 phút}');
+      lines.push('\\end{minipage}');
+      lines.push('');
+      lines.push('\\vspace{0.4cm}');
+      lines.push('\\noindent Họ, tên học sinh: \\textbf{' + (s.name || '......................................................') + '} \\hfill Mã đề thi \\textbf{' + code + '}');
+      lines.push('\\vspace{0.3cm}');
+      lines.push('\\hrule');
+      lines.push('\\vspace{0.4cm}');
+      lines.push('');
+
+      // PHẦN I
+      if(generated.p1.length){
+        lines.push('\\tieuephan{\\textbf{I}}{\\noindent\\textit{\\textbf{Câu trắc nghiệm nhiều phương án lựa chọn.} Thí sinh trả lời từ câu 1 đến câu ' + generated.p1.length + '. Mỗi câu hỏi thí sinh chỉ chọn một phương án.}}');
+        lines.push('');
+        generated.p1.forEach(function(q, idx){
+          lines.push('%Câu ' + (idx + 1));
+          lines.push('% [' + q.level + '][' + (q.chuDeLon || q.chuDe || 'Vật lí') + '][' + (q.dangBai || '') + ']');
+          lines.push(q.raw || ('\\begin{ex}\n' + q.stem + '\n\\end{ex}'));
+          lines.push('');
+        });
+      }
+
+      // PHẦN II
+      if(generated.p2.length){
+        lines.push('\\tieuephan{\\textbf{II}}{\\noindent\\textit{\\textbf{Câu trắc nghiệm đúng sai.} Thí sinh trả lời từ câu 1 đến câu ' + generated.p2.length + '. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chọn đúng hoặc sai.}}');
+        lines.push('');
+        generated.p2.forEach(function(q, idx){
+          lines.push('%Câu ' + (idx + 1));
+          lines.push('% [' + q.level + '][' + (q.chuDeLon || q.chuDe || 'Vật lí') + '][' + (q.dangBai || '') + ']');
+          lines.push(q.raw || ('\\begin{ex}\n' + q.stem + '\n\\end{ex}'));
+          lines.push('');
+        });
+      }
+
+      // PHẦN III
+      if(generated.p3.length){
+        lines.push('\\tieuephan{\\textbf{III}}{\\noindent\\textit{\\textbf{Câu trắc nghiệm trả lời ngắn.} Thí sinh trả lời từ câu 1 đến câu ' + generated.p3.length + '.}}');
+        lines.push('');
+        generated.p3.forEach(function(q, idx){
+          lines.push('%Câu ' + (idx + 1));
+          lines.push('% [' + q.level + '][' + (q.chuDeLon || q.chuDe || 'Vật lí') + '][' + (q.dangBai || '') + ']');
+          lines.push(q.raw || ('\\begin{ex}\n' + q.stem + '\n\\end{ex}'));
+          lines.push('');
+        });
+      }
+
+      lines.push('\\Closesolutionfile{ans}');
+      lines.push('\\end{document}');
+
+      var content = lines.join('\n');
+      var filename = 'De_CaNhanHoa_' + (s.name ? s.name.replace(/\s+/g, '_') : 'OPC') + '_MaDe' + code + '.tex';
+      var blob = new Blob([content], {type: 'application/x-tex;charset=utf-8;'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename; a.style.display = 'none';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+      props.fireToast('Đã tải xuống file .tex: ' + filename);
+    }
+
+    if(loading){
+      return h('div',{className:'card'}, h('p',{style:{color:'var(--ink-2)'}}, 'Đang tải dữ liệu ngân hàng đề…'));
+    }
+
+    return h('div',null,
+      h('div',{className:'card'},
+        h('div',{className:'sm-toolbar'},
+          h('div',null,
+            h('h3',null,'🎯 Tạo đề theo lộ trình cá nhân hóa (Chuẩn cấu trúc Bộ GD)'),
+            h('p',{className:'sm-sub'},
+              'Tự động chọn lọc câu hỏi từ ngân hàng đề theo ma trận 4 mức độ: M1 (Nhận biết), M2 (Thông hiểu), M3 (Vận dụng), M4 (Vận dụng cao) phù hợp mục tiêu điểm số của từng học sinh.'
+            )
+          )
+        ),
+
+        h('div',{className:'gen-grid'},
+          // Control column
+          h('div',{className:'gen-card'},
+            h('div',{className:'gen-card-title'}, '⚙️ Thiết lập lộ trình'),
+
+            h('div',{className:'sm-field'},
+              h('label',null,'1. Chọn học sinh nhận đề *'),
+              h('select',{value:selectedStudentId, onChange:function(e){ setSelectedStudentId(e.target.value); }},
+                students.map(function(s){
+                  return h('option',{key:s.id, value:s.id}, s.name + (s.targetScore ? ' (Mục tiêu ' + s.targetScore + '+)' : ''));
+                })
+              )
+            ),
+
+            student ? h('div',{style:{background:'var(--surface-2)', padding:'8px 10px', borderRadius:'6px', marginTop:'8px', fontSize:'0.78rem', color:'var(--ink-2)', lineHeight:1.5}},
+              h('div',null, h('b',null,'Trường: '), student.school || 'Chưa cập nhật'),
+              h('div',null, h('b',null,'Điểm TB hiện tại: '), h('span',{style:{color:'var(--accent-strong)', fontWeight:700}}, (student.averageScore||0).toFixed(1))),
+              h('div',null, h('b',null,'Mục tiêu điểm: '), h('span',{style:{color:'var(--good)', fontWeight:700}}, (student.targetScore||8)+'+'))
+            ) : null,
+
+            h('div',{className:'sm-field', style:{marginTop:14}},
+              h('label',null,'2. Mục tiêu lộ trình cá nhân hóa *'),
+              h('select',{value:goalProfile, onChange:function(e){ setGoalProfile(e.target.value); }},
+                h('option',{value:'foundation'}, 'Củng cố nền tảng (Điểm 5 - 7: 70% M1+M2, 30% M3)'),
+                h('option',{value:'breakthrough'}, 'Bứt phá khá giỏi (Điểm 7.5 - 8.5: 25% M2, 55% M3, 20% M4)'),
+                h('option',{value:'advanced'}, 'Chinh phục 9.0 - 10.0 (Vận dụng cao: 35% M3, 65% M4)'),
+                h('option',{value:'moet_standard'}, 'Chuẩn ma trận Bộ GD (18 câu P1 + 4 câu P2 + 6 câu P3)')
+              )
+            ),
+
+            h('div',{className:'sm-field', style:{marginTop:14}},
+              h('label',null,'3. Chuyên đề áp dụng'),
+              h('select',{value:selectedTopic, onChange:function(e){ setSelectedTopic(e.target.value); }},
+                h('option',{value:'Tất cả'}, 'Tất cả chuyên đề'),
+                CHU_DE_LIST.map(function(c){ return h('option',{key:c, value:c}, c); })
+              )
+            ),
+
+            h('div',{className:'sm-form-grid', style:{marginTop:14}},
+              h('div',{className:'sm-field'},
+                h('label',null,'Cấu trúc đề'),
+                h('select',{value:examStructure, onChange:function(e){ setExamStructure(e.target.value); }},
+                  h('option',{value:'moet28'}, 'Chuẩn BGD (28 câu)'),
+                  h('option',{value:'quick15'}, 'Luyện nhanh (15 câu)')
+                )
+              ),
+              h('div',{className:'sm-field'},
+                h('label',null,'Mã đề thi'),
+                h('input',{type:'text', className:'mono', value:examCode, onChange:function(e){ setExamCode(e.target.value); }})
+              )
+            ),
+
+            h('div',{style:{marginTop:20}},
+              h('button',{type:'button', className:'btn btn-primary', style:{width:'100%', justifyContent:'center'}, onClick:handleGenerate},
+                '🎯 Lọc & tạo đề theo lộ trình'
+              )
+            ),
+
+            h('div',{style:{marginTop:12, fontSize:'0.75rem', color:'var(--muted)', textAlign:'center'}},
+              'Ngân hàng hiện có ' + questionPool.length + ' câu hỏi bóc tách từ ' + exams.length + ' đề thi.'
+            )
+          ),
+
+          // Output column
+          h('div',{className:'gen-card'},
+            !generated ? (
+              h('div',{style:{textAlign:'center', padding:'48px 20px', color:'var(--muted)'}},
+                h('div',{style:{fontSize:'2.5rem', marginBottom:'12px'}}, '📄'),
+                h('h4',{style:{color:'var(--ink)', fontSize:'1rem'}}, 'Chưa có đề nào được tạo'),
+                h('p',{style:{fontSize:'0.85rem', marginTop:'6px'}}, 'Chọn học sinh và bấm "Lọc & tạo đề theo lộ trình" để hệ thống tự động sinh bộ câu hỏi tối ưu.')
+              )
+            ) : (
+              h('div',null,
+                h('div',{style:{display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px', borderBottom:'1px solid var(--line)', paddingBottom:'12px'}},
+                  h('div',null,
+                    h('h4',{style:{fontFamily:'"Be Vietnam Pro",sans-serif', fontSize:'1.05rem', color:'var(--ink)'}}, generated.title),
+                    h('div',{style:{fontSize:'0.8rem', color:'var(--ink-2)', marginTop:'2px'}},
+                      'Mã đề: ' + generated.examCode + ' · Tổng số: ' + generated.stats.total + ' câu (P1: ' + generated.stats.p1 + ' | P2: ' + generated.stats.p2 + ' | P3: ' + generated.stats.p3 + ')'
+                    )
+                  ),
+                  h('button',{type:'button', className:'btn btn-primary', onClick:handleExportTeX}, '📄 Tải file .tex chuẩn Bộ GD')
+                ),
+
+                // Matrix summary
+                h('div',{className:'eb-matrix-grid', style:{marginTop:'12px', marginBottom:'14px'}},
+                  h('div',{className:'eb-matrix-cell'},
+                    h('div',{className:'eb-matrix-val', style:{color:'#0369a1'}}, generated.stats.m1),
+                    h('div',{className:'eb-matrix-lbl'}, 'M1 · Nhận biết')),
+                  h('div',{className:'eb-matrix-cell'},
+                    h('div',{className:'eb-matrix-val', style:{color:'#15803d'}}, generated.stats.m2),
+                    h('div',{className:'eb-matrix-lbl'}, 'M2 · Thông hiểu')),
+                  h('div',{className:'eb-matrix-cell'},
+                    h('div',{className:'eb-matrix-val', style:{color:'#b45309'}}, generated.stats.m3),
+                    h('div',{className:'eb-matrix-lbl'}, 'M3 · Vận dụng')),
+                  h('div',{className:'eb-matrix-cell'},
+                    h('div',{className:'eb-matrix-val', style:{color:'#b91c1c'}}, generated.stats.m4),
+                    h('div',{className:'eb-matrix-lbl'}, 'M4 · Vận dụng cao'))
+                ),
+
+                // Preview questions list
+                h('div',{className:'gen-preview-box'},
+                  generated.p1.concat(generated.p2).concat(generated.p3).map(function(q, idx){
+                    var lvlObj = MUC_DO_LIST.filter(function(m){ return m.code === q.level; })[0] || {};
+                    return h('div',{key:idx, className:'eb-q-card'},
+                      h('div',{className:'eb-q-head'},
+                        h('div',{className:'eb-q-left'},
+                          h('span',{className:'eb-q-idx'}, 'Câu ' + (idx + 1)),
+                          h('span',{className:'eb-part-pill'}, 'Phần ' + q.part),
+                          h('span',{className:'eb-level-badge eb-level-' + (q.level ? q.level.toLowerCase() : 'm1')}, q.level + ' · ' + (lvlObj.label ? lvlObj.label.split('·')[1].trim() : 'Mức')),
+                          q.chuDeLon ? h('span',{className:'eb-tag-topic'}, q.chuDeLon) : null,
+                          q.dangBai ? h('span',{className:'eb-tag-sub'}, q.dangBai) : null
+                        )
+                      ),
+                      h('div',{className:'eb-q-stem'}, q.stem || q.raw),
+                      (q.options && q.options.length) ? h('div',{className:'eb-q-opts'},
+                        q.options.map(function(opt, oIdx){
+                          return h('div',{key:oIdx, className:cx('eb-q-opt', opt.isTrue && 'correct')},
+                            h('span',{className:'eb-q-opt-key'}, opt.key + '.'),
+                            h('span',null, opt.text)
+                          );
+                        })
+                      ) : null,
+                      q.shortans ? h('div',{style:{marginTop:'6px', fontSize:'0.82rem'}}, h('b',null,'Đáp án ngắn: '), h('span',{className:'sm-mono-pill'}, q.shortans)) : null,
+                      q.loigiai ? h('div',{className:'eb-q-loigiai'}, h('b',null,'💡 Lời giải: '), q.loigiai) : null
+                    );
+                  })
+                )
+              )
+            )
+          )
+        )
+      )
+    );
+  }
+
   // ================= Root app (auth gate + tabs + toast) =================
   function AdminApp(){
+    // The Firebase module script is deferred by the browser and always
+    // finishes executing AFTER this classic script runs (module scripts
+    // wait for the document to finish parsing; classic scripts run inline
+    // as encountered) — so window.OPC is guaranteed to still be undefined
+    // on this component's very first render, even on a fast connection.
+    // Poll briefly for it instead of assuming it is there already.
+    var opcLoadedState = React.useState(!!window.OPC); var opcLoaded = opcLoadedState[0], setOpcLoaded = opcLoadedState[1];
     var authStatusState = React.useState('checking'); var authStatus = authStatusState[0], setAuthStatus = authStatusState[1]; // checking | signed-out | not-admin | admin
     var userState = React.useState(null); var user = userState[0], setUser = userState[1];
-    var tabState = React.useState('students'); var tab = tabState[0], setTab = tabState[1];
+    var tabState = React.useState('students'); var tab = tabState[0], setTab = tabState[1]; // students | exambank | generator
     var toastState = React.useState(null); var toast = toastState[0], setToast = toastState[1];
 
     function fireToast(msg, isErr){ setToast({msg:msg, err:!!isErr}); setTimeout(function(){ setToast(null); }, 3400); }
 
     React.useEffect(function(){
-      if(!window.OPC || !window.OPC.configReady) return;
+      if(opcLoaded) return;
+      var iv = setInterval(function(){
+        if(window.OPC){ setOpcLoaded(true); clearInterval(iv); }
+      }, 50);
+      var giveUp = setTimeout(function(){ clearInterval(iv); setOpcLoaded(true); }, 20000);
+      return function(){ clearInterval(iv); clearTimeout(giveUp); };
+    }, [opcLoaded]);
+
+    React.useEffect(function(){
+      if(!opcLoaded || !window.OPC || !window.OPC.configReady) return;
       var unsub = window.OPC.onAuthStateChanged(function(u){
         if(!u){ setUser(null); window.OPC_currentUser = null; setAuthStatus('signed-out'); return; }
         var email = (u.email || '').toLowerCase();
@@ -905,7 +1807,7 @@
         setUser(u); setAuthStatus('admin');
       });
       return function(){ unsub(); };
-    }, []);
+    }, [opcLoaded]);
 
     var headerRight = document.getElementById('admin-header-right');
     React.useEffect(function(){
@@ -923,7 +1825,10 @@
       }
     }, [authStatus, user]);
 
-    if(!window.OPC || !window.OPC.configReady){ return h(SetupNeededScreen); }
+    if(!opcLoaded){
+      return h('div',{className:'login-wrap'}, h('p',{style:{color:'var(--ink-2)'}}, 'Đang tải…'));
+    }
+    if(!window.OPC || !window.OPC.configReady){ return h(SetupNeededScreen, {sdkError: window.OPC && window.OPC.sdkError}); }
     if(authStatus === 'checking'){
       return h('div',{className:'login-wrap'}, h('p',{style:{color:'var(--ink-2)'}}, 'Đang kiểm tra đăng nhập…'));
     }
@@ -935,8 +1840,12 @@
     return h('div',null,
       h('div',{className:'tab-row'},
         h('button',{type:'button', className:cx('tab-btn', tab==='students' && 'active'), onClick:function(){ setTab('students'); }}, 'Học sinh'),
-        h('button',{type:'button', className:cx('tab-btn', tab==='exambank' && 'active'), onClick:function(){ setTab('exambank'); }}, 'Ngân hàng đề')),
-      tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : h(ExamBankPanel, {fireToast:fireToast}),
+        h('button',{type:'button', className:cx('tab-btn', tab==='exambank' && 'active'), onClick:function(){ setTab('exambank'); }}, 'Ngân hàng đề & câu hỏi'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa')
+      ),
+      tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
+        tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast})
+      ),
       toast ? h('div',{className: cx('rq-toast', 'show', toast.err && 'err')}, h('span',{className:'tk'}, toast.err ? '⚠' : '✓'), toast.msg) : null
     );
   }
@@ -944,10 +1853,15 @@
   function boot(){
     var mountEl = document.getElementById('admin-root');
     if(!mountEl) return;
+    // Mount right away — do not wait on window.OPCReady here. The Firebase
+    // module script (type="module") is always deferred until after this
+    // classic script has run, so window.OPCReady is never set yet at this
+    // point even on a fast connection; AdminApp itself polls for it after
+    // mounting (see the opcLoaded effect above).
     if(ReactDOM.createRoot){ ReactDOM.createRoot(mountEl).render(h(AdminApp)); }
     else { ReactDOM.render(h(AdminApp), mountEl); }
   }
-  if(window.OPCReady){ window.OPCReady.then(boot); } else { boot(); }
+  boot();
 })();
 </script>
 </body>
