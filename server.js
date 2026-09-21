@@ -9,6 +9,11 @@ const app = express();
 const PORT = 3000;
 const HOST = '0.0.0.0';
 
+// Health check endpoint for container probes
+app.get('/healthz', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // Clean URLs & rewrite for /admin matching vercel.json
 app.get(['/admin', '/Admin', '/admin.html', '/Admin.html'], (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
