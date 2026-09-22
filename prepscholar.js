@@ -487,10 +487,23 @@
     return all.slice(0, n || 5);
   }
 
+  // CHỖ CẮM DỮ LIỆU THẬT: gọi hàm này (từ opc-live-data.js sau khi nạp xong
+  // ngân hàng đề thật từ Firestore) để THAY TOÀN BỘ câu hỏi minh hoạ bằng
+  // câu hỏi thật. Giữ nguyên tham chiếu mảng QUESTION_BANK (dùng
+  // splice/push thay vì gán lại biến) để các hàm closure phía dưới
+  // (getQuestionsByTopic, createFocusedDrill...) vẫn thấy được dữ liệu mới.
+  function replaceQuestionBank(list){
+    if(!list || !list.length) return false;
+    QUESTION_BANK.length = 0;
+    Array.prototype.push.apply(QUESTION_BANK, list);
+    return true;
+  }
+
   // Khởi tạo và xuất đối tượng sang window
   window.PrepScholarEngine = {
     CHU_DE_MAP: CHU_DE_MAP,
     QUESTION_BANK: QUESTION_BANK,
+    replaceQuestionBank: replaceQuestionBank,
     scoreExam: scoreExam,
     getQuestionsByTopic: function(topicKey){
       return QUESTION_BANK.filter(function(q){ return q.topicKey === topicKey; });

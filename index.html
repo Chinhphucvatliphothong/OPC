@@ -2687,5 +2687,10 @@
 <script src="/nano-map.js"></script>
 <script src="/prepscholar.js"></script>
 <script src="/prepscholar-ui.js"></script>
+<!-- Kết nối dữ liệu thật (Firestore): đăng nhập học sinh + ngân hàng đề thật.
+     Là module nên luôn chạy SAU các script thường ở trên — prepscholar-ui.js
+     chờ sự kiện "opc-live-ready" (hoặc dò window.OPC_LIVE) thay vì giả định
+     nó có sẵn ngay khi mount. -->
+<script type="module" src="/opc-live-data.js"></script>
 </body>
 </html>

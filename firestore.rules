@@ -1,29 +1,61 @@
 rules_version = '2';
 
-// Quy tắc bảo mật Firestore cho project dùng chung với "Chinh Phục Vật Lý".
-// Chỉ thêm 2 collection của OPC (students, de_thi) — không đụng đến các
-// collection khác mà "Chinh Phục Vật Lý" đã có sẵn. Nếu project đã có rules
-// riêng, dán 2 block "match" bên trong (không phải toàn bộ file) vào rules
-// hiện có, trong cùng "match /databases/{database}/documents { ... }".
-//
+// Quy tắc bảo mật Firestore cho OPC Luyện Thi Vật Lí (project opcluyenthivatli).
 // Nơi dán: Firebase Console → Firestore Database → tab "Rules" → Publish.
+//
+// ĐÃ CẬP NHẬT để trang học sinh (index.html) hoạt động với dữ liệu thật:
+//  - Học sinh đăng nhập bằng username/mật khẩu (KHÔNG phải Firebase Auth
+//    thật) nên cần đọc công khai (nhưng chỉ "get" — biết đúng ID mới đọc
+//    được, không "list" được cả danh sách) 2 collection "usernames" và
+//    "students".
+//  - Ngân hàng đề (de_thi) cho phép đọc công khai để học sinh luyện tập,
+//    vì chưa có Auth thật để giới hạn quyền xem theo từng học sinh.
+//  - Mọi thao tác GHI (write) vẫn CHỈ dành cho 2 email admin — không đổi.
+//
+// Đánh đổi bảo mật cần biết: vì "get theo ID" là công khai, ai biết đúng
+// username của một em vẫn có thể tự thử mật khẩu (không giới hạn số lần)
+// và ai có link/ID đề thi vẫn đọc được toàn bộ nội dung + đáp án. Đây là
+// lựa chọn triển khai nhanh; khi cần an toàn hơn nên chuyển sang Firebase
+// Authentication thật (xem ghi chú trong opc-live-data.js).
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Chỉ (các) email trong danh sách này được đọc/ghi dữ liệu OPC.
+    // Chỉ (các) email trong danh sách này được ghi dữ liệu OPC.
     // Thêm email nếu sau này có thêm admin (vd. trợ giảng).
     function isOpcAdmin() {
       return request.auth != null &&
         request.auth.token.email in ['vovanthai2018tv@gmail.com', 'chinhphucvatliphothong@gmail.com'];
     }
 
-    match /students/{studentId} {
-      allow read, write: if isOpcAdmin();
+    // Ánh xạ username -> studentId, KHÔNG chứa thông tin nhạy cảm nào khác.
+    // "get" công khai (phải biết đúng username) nhưng "list" (liệt kê toàn
+    // bộ) vẫn chỉ admin — nên không ai quét được danh sách username.
+    match /usernames/{username} {
+      allow get: if true;
+      allow list: if isOpcAdmin();
+      allow write: if isOpcAdmin();
     }
 
+    // Hồ sơ học sinh (có mật khẩu dạng thường, SĐT, thông tin phụ huynh...).
+    // "get" công khai để trang học sinh kiểm tra mật khẩu lúc đăng nhập và
+    // đọc lại hồ sơ của chính mình; "list" (liệt kê cả lớp) vẫn chỉ admin.
+    match /students/{studentId} {
+      allow get: if true;
+      allow list: if isOpcAdmin();
+      allow write: if isOpcAdmin();
+    }
+
+    // Ngân hàng đề: đọc công khai (get + list) để học sinh luyện tập; ghi
+    // vẫn chỉ admin (nạp/sửa/xoá đề qua admin.html).
     match /de_thi/{examId} {
-      allow read, write: if isOpcAdmin();
+      allow read: if true;
+      allow write: if isOpcAdmin();
+
+      match /images/{imageId} {
+        allow read: if true;
+        allow write: if isOpcAdmin();
+      }
     }
   }
 }

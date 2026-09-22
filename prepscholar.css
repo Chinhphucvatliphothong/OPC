@@ -704,3 +704,11 @@
   color: var(--ink);
   line-height: 1.5;
 }
+
+/* Banner cảnh báo / thông tin — dùng cho màn đăng nhập & trạng thái ngân
+   hàng đề thật trong PrepScholarApp (đồng bộ style với admin.html). */
+.banner{ display:flex; align-items:flex-start; gap:10px; padding:13px 16px; border-radius:12px; font-size:0.85rem; line-height:1.55; }
+.banner.warn{ background: color-mix(in srgb, var(--warning) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--warning) 35%, var(--line)); color: var(--ink); }
+.banner.info{ background: var(--surface-2); border:1px solid var(--line); color: var(--ink-2); }
+.banner b{ color: var(--ink); }
+.ps-login-card{ max-width: 420px; margin: 40px auto; }

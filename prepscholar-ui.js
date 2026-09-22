@@ -17,6 +17,25 @@
     { id: 'guest', name: 'Khách thử nghiệm tự do', email: 'khach@opc.edu.vn', target: 8.0, predicted: 7.0, hours: 0.5, mastery: { 'nhiet': 70, 'khi': 60, 'tu-truong': 55, 'hat-nhan': 50 } }
   ];
 
+  // Chuyển hồ sơ học sinh THẬT (từ Firestore, do admin.html tạo) sang đúng
+  // hình dạng mà giao diện luyện tập cần. Các trường predicted/hours/mastery
+  // CHƯA có dữ liệu thật (cần lịch sử làm bài thật tích luỹ theo thời gian)
+  // nên tạm dùng giá trị mặc định hợp lý — CHỖ CẮM DỮ LIỆU THẬT sau này:
+  // tính lại 3 trường này từ lịch sử làm bài thật lưu trên Firestore.
+  function toAppStudent(real){
+    var defMastery = { 'nhiet': 70, 'khi': 65, 'tu-truong': 60, 'hat-nhan': 55 };
+    return {
+      id: real.id,
+      name: real.name || 'Học sinh',
+      email: real.email || '',
+      target: Number(real.targetScore) || 9.0,
+      predicted: Number(real.predictedScore) || Number(real.averageScore) || 7.0,
+      hours: Number(real.weeklyHours) || 0,
+      mastery: real.mastery || defMastery,
+      isLive: true
+    };
+  }
+
   function formatTime(seconds){
     var m = Math.floor(seconds / 60);
     var s = seconds % 60;
@@ -63,9 +82,94 @@
       return function(){ clearInterval(timer); };
     }, [katexReady]);
 
+    // ================= Đăng nhập học sinh + ngân hàng đề thật =================
+    // window.OPC_LIVE được nạp bởi opc-live-data.js — một <script type="module">
+    // nên LUÔN chạy sau các script thường (kể cả file này); do đó dò/poll
+    // thay vì giả định nó có sẵn ngay, giống cách xử lý katexReady ở trên.
+    var liveReadyState = React.useState(function(){ return !!window.OPC_LIVE; });
+    var liveReady = liveReadyState[0];
+    var setLiveReady = liveReadyState[1];
+    React.useEffect(function(){
+      if(liveReady) return;
+      function onReady(){ setLiveReady(true); }
+      window.addEventListener('opc-live-ready', onReady);
+      var tries = 0;
+      var timer = setInterval(function(){
+        tries++;
+        if(window.OPC_LIVE){ setLiveReady(true); clearInterval(timer); }
+        else if(tries > 100){ clearInterval(timer); } // ~20s, bỏ cuộc — vào chế độ minh hoạ
+      }, 200);
+      return function(){ window.removeEventListener('opc-live-ready', onReady); clearInterval(timer); };
+    }, [liveReady]);
+
+    // authState: 'checking' (đang dò phiên đăng nhập cũ) | 'form' (chưa đăng
+    // nhập, hiện form) | 'in' (đã vào — có thể là tài khoản thật hoặc học thử)
+    var authStateState = React.useState('checking');
+    var authState = authStateState[0];
+    var setAuthState = authStateState[1];
+    var loginUserState = React.useState(''); var loginUser = loginUserState[0], setLoginUser = loginUserState[1];
+    var loginPassState = React.useState(''); var loginPass = loginPassState[0], setLoginPass = loginPassState[1];
+    var loginErrState = React.useState(''); var loginErr = loginErrState[0], setLoginErr = loginErrState[1];
+    var loginBusyState = React.useState(false); var loginBusy = loginBusyState[0], setLoginBusy = loginBusyState[1];
+
     var studentState = React.useState(STUDENTS[0]);
     var student = studentState[0];
     var setStudent = studentState[1];
+
+    // Khi OPC_LIVE sẵn sàng: thử khôi phục phiên đăng nhập cũ (sessionStorage);
+    // nếu không có, hiện form đăng nhập thay vì tự vào bằng dữ liệu mẫu.
+    React.useEffect(function(){
+      if(!liveReady) return;
+      var cancelled = false;
+      window.OPC_LIVE.resumeSession().then(function(real){
+        if(cancelled) return;
+        if(real){ setStudent(toAppStudent(real)); setAuthState('in'); }
+        else { setAuthState('form'); }
+      }).catch(function(){ if(!cancelled) setAuthState('form'); });
+      return function(){ cancelled = true; };
+    }, [liveReady]);
+
+    // Nạp ngân hàng đề thật (không phụ thuộc trạng thái đăng nhập — xem ghi
+    // chú bảo mật trong opc-live-data.js) và thay cho dữ liệu minh hoạ nếu có.
+    var bankVersionState = React.useState(0); var bankVersion = bankVersionState[0], setBankVersion = bankVersionState[1];
+    var bankLiveState = React.useState(false); var bankIsLive = bankLiveState[0], setBankIsLive = bankLiveState[1];
+    React.useEffect(function(){
+      if(!liveReady) return;
+      var cancelled = false;
+      window.OPC_LIVE.loadRealQuestionBank().then(function(list){
+        if(cancelled || !list || !list.length) return;
+        window.PrepScholarEngine.replaceQuestionBank(list);
+        setBankIsLive(true);
+        setBankVersion(function(v){ return v + 1; });
+      });
+      return function(){ cancelled = true; };
+    }, [liveReady]);
+
+    function handleLoginSubmit(e){
+      if(e && e.preventDefault) e.preventDefault();
+      if(!window.OPC_LIVE) return;
+      setLoginBusy(true); setLoginErr('');
+      window.OPC_LIVE.loginStudent(loginUser, loginPass).then(function(res){
+        setLoginBusy(false);
+        if(res && res.ok){
+          setStudent(toAppStudent(res.student));
+          setAuthState('in');
+        } else {
+          setLoginErr((res && res.error) || 'Đăng nhập thất bại.');
+        }
+      }).catch(function(){ setLoginBusy(false); setLoginErr('Lỗi kết nối — thử lại.'); });
+    }
+
+    function handleGuestEnter(){
+      setStudent(STUDENTS[0]);
+      setAuthState('in');
+    }
+
+    function handleLogout(){
+      if(window.OPC_LIVE) window.OPC_LIVE.logoutStudent();
+      setStudent(STUDENTS[0]);
+      setAuthState('form');
+    }
 
     var tabState = React.useState('drill'); // drill | exam | mistakes | plan
     var tab = tabState[0];
@@ -310,7 +414,41 @@
     // Tính overall mastery
     var avgMastery = Math.round((student.mastery['nhiet'] + student.mastery['khi'] + student.mastery['tu-truong'] + student.mastery['hat-nhan']) / 4);
 
-    return h('div', { className: 'ps-wrapper' },
+    // ================= Màn hình đăng nhập =================
+    // Chỉ vào thẳng giao diện luyện tập khi đã xác định xong trạng thái đăng
+    // nhập ('in'). Khi đang dò phiên cũ ('checking') hoặc chưa đăng nhập
+    // ('form'), hiện màn hình riêng — không hiện dữ liệu của học sinh khác.
+    if(authState !== 'in'){
+      if(authState === 'checking'){
+        return h('div', { className: 'ps-wrapper', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '320px' } },
+          h('p', { style: { color: 'var(--ink-2)', fontSize: '0.9rem' } }, 'Đang kiểm tra phiên đăng nhập…'));
+      }
+      return h('div', { className: 'ps-wrapper', style: { maxWidth: '420px', margin: '0 auto' } },
+        h('div', { className: 'ps-login-card', style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '28px 26px', boxShadow: 'var(--shadow)' } },
+          h('h3', { style: { marginBottom: '6px' } }, '⚡ Đăng nhập luyện thi PrepScholar'),
+          h('p', { style: { fontSize: '0.84rem', color: 'var(--ink-2)', lineHeight: 1.6, marginBottom: '18px' } },
+            'Dùng đúng tên đăng nhập và mật khẩu thầy cô đã cấp khi thêm em vào hệ thống.'),
+          h('form', { onSubmit: handleLoginSubmit },
+            h('div', { className: 'sm-field', style: { marginBottom: '12px' } },
+              h('label', null, 'Tên đăng nhập'),
+              h('input', { type: 'text', autoCapitalize: 'off', autoCorrect: 'off', value: loginUser, onChange: function(e){ setLoginUser(e.target.value); }, placeholder: 'vd. vanan12' })),
+            h('div', { className: 'sm-field', style: { marginBottom: '14px' } },
+              h('label', null, 'Mật khẩu'),
+              h('input', { type: 'password', value: loginPass, onChange: function(e){ setLoginPass(e.target.value); }, placeholder: '••••••' })),
+            loginErr ? h('div', { className: 'banner warn', style: { marginBottom: '12px' } }, h('span', null, '⚠️'), h('div', null, loginErr)) : null,
+            h('button', { type: 'submit', className: 'btn btn-primary', style: { width: '100%' }, disabled: loginBusy || !liveReady }, loginBusy ? 'Đang đăng nhập…' : (liveReady ? 'Đăng nhập' : 'Đang kết nối…'))
+          ),
+          h('div', { style: { textAlign: 'center', margin: '16px 0', color: 'var(--muted)', fontSize: '0.78rem' } }, '— hoặc —'),
+          h('button', { type: 'button', className: 'btn btn-secondary', style: { width: '100%' }, onClick: handleGuestEnter }, '👀 Học thử với dữ liệu minh hoạ'),
+          h('p', { style: { fontSize: '0.74rem', color: 'var(--muted)', marginTop: '14px', lineHeight: 1.5 } },
+            'Chưa có tài khoản? Liên hệ thầy cô để được cấp tên đăng nhập và mật khẩu.')
+        )
+      );
+    }
+
+    return h('div', { className: 'ps-wrapper', key: 'bank-' + bankVersion },
+      bankIsLive ? null : h('div', { className: 'banner warn', style: { marginBottom: '14px' } },
+        h('span', null, 'ℹ️'), h('div', null, 'Ngân hàng đề thật chưa có câu hỏi phù hợp — đang hiển thị câu hỏi minh hoạ để bạn xem trước giao diện.')),
       // 1. Profile Bar
       h('div', { className: 'ps-profile-bar' },
         h('div', { className: 'ps-student-picker' },
@@ -320,25 +458,27 @@
             h('p', null, 'Tài khoản luyện thi cá nhân hóa · ' + student.email)
           )
         ),
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
-          h('label', { style: { fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 600 } }, 'Đổi học sinh:'),
-          h('select', {
-            className: 'ps-student-select',
-            value: student.id,
-            onChange: function(e){
-              var found = STUDENTS.filter(function(s){ return s.id === e.target.value; })[0];
-              if(found){
-                setStudent(found);
-                setExamSession(null);
-                setScoreResult(null);
-              }
-            }
-          },
-            STUDENTS.map(function(s){
-              return h('option', { key: s.id, value: s.id }, s.name + ' (Dự đoán: ' + s.predicted + ')');
-            })
-          )
-        )
+        student.isLive
+          ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: handleLogout }, '🚪 Đăng xuất')
+          : h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+              h('label', { style: { fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 600 } }, 'Đổi học sinh (minh hoạ):'),
+              h('select', {
+                className: 'ps-student-select',
+                value: student.id,
+                onChange: function(e){
+                  var found = STUDENTS.filter(function(s){ return s.id === e.target.value; })[0];
+                  if(found){
+                    setStudent(found);
+                    setExamSession(null);
+                    setScoreResult(null);
+                  }
+                }
+              },
+                STUDENTS.map(function(s){
+                  return h('option', { key: s.id, value: s.id }, s.name + ' (Dự đoán: ' + s.predicted + ')');
+                })
+              )
+            )
       ),
 
       // 2. PrepScholar Core Metrics Grid

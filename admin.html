@@ -434,13 +434,46 @@
     OPC.signInGoogle = function(){ return signInWithPopup(auth, new GoogleAuthProvider()); };
     OPC.signOutUser = function(){ return signOut(auth); };
 
+    // Ghi/đồng bộ ánh xạ "usernames/{username} -> {studentId}" để trang học
+    // sinh (index.html) tra được studentId từ username khi đăng nhập, mà
+    // không cần mở quyền đọc (list) toàn bộ collection "students" cho công
+    // khai (xem giải thích đầy đủ trong firestore.rules).
+    function syncUsernameMapping(studentId, username){
+      var uname = String(username || '').trim().toLowerCase();
+      if(!uname) return Promise.resolve();
+      return setDoc(doc(db, "usernames", uname), { studentId: studentId });
+    }
+
     OPC.students = {
       subscribe: function(onNext, onErr){
         return onSnapshot(query(collection(db, "students"), orderBy("name")), onNext, onErr);
       },
-      add: function(data){ return addDoc(collection(db, "students"), data); },
-      update: function(id, data){ return updateDoc(doc(db, "students", id), data); },
-      remove: function(id){ return deleteDoc(doc(db, "students", id)); }
+      add: function(data){
+        var ref = doc(collection(db, "students"));
+        return setDoc(ref, data)
+          .then(function(){ return syncUsernameMapping(ref.id, data.username); })
+          .then(function(){ return ref; });
+      },
+      update: function(id, data){
+        return updateDoc(doc(db, "students", id), data)
+          .then(function(){ if(data && data.username) return syncUsernameMapping(id, data.username); });
+      },
+      remove: function(id){ return deleteDoc(doc(db, "students", id)); },
+      // Quét lại toàn bộ học sinh hiện có và ghi lại ánh xạ đăng nhập cho
+      // từng em — dùng khi mới bật tính năng này (học sinh đã thêm từ
+      // trước chưa từng có ánh xạ), hoặc nghi ngờ ánh xạ bị lệch.
+      syncAllLoginMappings: async function(){
+        var snap = await getDocs(query(collection(db, "students"), orderBy("name")));
+        var count = 0;
+        for(var i = 0; i < snap.docs.length; i++){
+          var d = snap.docs[i];
+          var uname = (d.data() || {}).username;
+          if(!uname) continue;
+          await syncUsernameMapping(d.id, uname);
+          count++;
+        }
+        return count;
+      }
     };
 
     OPC.examBank = {
@@ -1580,10 +1613,18 @@
       );
     }
 
+    function handleSyncLogins(){
+      if(!OPCref.students.syncAllLoginMappings) return;
+      OPCref.students.syncAllLoginMappings()
+        .then(function(count){ props.fireToast('Đã đồng bộ tài khoản đăng nhập cho ' + count + ' học sinh — các em có thể đăng nhập trang luyện tập bằng tên đăng nhập/mật khẩu đã cấp.'); })
+        .catch(function(){ props.fireToast('Đồng bộ thất bại — thử lại.', true); });
+    }
+
     var toolbar = h('div',{className:'sm-toolbar'},
       h('div',null, h('h3',null,'Danh sách học sinh'),
         h('p',{className:'sm-sub'}, 'Theo dõi tiến độ luyện đề, chỉ số KPI học tập và thông tin của từng học sinh.')),
       h('div',{className:'sm-actions'},
+        h('button',{type:'button', className:'btn btn-secondary', onClick:handleSyncLogins, title:'Ghi/cập nhật lại ánh xạ tên đăng nhập → hồ sơ học sinh, để trang luyện tập (index.html) nhận ra tài khoản. Bấm lại nếu vừa thêm/sửa học sinh mà đăng nhập chưa được.'}, '🔄 Đồng bộ đăng nhập'),
         h('button',{type:'button', className:'btn btn-secondary', onClick:handleExport, title:'Xuất toàn bộ danh sách học sinh kèm đầy đủ chỉ số KPI ra file CSV'}, '📊 Xuất CSV & KPI'),
         h('button',{type:'button', className:'btn btn-secondary', onClick:function(){ setImportOpen(true); }}, '📥 Nhập từ CSV'),
         h('button',{type:'button', className:'btn btn-primary', onClick:function(){ setAddOpen(true); }}, '+ Thêm học sinh')
