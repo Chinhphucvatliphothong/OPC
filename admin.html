@@ -1617,7 +1617,15 @@
       if(!OPCref.students.syncAllLoginMappings) return;
       OPCref.students.syncAllLoginMappings()
         .then(function(count){ props.fireToast('Đã đồng bộ tài khoản đăng nhập cho ' + count + ' học sinh — các em có thể đăng nhập trang luyện tập bằng tên đăng nhập/mật khẩu đã cấp.'); })
-        .catch(function(){ props.fireToast('Đồng bộ thất bại — thử lại.', true); });
+        .catch(function(err){
+          console.error('Lỗi đồng bộ đăng nhập:', err);
+          // "permission-denied" gần như luôn có nghĩa là firestore.rules mới
+          // (cho phép ghi collection "usernames") chưa được dán/Publish.
+          var msg = (err && err.code === 'permission-denied')
+            ? 'Đồng bộ thất bại: Firestore chưa cho phép ghi collection "usernames" — kiểm tra đã dán firestore.rules mới vào Firebase Console → Rules → Publish chưa.'
+            : 'Đồng bộ thất bại (' + (err && (err.code || err.message) || 'không rõ') + ') — thử lại.';
+          props.fireToast(msg, true);
+        });
     }
 
     var toolbar = h('div',{className:'sm-toolbar'},

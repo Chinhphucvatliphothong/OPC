@@ -44,6 +44,15 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isOpcAdmin();
       allow write: if isOpcAdmin();
+
+      // Lịch sử luyện tập thật (điểm số + đúng/sai từng câu). Đọc/ghi công
+      // khai vì chưa có Auth thật để xác minh "đúng là em học sinh đó đang
+      // ghi" — cùng đánh đổi bảo mật với phần đăng nhập ở trên. Không chứa
+      // thông tin nhạy cảm nào ngoài kết quả làm bài.
+      match /attempts/{attemptId} {
+        allow read: if true;
+        allow write: if true;
+      }
     }
 
     // Ngân hàng đề: đọc công khai (get + list) để học sinh luyện tập; ghi

@@ -25,7 +25,7 @@
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, query, orderBy
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, query, orderBy, limit
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 var firebaseConfig = {
@@ -68,7 +68,13 @@ async function loginStudent(usernameRaw, passwordRaw){
     return { ok: true, student: student };
   }catch(e){
     console.error('Lỗi đăng nhập học sinh:', e);
-    return { ok: false, error: 'Lỗi kết nối tới máy chủ — thử lại sau ít phút.' };
+    // "permission-denied" gần như luôn có nghĩa là firestore.rules mới CHƯA
+    // được dán/Publish trong Firebase Console — báo rõ để dễ tự chẩn đoán,
+    // thay vì chỉ nói chung chung "lỗi kết nối".
+    if(e && e.code === 'permission-denied'){
+      return { ok: false, error: 'Hệ thống chưa cho phép đăng nhập (firestore.rules chưa được cập nhật/Publish trong Firebase Console). Báo thầy cô kiểm tra lại bước này.' };
+    }
+    return { ok: false, error: 'Lỗi kết nối tới máy chủ (' + (e && (e.code || e.message) || 'không rõ') + ') — thử lại sau ít phút.' };
   }
 }
 
@@ -90,6 +96,42 @@ async function resumeSession(){
   }catch(e){
     console.error('Lỗi tải lại phiên đăng nhập:', e);
     return null;
+  }
+}
+
+// ================= Lịch sử luyện tập thật =================
+// Lưu dưới subcollection students/{studentId}/attempts — KHÔNG lưu lại toàn
+// bộ nội dung câu hỏi (đã có sẵn trong ngân hàng đề), chỉ lưu điểm số + kết
+// quả đúng/sai từng câu (kèm nanoId/baiKey/topicKey) để tính lại mastery
+// thật. Ghi chú bảo mật: vì chưa có Auth thật, bất kỳ ai biết đúng studentId
+// (có được sau khi đăng nhập) đều ghi được — chấp nhận cùng đánh đổi với
+// phần đăng nhập ở trên.
+async function saveAttempt(studentId, attempt){
+  if(!studentId) return { ok: false, error: 'Thiếu studentId.' };
+  try{
+    var ref = doc(collection(db, 'students', studentId, 'attempts'));
+    await setDoc(ref, Object.assign({}, attempt, { createdAt: new Date().toISOString() }));
+    return { ok: true, id: ref.id };
+  }catch(e){
+    console.error('Lỗi lưu kết quả luyện tập:', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+
+async function loadAttempts(studentId, max){
+  if(!studentId) return [];
+  try{
+    var snap = await getDocs(query(
+      collection(db, 'students', studentId, 'attempts'),
+      orderBy('createdAt', 'desc'),
+      limit(max || 100)
+    ));
+    var out = [];
+    snap.forEach(function(d){ out.push(Object.assign({ id: d.id }, d.data())); });
+    return out;
+  }catch(e){
+    console.error('Lỗi tải lịch sử luyện tập:', e);
+    return [];
   }
 }
 
@@ -155,6 +197,8 @@ window.OPC_LIVE = {
   loginStudent: loginStudent,
   logoutStudent: logoutStudent,
   resumeSession: resumeSession,
-  loadRealQuestionBank: loadRealQuestionBank
+  loadRealQuestionBank: loadRealQuestionBank,
+  saveAttempt: saveAttempt,
+  loadAttempts: loadAttempts
 };
 try{ window.dispatchEvent(new CustomEvent('opc-live-ready')); }catch(e){}

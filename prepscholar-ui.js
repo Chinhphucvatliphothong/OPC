@@ -18,10 +18,10 @@
   ];
 
   // Chuyển hồ sơ học sinh THẬT (từ Firestore, do admin.html tạo) sang đúng
-  // hình dạng mà giao diện luyện tập cần. Các trường predicted/hours/mastery
-  // CHƯA có dữ liệu thật (cần lịch sử làm bài thật tích luỹ theo thời gian)
-  // nên tạm dùng giá trị mặc định hợp lý — CHỖ CẮM DỮ LIỆU THẬT sau này:
-  // tính lại 3 trường này từ lịch sử làm bài thật lưu trên Firestore.
+  // hình dạng mà giao diện luyện tập cần. predicted/mastery/nanoMastery ở
+  // đây chỉ là giá trị khởi điểm mặc định cho tới khi hydrateAndEnter() tải
+  // xong lịch sử làm bài thật (nếu có) và ghi đè lại bằng số liệu thật —
+  // xem computeStudentStatsFromAttempts trong prepscholar.js.
   function toAppStudent(real){
     var defMastery = { 'nhiet': 70, 'khi': 65, 'tu-truong': 60, 'hat-nhan': 55 };
     return {
@@ -32,6 +32,7 @@
       predicted: Number(real.predictedScore) || Number(real.averageScore) || 7.0,
       hours: Number(real.weeklyHours) || 0,
       mastery: real.mastery || defMastery,
+      nanoMastery: {},
       isLive: true
     };
   }
@@ -116,6 +117,35 @@
     var student = studentState[0];
     var setStudent = studentState[1];
 
+    // Sau khi có hồ sơ học sinh thật (đăng nhập hoặc khôi phục phiên cũ): vào
+    // ngay với số liệu mặc định, rồi tải lịch sử luyện tập thật (nếu có) để
+    // tính lại mastery/điểm dự đoán/Sổ tay câu sai từ dữ liệu thật — CHỖ CẮM
+    // DỮ LIỆU THẬT đã hoạt động (xem computeStudentStatsFromAttempts trong
+    // prepscholar.js).
+    function hydrateAndEnter(real){
+      var appStu = toAppStudent(real);
+      setStudent(appStu);
+      setAuthState('in');
+      setMistakeLog([]); // học sinh thật bắt đầu từ sổ tay trống, không dùng seed minh hoạ
+      if(!window.OPC_LIVE || !window.OPC_LIVE.loadAttempts) return;
+      window.OPC_LIVE.loadAttempts(real.id).then(function(attempts){
+        if(!attempts || !attempts.length) return;
+        var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
+        setStudent(function(prev){
+          if(!prev || prev.id !== appStu.id) return prev; // đã đăng xuất/đổi tài khoản trong lúc đang tải
+          return Object.assign({}, prev, {
+            mastery: Object.assign({}, prev.mastery, stats.mastery),
+            predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
+            nanoMastery: stats.nanoMastery
+          });
+        });
+        var withQ = stats.mistakeLog.map(function(m){
+          return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
+        });
+        setMistakeLog(withQ);
+      });
+    }
+
     // Khi OPC_LIVE sẵn sàng: thử khôi phục phiên đăng nhập cũ (sessionStorage);
     // nếu không có, hiện form đăng nhập thay vì tự vào bằng dữ liệu mẫu.
     React.useEffect(function(){
@@ -123,7 +153,7 @@
       var cancelled = false;
       window.OPC_LIVE.resumeSession().then(function(real){
         if(cancelled) return;
-        if(real){ setStudent(toAppStudent(real)); setAuthState('in'); }
+        if(real){ hydrateAndEnter(real); }
         else { setAuthState('form'); }
       }).catch(function(){ if(!cancelled) setAuthState('form'); });
       return function(){ cancelled = true; };
@@ -152,8 +182,7 @@
       window.OPC_LIVE.loginStudent(loginUser, loginPass).then(function(res){
         setLoginBusy(false);
         if(res && res.ok){
-          setStudent(toAppStudent(res.student));
-          setAuthState('in');
+          hydrateAndEnter(res.student);
         } else {
           setLoginErr((res && res.error) || 'Đăng nhập thất bại.');
         }
@@ -370,6 +399,48 @@
 
       if(impactMsg.length){
         setMasteryImpact(impactMsg.join(' · '));
+      }
+
+      // Học sinh đăng nhập thật: lưu kết quả lượt luyện này vào Firestore rồi
+      // tính lại mastery/điểm dự đoán/Sổ tay câu sai từ TOÀN BỘ lịch sử thật
+      // (ghi đè lên số liệu ước lượng tức thời ở trên ngay khi tải xong).
+      if(student.isLive && window.OPC_LIVE && window.OPC_LIVE.saveAttempt){
+        var studentId = student.id;
+        var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
+          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null };
+        });
+        var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
+          return { qId: r.question.id, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null };
+        });
+        var attemptRecord = {
+          type: examSession.type,
+          topicKey: examSession.topicKey || null,
+          scaledScore10: scored.scaledScore10,
+          correctCount: scored.correctCount,
+          totalQuestions: scored.totalQuestions,
+          topicStats: scored.topicStats,
+          wrongQuestions: wrongQuestions,
+          rightQuestions: rightQuestions
+        };
+        window.OPC_LIVE.saveAttempt(studentId, attemptRecord).then(function(res){
+          if(!res || !res.ok) return null;
+          return window.OPC_LIVE.loadAttempts(studentId);
+        }).then(function(attempts){
+          if(!attempts) return;
+          var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
+          setStudent(function(prev){
+            if(!prev || prev.id !== studentId) return prev;
+            return Object.assign({}, prev, {
+              mastery: Object.assign({}, prev.mastery, stats.mastery),
+              predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
+              nanoMastery: stats.nanoMastery
+            });
+          });
+          var withQ = stats.mistakeLog.map(function(m){
+            return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
+          });
+          setMistakeLog(withQ);
+        }).catch(function(err){ console.error('Lỗi lưu/tải lại lịch sử luyện tập:', err); });
       }
     }
 
@@ -772,8 +843,8 @@
             if(!hasNanoMap){
               return h('div', { style: { fontSize: '0.86rem', color: 'var(--muted)' } }, 'Chưa nạp được dữ liệu bản đồ kiến thức.');
             }
-            var knowledgeMap = window.PrepScholarEngine.getKnowledgeMap(student.mastery);
-            var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5);
+            var knowledgeMap = window.PrepScholarEngine.getKnowledgeMap(student.mastery, student.nanoMastery);
+            var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5, student.nanoMastery);
 
             return h('div', null,
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },

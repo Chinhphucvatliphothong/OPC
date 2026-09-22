@@ -458,20 +458,105 @@
     });
   })();
 
-  function buildKnowledgeMap(studentMasteryByTopic){
+  // realNanoMastery (tuỳ chọn): {nanoId: %} tính từ lịch sử làm bài THẬT của
+  // học sinh (xem computeStudentStatsFromAttempts bên dưới) — nano nào có số
+  // liệu thật thì dùng số thật, nano nào chưa từng gặp câu nào (học sinh mới
+  // đăng nhập, chưa luyện) thì vẫn tạm dùng số liệu minh hoạ suy ra từ mức độ
+  // chuyên đề để bản đồ không bị trống trơn.
+  function buildKnowledgeMap(studentMasteryByTopic, realNanoMastery){
     if(!window.OPC_NANO) return [];
+    realNanoMastery = realNanoMastery || {};
     return Object.keys(CHU_DE_MAP).map(function(topicKey){
       var topic = CHU_DE_MAP[topicKey];
       var base = (studentMasteryByTopic && studentMasteryByTopic[topicKey] != null) ? studentMasteryByTopic[topicKey] : topic.defaultMastery;
       var bais = window.OPC_NANO.getBaiByChuDe(topicKey).map(function(b){
         var nanos = window.OPC_NANO.getNanoByBai(b.key).map(function(n){
-          return { id: n.id, name: n.name, mastery: getNanoMastery(n.id, base) };
+          var real = realNanoMastery[n.id];
+          var mastery = (real != null) ? real : getNanoMastery(n.id, base);
+          return { id: n.id, name: n.name, mastery: mastery, isReal: real != null };
         });
         var avg = nanos.length ? Math.round(nanos.reduce(function(s, n){ return s + n.mastery; }, 0) / nanos.length) : base;
         return { key: b.key, name: b.name, mastery: avg, nanos: nanos };
       });
       return { topicKey: topicKey, topicName: topic.name, icon: topic.icon, mastery: base, bais: bais };
     });
+  }
+
+  // ============================================================
+  // CHỖ CẮM DỮ LIỆU THẬT (đã cắm): tổng hợp lịch sử làm bài thật (lưu qua
+  // opc-live-data.js, mỗi lần Drill/Thi thử nộp bài) thành điểm dự đoán,
+  // % thành thạo theo chuyên đề, % thành thạo theo nano-point, và Sổ tay
+  // câu sai — thay cho toàn bộ số liệu minh hoạ trước đây.
+  // ============================================================
+  function computeStudentStatsFromAttempts(attempts){
+    var result = { mastery: {}, nanoMastery: {}, predicted: null, mistakeLog: [] };
+    attempts = attempts || [];
+    if(!attempts.length) return result;
+
+    var sorted = attempts.slice().sort(function(a, b){ return new Date(a.createdAt) - new Date(b.createdAt); });
+
+    // Mastery theo chuyên đề: cộng dồn earnedScore/maxScore từ mọi lượt.
+    var topicAgg = {};
+    sorted.forEach(function(a){
+      var ts = a.topicStats || {};
+      Object.keys(ts).forEach(function(k){
+        if(!topicAgg[k]) topicAgg[k] = { earned: 0, max: 0 };
+        topicAgg[k].earned += Number(ts[k].earnedScore) || 0;
+        topicAgg[k].max += Number(ts[k].maxScore) || 0;
+      });
+    });
+    Object.keys(topicAgg).forEach(function(k){
+      if(topicAgg[k].max > 0) result.mastery[k] = Math.round((topicAgg[k].earned / topicAgg[k].max) * 100);
+    });
+
+    // Mastery theo nano-point: tỉ lệ đúng / tổng số lần gặp.
+    var nanoAgg = {};
+    function bump(nanoId, correct){
+      if(!nanoId) return;
+      if(!nanoAgg[nanoId]) nanoAgg[nanoId] = { correct: 0, total: 0 };
+      nanoAgg[nanoId].total++;
+      if(correct) nanoAgg[nanoId].correct++;
+    }
+    sorted.forEach(function(a){
+      (a.wrongQuestions || []).forEach(function(q){ bump(q.nanoId, false); });
+      (a.rightQuestions || []).forEach(function(q){ bump(q.nanoId, true); });
+    });
+    Object.keys(nanoAgg).forEach(function(id){
+      result.nanoMastery[id] = Math.round((nanoAgg[id].correct / nanoAgg[id].total) * 100);
+    });
+
+    // Điểm dự đoán: trung bình tối đa 5 lượt Thi thử/Chẩn đoán gần nhất;
+    // nếu chưa từng thi, tạm lấy trung bình mọi lượt luyện gần nhất.
+    var examLike = sorted.filter(function(a){ return a.type === 'exam' || a.type === 'diagnostic'; });
+    var pool = (examLike.length ? examLike : sorted).slice(-5);
+    var scores = pool.map(function(a){ return Number(a.scaledScore10); }).filter(function(n){ return !isNaN(n); });
+    if(scores.length) result.predicted = Math.round((scores.reduce(function(s, n){ return s + n; }, 0) / scores.length) * 10) / 10;
+
+    // Sổ tay câu sai: câu sai gần nhất mà SAU ĐÓ chưa từng làm đúng lại.
+    var lastWrong = {};
+    sorted.forEach(function(a){
+      (a.wrongQuestions || []).forEach(function(q){ lastWrong[q.qId] = { q: q, at: a.createdAt }; });
+      (a.rightQuestions || []).forEach(function(q){ delete lastWrong[q.qId]; });
+    });
+    var now = Date.now();
+    result.mistakeLog = Object.keys(lastWrong).map(function(qId){
+      var info = lastWrong[qId];
+      var daysSince = Math.floor((now - new Date(info.at).getTime()) / 86400000);
+      var intervalDays = 1; // giãn cách đơn giản — có thể nâng cấp thuật toán sau
+      return {
+        id: 'live_' + qId,
+        qId: qId,
+        topicKey: info.q.topicKey,
+        topicName: info.q.topicName || '',
+        title: info.q.subtopic || info.q.topicName || 'Câu hỏi',
+        reason: 'Đã làm sai trong lượt luyện gần đây',
+        daysOverdue: Math.max(0, daysSince - intervalDays),
+        intervalDays: intervalDays,
+        nanoId: info.q.nanoId
+      };
+    }).sort(function(a, b){ return b.daysOverdue - a.daysOverdue; }).slice(0, 15);
+
+    return result;
   }
 
   function getWeakestNanoPoints(map, n){
@@ -524,14 +609,16 @@
       return res;
     },
     // Bản đồ kiến thức mức nano — truyền vào mastery theo chuyên đề của 1 học
-    // sinh cụ thể (vd. student.mastery) để làm mốc tính; bỏ trống thì dùng
-    // defaultMastery chung của từng chuyên đề.
-    getKnowledgeMap: function(studentMasteryByTopic){
-      return buildKnowledgeMap(studentMasteryByTopic);
+    // sinh cụ thể (vd. student.mastery) để làm mốc tính, và (tuỳ chọn)
+    // realNanoMastery tính từ lịch sử làm bài thật (student.nanoMastery) để
+    // dùng số liệu thật thay vì suy diễn khi đã có.
+    getKnowledgeMap: function(studentMasteryByTopic, realNanoMastery){
+      return buildKnowledgeMap(studentMasteryByTopic, realNanoMastery);
     },
-    getWeakestNanoPoints: function(studentMasteryByTopic, n){
-      return getWeakestNanoPoints(buildKnowledgeMap(studentMasteryByTopic), n);
-    }
+    getWeakestNanoPoints: function(studentMasteryByTopic, n, realNanoMastery){
+      return getWeakestNanoPoints(buildKnowledgeMap(studentMasteryByTopic, realNanoMastery), n);
+    },
+    computeStudentStatsFromAttempts: computeStudentStatsFromAttempts
   };
 
 })(window);
