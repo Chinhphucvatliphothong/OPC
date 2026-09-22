@@ -135,6 +135,55 @@ async function loadAttempts(studentId, max){
   }
 }
 
+// ================= Hình ảnh minh họa =================
+// Ảnh được nạp ở CẤP ĐỀ THI (giáo viên chọn nhiều file cùng lúc khi upload
+// .tex), không gắn trực tiếp theo từng câu trong Firestore. parseTexBank
+// (admin.html) chỉ ghi lại TÊN FILE mà mỗi câu tham chiếu qua lệnh
+// \includegraphics{...} (q.images: mảng tên file). Ở đây ta khớp tên file đó
+// với danh sách ảnh thật của đề (exam.images: {name, url/dataUrl, ...}) để
+// lấy đúng dữ liệu ảnh (dataURL đã nén) hiển thị cho học sinh.
+// Nếu đề có nhiều ảnh/dung lượng lớn, saveExamDoc (admin.html) đã tách ảnh
+// sang subcollection "images" — cần tải riêng trước khi khớp tên.
+async function loadExamImages(examId, imagesMeta){
+  if(!imagesMeta || !imagesMeta.length) return [];
+  if(imagesMeta[0] && (imagesMeta[0].url || imagesMeta[0].dataUrl)) return imagesMeta;
+  try{
+    var snap = await getDocs(collection(db, 'de_thi', examId, 'images'));
+    var map = {};
+    snap.forEach(function(d){ map[d.id] = d.data(); });
+    return imagesMeta.map(function(im, idx){
+      var full = map['img_' + idx] || map[im.subdocId];
+      return full ? Object.assign({}, im, full) : im;
+    });
+  }catch(e){
+    console.warn('Lỗi tải subcollection images:', e);
+    return imagesMeta;
+  }
+}
+
+function normalizeImgName(name){
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^.*[\\/]/, '') // bỏ đường dẫn thư mục nếu có
+    .replace(/\.[a-z0-9]+$/i, ''); // bỏ phần đuôi file để so khớp linh hoạt hơn
+}
+
+// Trả về mảng {name, url} các ảnh mà 1 câu hỏi tham chiếu, dựa trên danh sách
+// tên file trong q.images và danh sách ảnh thật đã tải của đề thi.
+function resolveQuestionImages(q, examImages){
+  var refs = q.images || [];
+  if(!refs.length || !examImages || !examImages.length) return [];
+  var out = [];
+  refs.forEach(function(ref){
+    var key = normalizeImgName(ref);
+    var found = examImages.filter(function(im){ return normalizeImgName(im.name) === key; })[0];
+    var url = found ? (found.url || found.dataUrl) : '';
+    if(url) out.push({ name: ref, url: url });
+  });
+  return out;
+}
+
 // ================= Ngân hàng đề thật =================
 // Chuyển 1 câu hỏi ở định dạng admin.html (parseTexBank) sang định dạng mà
 // prepscholar.js / prepscholar-ui.js đang render (xem QUESTION_BANK mẫu).
@@ -155,6 +204,7 @@ function transformQuestion(q, examMeta){
     level: q.level || 'M2',
     stem: q.stem || '',
     loiGiai: q.loigiai || '',
+    images: resolveQuestionImages(q, examMeta.images),
     examTitle: examMeta.title,
     examId: examMeta.examId,
     baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
@@ -178,14 +228,18 @@ function transformQuestion(q, examMeta){
 async function loadRealQuestionBank(){
   try{
     var snap = await getDocs(query(collection(db, 'de_thi'), orderBy('createdAt', 'desc')));
+    var docs = [];
+    snap.forEach(function(d){ docs.push(d); });
     var all = [];
-    snap.forEach(function(d){
+    for(var i = 0; i < docs.length; i++){
+      var d = docs[i];
       var exam = d.data() || {};
-      var meta = { examId: d.id, title: exam.title || '' };
+      var resolvedImages = await loadExamImages(d.id, exam.images);
+      var meta = { examId: d.id, title: exam.title || '', images: resolvedImages };
       (exam.questions || []).forEach(function(q){
         all.push(transformQuestion(q, meta));
       });
-    });
+    }
     return all;
   }catch(e){
     console.error('Lỗi tải ngân hàng đề thật:', e);

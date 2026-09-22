@@ -65,6 +65,24 @@
     return text;
   }
 
+  // Hiển thị hình ảnh minh họa (sơ đồ, đồ thị...) đính kèm câu hỏi — dữ liệu
+  // do opc-live-data.js khớp từ tên file \includegraphics với ảnh thật của đề
+  // thi (xem resolveQuestionImages). q.images: mảng {name, url (dataURL)}.
+  function renderQuestionImages(q){
+    var imgs = (q && q.images) || [];
+    if(!imgs.length) return null;
+    return h('div', { className: 'ps-q-images', style: { display: 'flex', flexWrap: 'wrap', gap: '10px', margin: '10px 0' } },
+      imgs.map(function(im, idx){
+        return h('img', {
+          key: idx,
+          src: im.url,
+          alt: im.name || ('Hình minh họa ' + (idx + 1)),
+          style: { maxWidth: '100%', maxHeight: '320px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }
+        });
+      })
+    );
+  }
+
   function PrepScholarApp(){
     // Lưới an toàn: nếu vì lý do gì đó (mạng chậm, script bị chặn...) KaTeX
     // chưa sẵn sàng ngay lần render đầu, tự động re-render lại khi nó đã load
@@ -666,6 +684,7 @@
                 h('div', { style: { marginTop: '10px', fontSize: '0.92rem', lineHeight: 1.6 } },
                   renderLatexText(q.stem)
                 ),
+                renderQuestionImages(q),
 
                 h('div', { className: 'ps-solution-body' },
                   h('div', { style: { fontWeight: 700, color: 'var(--accent-strong)', marginBottom: '6px' } }, '💡 Lời giải chi tiết:'),
@@ -745,6 +764,7 @@
                 h('div', { className: 'ps-q-stem' },
                   renderLatexText(curQ.stem)
                 ),
+                renderQuestionImages(curQ),
 
                 // Choice logic based on Part
                 curQ.part === 'I' ? (

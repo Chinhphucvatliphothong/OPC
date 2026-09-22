@@ -1044,9 +1044,15 @@
             if(sMatch) shortansVal = sMatch[1].trim();
           }
 
-          // Bóc tách lời giải
-          var loigiaiMatch = full.match(/\\loigiai\{([\s\S]*?)\}\s*(?:\\end\{ex\}|$)/);
-          var loigiai = loigiaiMatch ? loigiaiMatch[1].trim() : '';
+          // Bóc tách lời giải — dùng extractBraceBlocks (nhận diện đúng độ sâu
+          // ngoặc nhọn) thay vì regex "không tham lam" cũ: lời giải vật lí gần
+          // như luôn chứa lệnh LaTeX có ngoặc lồng nhau (\frac{a}{b}, \sqrt{x},
+          // \text{...}...) nên regex cũ bị cắt cụt tại dấu "}" đóng đầu tiên
+          // gặp được (thường là ngoặc con bên trong), làm hỏng cú pháp và khiến
+          // KaTeX render lỗi -> hiển thị lại dạng LaTeX thô cho học sinh.
+          var loigiaiIdx = full.indexOf('\\loigiai');
+          var loigiaiBlocks = loigiaiIdx > -1 ? extractBraceBlocks(full, loigiaiIdx + 8, 1) : [];
+          var loigiai = loigiaiBlocks.length ? loigiaiBlocks[0].trim() : '';
 
           // Bóc tách tên hình ảnh
           var imgMatches = [];
