@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Quy tắc bảo mật Firebase Storage cho project dùng chung với
+// "Chinh Phục Vật Lý". Chỉ thêm block "de-thi/**" — không đụng đến các
+// đường dẫn khác mà "Chinh Phục Vật Lý" đã có sẵn. Nếu project đã có rules
+// riêng, dán block "match /de-thi/{allPaths=**}" vào rules hiện có, trong
+// cùng "match /b/{bucket}/o { ... }".
+//
+// Nơi dán: Firebase Console → Storage → tab "Rules" → Publish.
+// Lưu ý: Storage cần gói Blaze (trả theo dùng) mới bật được — vẫn có hạn
+// mức miễn phí hàng tháng, chỉ tính phí khi vượt.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isOpcAdmin() {
+      return request.auth != null &&
+        request.auth.token.email in ['vovanthai2018tv@gmail.com', 'chinhphucvatliphothong@gmail.com'];
+    }
+
+    match /de-thi/{allPaths=**} {
+      allow read, write: if isOpcAdmin();
+    }
+  }
+}

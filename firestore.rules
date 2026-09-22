@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Quy tắc bảo mật Firestore cho project dùng chung với "Chinh Phục Vật Lý".
+// Chỉ thêm 2 collection của OPC (students, de_thi) — không đụng đến các
+// collection khác mà "Chinh Phục Vật Lý" đã có sẵn. Nếu project đã có rules
+// riêng, dán 2 block "match" bên trong (không phải toàn bộ file) vào rules
+// hiện có, trong cùng "match /databases/{database}/documents { ... }".
+//
+// Nơi dán: Firebase Console → Firestore Database → tab "Rules" → Publish.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Chỉ (các) email trong danh sách này được đọc/ghi dữ liệu OPC.
+    // Thêm email nếu sau này có thêm admin (vd. trợ giảng).
+    function isOpcAdmin() {
+      return request.auth != null &&
+        request.auth.token.email in ['vovanthai2018tv@gmail.com', 'chinhphucvatliphothong@gmail.com'];
+    }
+
+    match /students/{studentId} {
+      allow read, write: if isOpcAdmin();
+    }
+
+    match /de_thi/{examId} {
+      allow read, write: if isOpcAdmin();
+    }
+  }
+}
