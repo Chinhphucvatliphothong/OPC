@@ -264,6 +264,72 @@
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+
+/* Bản đồ kiến thức mức nano (mô hình Squirrel AI) */
+.ps-nano-weak-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ps-nano-weak-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+.ps-nano-weak-name { flex: 1; font-size: 0.85rem; color: var(--ink); min-width: 0; }
+.ps-nano-weak-sub { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+.ps-nano-weak-pct {
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  flex: none;
+}
+.ps-nano-weak-pct.critical { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical); }
+.ps-nano-weak-pct.warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
+.ps-nano-weak-pct.good { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+
+.ps-nano-map { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; }
+.ps-nano-topic {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.ps-nano-topic-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Literata", serif;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.ps-nano-topic-mastery { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem; color: var(--muted); font-weight: 700; }
+.ps-nano-bai-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.ps-nano-bai { }
+.ps-nano-bai-name { font-size: 0.8rem; color: var(--ink-2); font-weight: 600; margin-bottom: 6px; }
+.ps-nano-tile-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.ps-nano-tile {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  cursor: default;
+  position: relative;
+}
+.ps-nano-tile.crit { background: color-mix(in srgb, var(--critical) 55%, transparent); border: 1px solid var(--critical); }
+.ps-nano-tile.warn { background: color-mix(in srgb, var(--warning) 45%, transparent); border: 1px solid var(--warning); }
+.ps-nano-tile.good { background: color-mix(in srgb, var(--good) 40%, transparent); border: 1px solid var(--good); }
+@media (max-width: 480px) {
+  .ps-nano-tile { width: 26px; height: 26px; }
+}
 .ps-drill-btn {
   padding: 8px 16px;
   border-radius: 8px;

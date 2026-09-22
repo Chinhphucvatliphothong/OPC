@@ -260,6 +260,35 @@
   .eb-matrix-val{ font-family:"IBM Plex Mono",monospace; font-size:1.2rem; font-weight:700; }
   .eb-matrix-lbl{ font-size:0.72rem; color:var(--ink-2); margin-top:2px; font-weight:600; }
 
+  /* Nano-point tagging (phân rã kiến thức mức nhỏ nhất khi nạp đề) */
+  .eb-nano-panel{ margin-top:16px; padding-top:16px; border-top:1px dashed var(--line); }
+  .eb-nano-panel-title{ font-size:0.9rem; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:6px; }
+  .eb-nano-panel-sub{ font-size:0.78rem; color:var(--muted); margin-top:4px; line-height:1.55; max-width:62ch; }
+  .eb-nano-bulk{ display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .eb-nano-bulk label{ font-size:0.8rem; font-weight:600; color:var(--ink-2); }
+  .eb-nano-bulk select{ padding:6px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:0.82rem; }
+  .eb-nano-progress{ font-size:0.76rem; color:var(--accent-strong); font-weight:700; margin-top:10px; }
+  .eb-nano-list{ max-height:420px; overflow-y:auto; margin-top:10px; padding-right:4px; }
+  .eb-nano-row{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-top:10px; }
+  .eb-nano-row-head{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .eb-nano-match{ font-size:0.74rem; font-weight:700; color:var(--good, #0ca30c); }
+  .eb-nano-nomatch{ font-size:0.74rem; font-weight:700; color:var(--warning, #b8790a); }
+  .eb-nano-stem{ font-size:0.82rem; color:var(--ink-2); margin-top:6px; line-height:1.5; }
+  .eb-nano-controls{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .eb-nano-bai-select{ flex:1; min-width:200px; padding:6px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:0.8rem; }
+  .eb-nano-ai-btn{ font-size:0.76rem; font-weight:600; padding:6px 10px; border-radius:7px; border:1px dashed var(--line); background:var(--surface-2); color:var(--muted); cursor:not-allowed; white-space:nowrap; }
+  .eb-nano-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+  .eb-nano-chip{ font-size:0.76rem; padding:5px 10px; border-radius:999px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink-2); cursor:pointer; font-family:"Be Vietnam Pro",sans-serif; }
+  .eb-nano-chip:hover{ border-color:var(--ink-2); }
+  .eb-nano-chip.active{ background:color-mix(in srgb, var(--accent) 16%, transparent); border-color:var(--accent); color:var(--accent-strong); font-weight:700; }
+
+  /* Nano preview trong báo cáo phụ huynh (mẫu minh hoạ, chưa lấy dữ liệu thật) */
+  .sm-nano-preview-row{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+  .sm-nano-preview-name{ font-size:0.78rem; color:var(--ink-2); flex:1; min-width:0; }
+  .sm-nano-preview-bar{ width:90px; height:7px; border-radius:4px; background:var(--surface-2); overflow:hidden; flex:none; }
+  .sm-nano-preview-fill{ height:100%; border-radius:4px; }
+  .sm-nano-preview-pct{ font-family:"IBM Plex Mono",monospace; font-size:0.74rem; font-weight:700; color:var(--ink-2); width:34px; text-align:right; flex:none; }
+
   /* Question list in modal */
   .eb-q-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px; margin-top:12px; transition:border-color 150ms; }
   .eb-q-card:hover{ border-color:var(--ink-2); }
@@ -357,12 +386,13 @@
   //    việc giấu mấy dòng config này.
   // ============================================================
   var firebaseConfig = {
-    apiKey: "AIzaSyBMut5X-5Mt7Mg5hXxubXNCfGWvCkE7qWw",
-    authDomain: "gen-lang-client-0770934346.firebaseapp.com",
-    projectId: "gen-lang-client-0770934346",
-    storageBucket: "gen-lang-client-0770934346.firebasestorage.app",
-    messagingSenderId: "982668083027",
-    appId: "1:982668083027:web:332b85f64bdabe4e3d6ba6"
+    apiKey: "AIzaSyDurMtOnC6ghLYFIRBteHL348i-D983oRk",
+    authDomain: "opcluyenthivatli.firebaseapp.com",
+    projectId: "opcluyenthivatli",
+    storageBucket: "opcluyenthivatli.firebasestorage.app",
+    messagingSenderId: "90488773349",
+    appId: "1:90488773349:web:4bd83994c72afe12dc920c",
+    measurementId: "G-T3W59KBK01"
   };
 
   // ============================================================
@@ -534,6 +564,7 @@
 })();
 </script>
 
+<script src="nano-map.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
@@ -1599,7 +1630,22 @@
           )
         );
 
+    // Ví dụ minh hoạ báo cáo phụ huynh theo nano-point (chưa lấy dữ liệu luyện tập thật của học sinh)
+    function pickNanoPreview(student){
+      if(!window.OPC_NANO || !window.OPC_NANO.NANO.length) return [];
+      var pts = window.OPC_NANO.NANO;
+      var sid = String((student && (student.id || student.name)) || 'hs');
+      var seed = 0;
+      for(var i=0;i<sid.length;i++) seed += sid.charCodeAt(i);
+      var idxs = [seed % pts.length, (seed*3+7) % pts.length, (seed*7+13) % pts.length, (seed*11+19) % pts.length];
+      return idxs.map(function(pi, i){
+        var p = pts[pi];
+        var pct = 28 + ((seed + i*17) % 45); // minh hoạ 28-72%
+        return { name: p.name, pct: pct };
+      });
+    }
     var selKpi = selected ? calculateStudentKPIs(selected) : null;
+    var nanoPreview = selected ? pickNanoPreview(selected) : [];
     var detailModal = selected ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget) setSelected(null); }},
       h('div',{className:'sm-modal', role:'dialog', 'aria-modal':'true', 'aria-label':'Hồ sơ học sinh'},
         h('div',{className:'sm-modal-head'}, h('h3',null,'Hồ sơ học sinh & KPI'),
@@ -1630,6 +1676,19 @@
           h('p',null, h('b',null,'Họ tên: '), selected.parentName || 'Chưa cập nhật'),
           h('p',null, h('b',null,'SĐT / Zalo: '), selected.parentPhone || 'Chưa cập nhật'),
           h('p',null, h('b',null,'Email: '), selected.parentEmail || 'Chưa cập nhật')),
+        nanoPreview.length ? h('div',{className:'sm-info-block'},
+          h('div',{className:'sm-info-title'}, '🧬 Xem trước báo cáo tuần theo nano-point (đang xây dựng)'),
+          h('p',{style:{color:'var(--muted)', fontSize:'0.78rem', marginBottom:'6px', lineHeight:'1.55'}},
+            'Bản báo cáo mới sẽ liệt kê đúng những nano-point học sinh còn yếu thay vì chỉ nêu chung một chuyên đề — dữ liệu bên dưới là ví dụ minh hoạ định dạng, chưa lấy từ kết quả luyện tập thật.'),
+          nanoPreview.map(function(n, i){
+            var color = n.pct < 50 ? '#d03b3b' : (n.pct < 75 ? '#b8790a' : '#0ca30c');
+            return h('div',{key:i, className:'sm-nano-preview-row'},
+              h('span',{className:'sm-nano-preview-name'}, n.name),
+              h('div',{className:'sm-nano-preview-bar'}, h('div',{className:'sm-nano-preview-fill', style:{width:n.pct+'%', background:color}})),
+              h('span',{className:'sm-nano-preview-pct'}, n.pct+'%')
+            );
+          })
+        ) : null,
         h('div',{style:{marginTop:'18px', display:'flex', gap:'10px'}},
           h('button',{type:'button', className:'btn btn-danger', onClick:function(){ handleDelete(selected); }}, 'Xoá học sinh'),
           h('button',{type:'button', className:'btn btn-secondary', style:{flex:1, justifyContent:'center'}, onClick:function(){ setSelected(null); }}, 'Đóng'))
@@ -1866,6 +1925,41 @@
     var progressState = React.useState(0); var progress = progressState[0], setProgress = progressState[1];
     var uploadMsgState = React.useState(''); var uploadMsg = uploadMsgState[0], setUploadMsg = uploadMsgState[1];
     var formErrState = React.useState(''); var formErr = formErrState[0], setFormErr = formErrState[1];
+    // Gắn nano-point cho từng câu hỏi vừa bóc tách (phân rã kiến thức mức nhỏ nhất, mô hình Squirrel AI)
+    var nanoRowsState = React.useState({}); var nanoRows = nanoRowsState[0], setNanoRows = nanoRowsState[1];
+
+    function toggleNano(qIdx, nanoId){
+      setNanoRows(function(prev){
+        var next = Object.assign({}, prev);
+        var row = Object.assign({}, next[qIdx] || { baiKey:'', nanoIds:[] });
+        var ids = (row.nanoIds || []).slice();
+        var i = ids.indexOf(nanoId);
+        if(i > -1) ids.splice(i, 1); else ids.push(nanoId);
+        row.nanoIds = ids;
+        next[qIdx] = row;
+        return next;
+      });
+    }
+    function setRowBai(qIdx, baiKey){
+      setNanoRows(function(prev){
+        var next = Object.assign({}, prev);
+        next[qIdx] = { baiKey: baiKey, nanoIds: [] };
+        return next;
+      });
+    }
+    function bulkApplyBai(baiKey){
+      if(!window.OPC_NANO) return;
+      var nanoIds = window.OPC_NANO.getNanoByBai(baiKey).map(function(n){ return n.id; });
+      setNanoRows(function(prev){
+        var next = Object.assign({}, prev);
+        Object.keys(next).forEach(function(k){
+          if(!next[k] || !next[k].nanoIds || !next[k].nanoIds.length){
+            next[k] = { baiKey: baiKey, nanoIds: nanoIds.slice() };
+          }
+        });
+        return next;
+      });
+    }
 
     React.useEffect(function(){
       var unsub = OPCref.examBank.subscribe(function(snap){
@@ -1917,11 +2011,12 @@
       setFormErr('');
       setProgress(0);
       setUploadMsg('');
+      setNanoRows({});
     }
 
     async function onPickTex(e){
       var f = e.target.files && e.target.files[0];
-      if(!f){ setTexFile(null); setParsedAnalysis(null); return; }
+      if(!f){ setTexFile(null); setParsedAnalysis(null); setNanoRows({}); return; }
       if(!/\.tex$/i.test(f.name)){ setFormErr('File đề phải có đuôi .tex.'); e.target.value=''; return; }
       if(f.size > MAX_TEX_BYTES){ setFormErr('File .tex vượt quá ' + fmtBytes(MAX_TEX_BYTES) + '.'); e.target.value=''; return; }
       setFormErr(''); setTexFile(f);
@@ -1929,6 +2024,16 @@
         var txt = await f.text();
         var analysis = parseTexBank(txt, f.name);
         setParsedAnalysis(analysis);
+
+        // Gợi ý sẵn "Bài" khớp nhất cho từng câu (dựa trên tag đã ghi trong .tex),
+        // chưa tự chọn nano-point cụ thể — giáo viên xác nhận / thu hẹp lại.
+        var rows = {};
+        (analysis.questions || []).forEach(function(q, idx){
+          var sug = (window.OPC_NANO && window.OPC_NANO.suggestForParsedQuestion) ? window.OPC_NANO.suggestForParsedQuestion(q) : { bai:null };
+          rows[idx] = { baiKey: sug.bai ? sug.bai.key : '', nanoIds: [] };
+        });
+        setNanoRows(rows);
+
         if(!form.title.trim() && analysis.title){
           setField('title', analysis.title);
         }
@@ -1978,6 +2083,15 @@
         setProgress(75);
         setUploadMsg('Đang lưu vào ngân hàng đề Firebase Firestore...');
 
+        // Gộp nano-point đã gắn (thủ công/gợi ý khớp chuỗi) vào từng câu hỏi trước khi lưu.
+        var questionsWithNano = (analysis ? analysis.questions : []).map(function(q, idx){
+          var row = nanoRows[idx] || { baiKey:'', nanoIds:[] };
+          return Object.assign({}, q, {
+            nanoBaiKey: row.baiKey || '',
+            nanoPointIds: row.nanoIds || []
+          });
+        });
+
         await OPCref.examBank.saveExamDoc(examRef, {
           title: form.title.trim(),
           chuDe: form.chuDe,
@@ -1990,7 +2104,7 @@
           },
           images: images,
           stats: analysis ? analysis.stats : null,
-          questions: analysis ? analysis.questions : [],
+          questions: questionsWithNano,
           createdByEmail: (window.OPC_currentUser && window.OPC_currentUser.email) || ''
         });
 
@@ -2293,6 +2407,68 @@
               ),
               (parsedAnalysis.stats.topics && parsedAnalysis.stats.topics.length) ? h('div',{style:{marginTop:'10px', display:'flex', gap:'5px', flexWrap:'wrap'}},
                 parsedAnalysis.stats.topics.map(function(t){ return h('span',{key:t, className:'eb-tag-topic'}, '📌 ' + t); })
+              ) : null,
+
+              // ===== Gắn nano-point cho từng câu (phân rã kiến thức mức nhỏ nhất) =====
+              window.OPC_NANO ? h('div',{className:'eb-nano-panel'},
+                h('div',{className:'eb-nano-panel-title'}, '🧬 Gắn nano-point cho từng câu (mô hình Squirrel AI)'),
+                h('p',{className:'eb-nano-panel-sub'}, 'Điểm yếu của học sinh sẽ hiện đúng tới từng nano-point này thay vì chung chung theo cả chương — giúp việc chẩn đoán không còn phụ thuộc vào kinh nghiệm chấm bài của một giáo viên giỏi. Hiện chưa nối AI thật, hệ thống chỉ gợi ý "Bài" khớp gần nhất theo tag đã ghi trong .tex; thầy xác nhận / chọn tay nano-point cho từng câu bên dưới.'),
+
+                h('div',{className:'eb-nano-bulk'},
+                  h('label',null,'Gắn nhanh cho các câu còn thiếu:'),
+                  h('select',{value:'', onChange:function(e){ if(e.target.value) bulkApplyBai(e.target.value); e.target.value=''; }},
+                    h('option',{value:''}, '— chọn Bài để áp dụng hàng loạt —'),
+                    window.OPC_NANO.CHU_DE.map(function(cd){
+                      return h('optgroup',{key:cd.key, label:cd.icon + ' ' + cd.name},
+                        window.OPC_NANO.getBaiByChuDe(cd.key).map(function(b){
+                          return h('option',{key:b.key, value:b.key}, b.name);
+                        })
+                      );
+                    })
+                  )
+                ),
+
+                h('div',{className:'eb-nano-progress'},
+                  Object.keys(nanoRows).filter(function(k){ return nanoRows[k] && nanoRows[k].nanoIds && nanoRows[k].nanoIds.length; }).length +
+                  '/' + parsedAnalysis.stats.total + ' câu đã gắn ít nhất 1 nano-point'),
+
+                h('div',{className:'eb-nano-list'},
+                  parsedAnalysis.questions.map(function(q, idx){
+                    var row = nanoRows[idx] || { baiKey:'', nanoIds:[] };
+                    var pool = row.baiKey ? window.OPC_NANO.getNanoByBai(row.baiKey) : [];
+                    var matchedBai = row.baiKey ? window.OPC_NANO.getBai(row.baiKey) : null;
+                    var stemPreview = (q.stem || '').replace(/\s+/g,' ').trim();
+                    if(stemPreview.length > 140) stemPreview = stemPreview.slice(0, 140) + '…';
+                    return h('div',{key:'nano-'+idx, className:'eb-nano-row'},
+                      h('div',{className:'eb-nano-row-head'},
+                        h('span',{className:'eb-q-idx'}, 'Câu ' + (idx+1)),
+                        h('span',{className:'eb-level-badge eb-level-' + String(q.level||'m2').toLowerCase()}, q.level),
+                        matchedBai ? h('span',{className:'eb-nano-match'}, '✓ khớp: ' + matchedBai.name) : h('span',{className:'eb-nano-nomatch'}, '⚠️ chưa khớp danh mục — chọn Bài bên dưới')
+                      ),
+                      stemPreview ? h('div',{className:'eb-nano-stem'}, stemPreview) : null,
+                      h('div',{className:'eb-nano-controls'},
+                        h('select',{className:'eb-nano-bai-select', value:row.baiKey, onChange:function(e){ setRowBai(idx, e.target.value); }},
+                          h('option',{value:''}, '— chọn Bài —'),
+                          window.OPC_NANO.CHU_DE.map(function(cd){
+                            return h('optgroup',{key:cd.key, label:cd.icon + ' ' + cd.name},
+                              window.OPC_NANO.getBaiByChuDe(cd.key).map(function(b){
+                                return h('option',{key:b.key, value:b.key}, b.name);
+                              })
+                            );
+                          })
+                        ),
+                        h('button',{type:'button', className:'eb-nano-ai-btn', disabled:true,
+                          title:'Sẽ tự động đọc nội dung câu hỏi và đề xuất nano-point khi kết nối AI ở bản cập nhật sau.'}, '🪄 AI gợi ý (sắp có)')
+                      ),
+                      pool.length ? h('div',{className:'eb-nano-chips'},
+                        pool.map(function(n){
+                          var active = row.nanoIds.indexOf(n.id) > -1;
+                          return h('button',{key:n.id, type:'button', className:'eb-nano-chip' + (active?' active':''), onClick:function(){ toggleNano(idx, n.id); }}, (active?'✓ ':'') + n.name);
+                        })
+                      ) : null
+                    );
+                  })
+                )
               ) : null
             ) : null,
 

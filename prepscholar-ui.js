@@ -361,6 +361,11 @@
       h('div', { className: 'ps-nav-tabs' },
         h('button', {
           type: 'button',
+          className: 'ps-tab-btn ' + (tab === 'map' ? 'active' : ''),
+          onClick: function(){ setTab('map'); setExamSession(null); }
+        }, '🧬 Bản đồ kiến thức'),
+        h('button', {
+          type: 'button',
           className: 'ps-tab-btn ' + (tab === 'drill' ? 'active' : ''),
           onClick: function(){ setTab('drill'); setExamSession(null); }
         }, '🎯 Luyện tập trọng tâm (Focused Drill)'),
@@ -601,7 +606,78 @@
       ) : (
         // MÀN HÌNH TỔNG QUAN CÁC TAB
         (function(){
-          if(tab === 'drill'){
+          if(tab === 'map'){
+            // TAB "BẢN ĐỒ KIẾN THỨC" — phân rã mức nano, mô phỏng cơ chế Squirrel AI:
+            // đo & hiển thị mức thành thạo tới từng đơn vị kiến thức nhỏ nhất,
+            // để việc chẩn đoán điểm yếu không còn phụ thuộc vào kinh nghiệm
+            // chấm bài của một giáo viên giỏi.
+            var hasNanoMap = window.PrepScholarEngine.getKnowledgeMap;
+            if(!hasNanoMap){
+              return h('div', { style: { fontSize: '0.86rem', color: 'var(--muted)' } }, 'Chưa nạp được dữ liệu bản đồ kiến thức.');
+            }
+            var knowledgeMap = window.PrepScholarEngine.getKnowledgeMap(student.mastery);
+            var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5);
+
+            return h('div', null,
+              h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+                  h('span', { style: { fontSize: '1.4rem' } }, '🧬'),
+                  h('div', null,
+                    h('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Kiến thức được phân rã đến mức nhỏ nhất (nano-point)'),
+                    h('p', { style: { margin: '3px 0 0', fontSize: '0.84rem', color: 'var(--ink-2)', lineHeight: 1.55 } },
+                      'Mỗi ô vuông bên dưới là một đơn vị kiến thức nhỏ nhất mà hệ thống đo riêng — không còn chấm chung theo cả chương. Ô đỏ = còn yếu, ô vàng = đang cải thiện, ô xanh = đã vững.'
+                    )
+                  )
+                )
+              ),
+
+              weakest.length ? h('div', { style: { marginBottom: '18px' } },
+                h('h3', { style: { fontFamily: 'Literata, serif', fontSize: '1.05rem', marginBottom: '4px' } }, '5 nano-point yếu nhất hiện tại'),
+                h('p', { style: { fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '10px' } }, 'Hệ thống tự xếp hạng — không cần giáo viên rà tay từng học sinh.'),
+                h('div', { className: 'ps-nano-weak-list' },
+                  weakest.map(function(n){
+                    var cls = n.mastery < 50 ? 'critical' : (n.mastery < 75 ? 'warning' : 'good');
+                    return h('div', { key: n.id, className: 'ps-nano-weak-row' },
+                      h('div', { style: { flex: 1, minWidth: 0 } },
+                        h('div', { className: 'ps-nano-weak-name' }, n.name),
+                        h('div', { className: 'ps-nano-weak-sub' }, n.topicName + ' · ' + n.baiName)
+                      ),
+                      h('span', { className: 'ps-nano-weak-pct ' + cls }, n.mastery + '%'),
+                      h('button', {
+                        type: 'button',
+                        className: 'btn btn-secondary ps-drill-btn',
+                        onClick: function(){ setTab('drill'); startDrill(n.topicKey, 5); }
+                      }, 'Luyện ngay')
+                    );
+                  })
+                )
+              ) : null,
+
+              h('div', { className: 'ps-nano-map' },
+                knowledgeMap.map(function(t){
+                  return h('div', { key: t.topicKey, className: 'ps-nano-topic' },
+                    h('div', { className: 'ps-nano-topic-head' },
+                      h('span', null, t.icon + ' ' + t.topicName),
+                      h('span', { className: 'ps-nano-topic-mastery' }, t.mastery + '%')
+                    ),
+                    h('div', { className: 'ps-nano-bai-grid' },
+                      t.bais.map(function(b){
+                        return h('div', { key: b.key, className: 'ps-nano-bai' },
+                          h('div', { className: 'ps-nano-bai-name' }, b.name + ' · ' + b.mastery + '%'),
+                          h('div', { className: 'ps-nano-tile-row' },
+                            b.nanos.map(function(n){
+                              var cls = n.mastery < 50 ? 'crit' : (n.mastery < 75 ? 'warn' : 'good');
+                              return h('div', { key: n.id, className: 'ps-nano-tile ' + cls, title: n.name + ' — ' + n.mastery + '%' });
+                            })
+                          )
+                        );
+                      })
+                    )
+                  );
+                })
+              )
+            );
+          } else if(tab === 'drill'){
             // TAB 1: LUYỆN TẬP TRỌNG TÂM
             return h('div', null,
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },

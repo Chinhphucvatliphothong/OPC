@@ -417,6 +417,76 @@
     };
   }
 
+  // ============================================================
+  // Bản đồ kiến thức "nano" (mô hình Squirrel AI) — dựa trên danh mục
+  // chuẩn trong nano-map.js (window.OPC_NANO), nếu file đó đã được nạp.
+  // Mỗi câu trong QUESTION_BANK được gắn 1 nano-point cụ thể (chọn theo
+  // "Bài"/subtopic sẵn có + mức độ M1-M4 của câu, không cần sửa lại từng
+  // câu thủ công). Mastery của từng nano-point hiện là số liệu minh hoạ
+  // (suy ra từ defaultMastery của cả chuyên đề + dao động theo id) —
+  // CHỖ CẮM DỮ LIỆU THẬT sau này: thay hàm getNanoMastery() bằng số liệu
+  // tổng hợp từ lịch sử làm bài thật của từng học sinh trên Firestore.
+  // ============================================================
+  function hashStr(s){
+    var h = 0;
+    s = String(s || '');
+    for(var i = 0; i < s.length; i++){ h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+    return h;
+  }
+
+  function getNanoMastery(nanoId, baseMastery){
+    var base = (baseMastery != null) ? baseMastery : 60;
+    var variance = (hashStr(nanoId) % 30) - 15; // dao động -15..+14 quanh mức trung bình chuyên đề
+    return Math.max(5, Math.min(99, base + variance));
+  }
+
+  // Gắn nanoId cho từng câu mẫu trong QUESTION_BANK dựa trên subtopic đã có
+  // sẵn (subtopic hiện dùng đúng tên "Bài" trong danh mục nano-map.js).
+  // Câu mức M1/M2 gắn vào nano "khái niệm/công thức" (đầu danh sách), câu
+  // mức M3/M4 gắn vào nano "bài toán tổng hợp" (cuối danh sách).
+  (function assignNanoToSeedQuestions(){
+    if(!window.OPC_NANO) return;
+    QUESTION_BANK.forEach(function(q){
+      if(q.nanoId) return;
+      var bai = window.OPC_NANO.findBaiByText(q.subtopic, q.topicKey);
+      if(!bai) return;
+      var nanos = window.OPC_NANO.getNanoByBai(bai.key);
+      if(!nanos.length) return;
+      var pick = (q.level === 'M3' || q.level === 'M4') ? nanos[nanos.length - 1] : nanos[0];
+      q.baiKey = bai.key;
+      q.nanoId = pick.id;
+    });
+  })();
+
+  function buildKnowledgeMap(studentMasteryByTopic){
+    if(!window.OPC_NANO) return [];
+    return Object.keys(CHU_DE_MAP).map(function(topicKey){
+      var topic = CHU_DE_MAP[topicKey];
+      var base = (studentMasteryByTopic && studentMasteryByTopic[topicKey] != null) ? studentMasteryByTopic[topicKey] : topic.defaultMastery;
+      var bais = window.OPC_NANO.getBaiByChuDe(topicKey).map(function(b){
+        var nanos = window.OPC_NANO.getNanoByBai(b.key).map(function(n){
+          return { id: n.id, name: n.name, mastery: getNanoMastery(n.id, base) };
+        });
+        var avg = nanos.length ? Math.round(nanos.reduce(function(s, n){ return s + n.mastery; }, 0) / nanos.length) : base;
+        return { key: b.key, name: b.name, mastery: avg, nanos: nanos };
+      });
+      return { topicKey: topicKey, topicName: topic.name, icon: topic.icon, mastery: base, bais: bais };
+    });
+  }
+
+  function getWeakestNanoPoints(map, n){
+    var all = [];
+    map.forEach(function(t){
+      t.bais.forEach(function(b){
+        b.nanos.forEach(function(nn){
+          all.push(Object.assign({}, nn, { topicName: t.topicName, topicKey: t.topicKey, baiName: b.name }));
+        });
+      });
+    });
+    all.sort(function(a, b){ return a.mastery - b.mastery; });
+    return all.slice(0, n || 5);
+  }
+
   // Khởi tạo và xuất đối tượng sang window
   window.PrepScholarEngine = {
     CHU_DE_MAP: CHU_DE_MAP,
@@ -439,6 +509,15 @@
         res = res.concat(list.slice(0, 3));
       });
       return res;
+    },
+    // Bản đồ kiến thức mức nano — truyền vào mastery theo chuyên đề của 1 học
+    // sinh cụ thể (vd. student.mastery) để làm mốc tính; bỏ trống thì dùng
+    // defaultMastery chung của từng chuyên đề.
+    getKnowledgeMap: function(studentMasteryByTopic){
+      return buildKnowledgeMap(studentMasteryByTopic);
+    },
+    getWeakestNanoPoints: function(studentMasteryByTopic, n){
+      return getWeakestNanoPoints(buildKnowledgeMap(studentMasteryByTopic), n);
     }
   };
 
