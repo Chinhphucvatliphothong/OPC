@@ -934,19 +934,19 @@
         if(sm) titleCand = sm[1].trim();
       }
 
-      // Nhận diện phân đoạn đề thi chuẩn Bộ GD: Phần I, Phần II, Phần III
-      if(/\\tieuephan\{.*?I.*?\}/i.test(line) || /PHẦN\s+I\b/i.test(line)){
-        if(/\\tieuephan\{.*?III.*?\}/i.test(line) || /PHẦN\s+III\b/i.test(line)){
-          currentPart = 'III';
-        } else if(/\\tieuephan\{.*?II.*?\}/i.test(line) || /PHẦN\s+II\b/i.test(line)){
-          currentPart = 'II';
-        } else {
-          currentPart = 'I';
-        }
-      } else if(/\\tieuephan\{.*?II.*?\}/i.test(line) || /PHẦN\s+II\b/i.test(line)){
-        currentPart = 'II';
-      } else if(/\\tieuephan\{.*?III.*?\}/i.test(line) || /PHẦN\s+III\b/i.test(line)){
+      // Nhận diện phân đoạn đề thi chuẩn Bộ GD: Phần I, Phần II, Phần III.
+      // Hỗ trợ cả số La Mã lẫn số thường, có dấu lẫn không dấu (một số file
+      // .tex xuất ra bị mất dấu "PHẦN" → "PHAN") để tránh toàn bộ câu hỏi bị
+      // gộp nhầm vào Phần I khi file nguồn dùng cách ghi khác với mặc định.
+      var isPartIII = /\\tieuephan\{.*?III.*?\}/i.test(line) || /PH[ẦA]N\s*[:\-]?\s*(III|3)\b/i.test(line);
+      var isPartII = /\\tieuephan\{.*?II.*?\}/i.test(line) || /PH[ẦA]N\s*[:\-]?\s*(II|2)\b/i.test(line);
+      var isPartI = /\\tieuephan\{.*?I.*?\}/i.test(line) || /PH[ẦA]N\s*[:\-]?\s*(I|1)\b/i.test(line);
+      if(isPartIII){
         currentPart = 'III';
+      } else if(isPartII){
+        currentPart = 'II';
+      } else if(isPartI){
+        currentPart = 'I';
       }
 
       var tm = line.match(tagRegex);
@@ -2504,19 +2504,20 @@
     var examCodeState = React.useState('101'); var examCode = examCodeState[0], setExamCode = examCodeState[1];
 
     var generatedState = React.useState(null); var generated = generatedState[0], setGenerated = generatedState[1];
+    var loadErrState = React.useState(null); var loadErr = loadErrState[0], setLoadErr = loadErrState[1];
 
     React.useEffect(function(){
       var unsub1 = OPCref.students.subscribe(function(snap){
         var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
         setStudents(rows);
         if(rows.length && !selectedStudentId) setSelectedStudentId(rows[0].id);
-      }, function(){});
+      }, function(err){ console.error('Lỗi tải danh sách học sinh (Tạo đề cá nhân hóa):', err); setLoadErr(err); });
 
       var unsub2 = OPCref.examBank.subscribe(function(snap){
         var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
         setExams(rows);
         setLoading(false);
-      }, function(){ setLoading(false); });
+      }, function(err){ console.error('Lỗi tải ngân hàng đề (Tạo đề cá nhân hóa):', err); setLoadErr(err); setLoading(false); });
 
       return function(){ unsub1(); unsub2(); };
     }, []);
@@ -2531,6 +2532,21 @@
       });
       return pool;
     }, [exams]);
+
+    // Số câu hỏi khả dụng theo từng Phần, để hiện rõ cho giáo viên biết vì
+    // sao đề tạo ra có thể thiếu Phần II/III (ví dụ ngân hàng đề chưa có
+    // câu hỏi dạng đó, hoặc file .tex nạp lên chưa gắn đúng tag Phần).
+    var poolCounts = React.useMemo(function(){
+      var pool = selectedTopic !== 'Tất cả'
+        ? questionPool.filter(function(q){ return q.chuDe === selectedTopic || q.chuDeLon === selectedTopic; })
+        : questionPool;
+      return {
+        total: pool.length,
+        p1: pool.filter(function(q){ return q.part === 'I'; }).length,
+        p2: pool.filter(function(q){ return q.part === 'II'; }).length,
+        p3: pool.filter(function(q){ return q.part === 'III'; }).length
+      };
+    }, [questionPool, selectedTopic]);
 
     var student = students.filter(function(s){ return s.id === selectedStudentId; })[0];
 
@@ -2749,6 +2765,10 @@
     if(loading){
       return h('div',{className:'card'}, h('p',{style:{color:'var(--ink-2)'}}, 'Đang tải dữ liệu ngân hàng đề…'));
     }
+    if(loadErr){
+      return h('div',{className:'card'},
+        h('div',{className:'banner warn'}, h('span',null,'⚠️'), h('div',null, 'Không tải được dữ liệu: ', loadErr.message || loadErr.code)));
+    }
 
     return h('div',null,
       h('div',{className:'card'},
@@ -2760,6 +2780,19 @@
             )
           )
         ),
+
+        poolCounts.total === 0
+          ? h('div',{className:'banner warn'}, h('span',null,'⚠️'),
+              h('div',null, selectedTopic !== 'Tất cả'
+                ? 'Ngân hàng đề chưa có câu hỏi nào thuộc chuyên đề "' + selectedTopic + '". Hãy chọn "Tất cả chuyên đề" hoặc nạp thêm đề cho chuyên đề này.'
+                : 'Ngân hàng đề hiện chưa có câu hỏi nào — hãy nạp ít nhất 1 file .tex ở tab "Ngân hàng đề" trước khi tạo đề cá nhân hóa.'))
+          : h('div',{className:'gen-pool-counts', style:{fontSize:'0.78rem', color:'var(--ink-2)', background:'var(--surface-2)', borderRadius:'8px', padding:'8px 12px', margin:'10px 0'}},
+              h('b',null,'Số câu khả dụng trong ngân hàng'+(selectedTopic!=='Tất cả' ? ' (chuyên đề đã chọn)' : '')+': '),
+              'Phần I: ' + poolCounts.p1 + ' câu · Phần II: ' + poolCounts.p2 + ' câu · Phần III: ' + poolCounts.p3 + ' câu',
+              (poolCounts.p2 === 0 || poolCounts.p3 === 0)
+                ? h('div',{style:{marginTop:4, color:'var(--warning)'}}, '⚠️ Thiếu câu hỏi Phần ' + [poolCounts.p2===0?'II':null, poolCounts.p3===0?'III':null].filter(Boolean).join(' và ') + ' — đề tạo ra sẽ bị thiếu phần này. Kiểm tra lại file .tex đã nạp có đúng tag đánh dấu "PHẦN II/III" hay ngân hàng chỉ mới có câu trắc nghiệm Phần I.')
+                : null
+            ),
 
         h('div',{className:'gen-grid'},
           // Control column
@@ -2901,6 +2934,7 @@
     var OPCref = window.OPC;
     var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
+    var loadErrState = React.useState(null); var loadErr = loadErrState[0], setLoadErr = loadErrState[1];
     var drillModalState = React.useState(null); var drillModal = drillModalState[0], setDrillModal = drillModalState[1];
 
     React.useEffect(function(){
@@ -2908,7 +2942,7 @@
       var unsub = OPCref.students.subscribe(function(snap){
         var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
         setStudents(rows); setLoading(false);
-      }, function(err){ setLoading(false); });
+      }, function(err){ console.error('Lỗi tải danh sách học sinh (Giám sát thích ứng):', err); setLoadErr(err); setLoading(false); });
       return function(){ unsub(); };
     }, []);
 
@@ -3043,6 +3077,11 @@
         )
       )
     ) : null;
+
+    if(loadErr){
+      return h('div',{className:'card'},
+        h('div',{className:'banner warn'}, h('span',null,'⚠️'), h('div',null, 'Không tải được dữ liệu: ', loadErr.message || loadErr.code)));
+    }
 
     return h('div',null,
       h('div',{className:'eb-header-card'},

@@ -46,6 +46,23 @@
   }
 
   function PrepScholarApp(){
+    // Lưới an toàn: nếu vì lý do gì đó (mạng chậm, script bị chặn...) KaTeX
+    // chưa sẵn sàng ngay lần render đầu, tự động re-render lại khi nó đã load
+    // xong để công thức LaTeX luôn hiển thị đẹp thay vì mắc kẹt ở dạng thô.
+    var katexReadyState = React.useState(function(){ return !!window.katex; });
+    var katexReady = katexReadyState[0];
+    var setKatexReady = katexReadyState[1];
+    React.useEffect(function(){
+      if(katexReady) return;
+      var tries = 0;
+      var timer = setInterval(function(){
+        tries++;
+        if(window.katex){ setKatexReady(true); clearInterval(timer); }
+        else if(tries > 100){ clearInterval(timer); } // ~20s, bỏ cuộc nếu KaTeX không load được
+      }, 200);
+      return function(){ clearInterval(timer); };
+    }, [katexReady]);
+
     var studentState = React.useState(STUDENTS[0]);
     var student = studentState[0];
     var setStudent = studentState[1];
