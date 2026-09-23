@@ -43,26 +43,121 @@
     return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  // Render công thức LaTeX hoặc toán học
+  // ===== Render công thức LaTeX + lệnh định dạng văn bản LaTeX =====
+  // Lời giải/đề bài gốc không chỉ chứa công thức toán trong $...$ mà còn có
+  // các lệnh định dạng CHỮ THƯỜNG của LaTeX nằm NGOÀI dấu $ (vd:
+  // "...sau đây \textbf{không} làm thay đổi...") — bản renderLatexText cũ
+  // chỉ nhận diện $...$ nên các lệnh này lọt qua nguyên văn, hiển thị dạng
+  // thô "\textbf{không}" thay vì chữ in đậm. Bộ tách token dưới đây quét
+  // toàn bộ chuỗi (nhận diện đúng độ sâu ngoặc nhọn lồng nhau, giống
+  // extractBraceBlocks bên admin.html) để xử lý cả công thức ($...$ -> KaTeX)
+  // lẫn lệnh định dạng chữ (\textbf, \textit, \underline...) trong cùng một
+  // lượt, thay vì chỉ xử lý mỗi phần toán học.
+  var LATEX_TAG_MAP = {
+    textbf: 'b', bf: 'b', bold: 'b',
+    textit: 'i', it: 'i', emph: 'i',
+    underline: 'u', uline: 'u',
+    text: 'span', mathrm: 'span', mbox: 'span', textrm: 'span', textnormal: 'span'
+  };
+  // Lệnh không có nội dung hiển thị hữu ích (canh lề, khoảng cách, nhãn...) —
+  // bỏ hẳn cả lệnh lẫn tham số của nó thay vì hiện ra chữ thô.
+  var LATEX_DROP_CMDS = {
+    vspace: 1, hspace: 1, label: 1, ref: 1, noindent: 1, hfill: 1, vfill: 1,
+    centering: 1, allowbreak: 1, newpage: 1, clearpage: 1, quad: 1, qquad: 1,
+    par: 1, item: 1, small: 1, large: 1, normalsize: 1, sffamily: 1, rmfamily: 1
+  };
+  function tokenizeLatexRuns(str){
+    var i = 0, len = str.length;
+    function parseNodes(stopAtBrace){
+      var nodes = [];
+      var buf = '';
+      function flush(){ if(buf){ nodes.push({ type: 'text', value: buf }); buf = ''; } }
+      while(i < len){
+        var c = str[i];
+        if(stopAtBrace && c === '}'){ i++; break; }
+        if(c === '\\'){
+          var next = str[i + 1];
+          if(next === '\\'){ flush(); nodes.push({ type: 'br' }); i += 2; continue; }
+          if(next && '%&_$#{}~'.indexOf(next) !== -1){ buf += (next === '~' ? ' ' : next); i += 2; continue; }
+          var m = /^\\([a-zA-Z]+)\*?/.exec(str.slice(i));
+          if(m){
+            var cmdName = m[1];
+            var j = i + m[0].length;
+            while(str[j] === ' ') j++;
+            if(str[j] === '['){ // bỏ qua tham số tùy chọn [..]
+              var depth = 1; j++;
+              while(j < len && depth > 0){ if(str[j] === '[') depth++; else if(str[j] === ']') depth--; j++; }
+              while(str[j] === ' ') j++;
+            }
+            if(cmdName === 'begin' || cmdName === 'end'){
+              // \begin{...}/\end{...}: bỏ cả lệnh lẫn tên môi trường, không cố hiểu ngữ nghĩa
+              if(str[j] === '{'){
+                var d = 1; j++;
+                while(j < len && d > 0){ if(str[j] === '{') d++; else if(str[j] === '}') d--; j++; }
+              }
+              flush();
+              i = j;
+              continue;
+            }
+            if(str[j] === '{'){
+              flush();
+              i = j + 1;
+              var children = parseNodes(true);
+              if(!LATEX_DROP_CMDS[cmdName]) nodes.push({ type: 'cmd', name: cmdName, children: children });
+              continue;
+            }
+            // Lệnh không kèm { } (vd \quad, \item đứng riêng) — bỏ qua lệnh, giữ nguyên phần sau
+            flush();
+            i = j;
+            continue;
+          }
+          buf += '\\'; i++; continue;
+        }
+        if(c === '$'){
+          flush();
+          var end = str.indexOf('$', i + 1);
+          if(end === -1){ buf += c; i++; continue; }
+          nodes.push({ type: 'math', value: str.slice(i + 1, end) });
+          i = end + 1;
+          continue;
+        }
+        buf += c; i++;
+      }
+      flush();
+      return nodes;
+    }
+    return parseNodes(false);
+  }
+  function renderLatexNodes(nodes, keyPrefix){
+    var out = [];
+    nodes.forEach(function(node, idx){
+      var key = keyPrefix + '_' + idx;
+      if(node.type === 'text'){ out.push(node.value); return; }
+      if(node.type === 'br'){ out.push(h('br', { key: key })); return; }
+      if(node.type === 'math'){
+        if(window.katex){
+          try{
+            var html = window.katex.renderToString(node.value, { throwOnError: false });
+            out.push(h('span', { key: key, dangerouslySetInnerHTML: { __html: html } }));
+          }catch(e){
+            out.push(h('span', { key: key }, '$' + node.value + '$'));
+          }
+        } else {
+          out.push(h('span', { key: key }, '$' + node.value + '$'));
+        }
+        return;
+      }
+      if(node.type === 'cmd'){
+        var tag = LATEX_TAG_MAP[node.name] || 'span';
+        out.push(h(tag, { key: key }, renderLatexNodes(node.children, key)));
+        return;
+      }
+    });
+    return out;
+  }
   function renderLatexText(text){
     if(!text) return '';
-    // Thử dùng KaTeX nếu đã load
-    if(window.katex && text.indexOf('$') !== -1){
-      var parts = text.split(/(\$[^$]+\$)/g);
-      return h('span', null, parts.map(function(part, idx){
-        if(part.startsWith('$') && part.endsWith('$')){
-          var expr = part.slice(1, -1);
-          try {
-            var html = window.katex.renderToString(expr, { throwOnError: false });
-            return h('span', { key: idx, dangerouslySetInnerHTML: { __html: html } });
-          } catch(e){
-            return h('span', { key: idx }, part);
-          }
-        }
-        return h('span', { key: idx }, part);
-      }));
-    }
-    return text;
+    return h('span', null, renderLatexNodes(tokenizeLatexRuns(String(text)), 'lx'));
   }
 
   // Hiển thị hình ảnh minh họa (sơ đồ, đồ thị...) đính kèm câu hỏi — dữ liệu
@@ -218,7 +313,7 @@
       setAuthState('form');
     }
 
-    var tabState = React.useState('drill'); // drill | exam | mistakes | plan
+    var tabState = React.useState('home'); // home | map | drill | exam | mistakes
     var tab = tabState[0];
     var setTab = tabState[1];
 
@@ -295,6 +390,41 @@
       setMasteryImpact(null);
     }
 
+    // Luyện "5 bài tập" đúng 1 Tag (nano-point) — dùng cho khối remediation
+    // màu Đỏ trên Trang chủ Học sinh.
+    function startNanoDrill(nanoId, nanoName){
+      var questions = window.PrepScholarEngine.createNanoDrill(nanoId, 5);
+      if(!questions.length){
+        alert('Ngân hàng đề chưa có câu hỏi nào gắn Tag này — thầy cô cần nạp thêm đề.');
+        return;
+      }
+      var session = { type: 'drill', title: 'Luyện Tag: ' + nanoName, questions: questions, isSubmitted: false };
+      setExamSession(session);
+      setUserAnswers({});
+      setFlagged({});
+      setCurQIdx(0);
+      setTimeLeft(questions.length * 120);
+      setScoreResult(null);
+      setMasteryImpact(null);
+    }
+
+    // Luyện lại cả 1 "Bài" — nút trên lưới 16 Bài của Trang chủ Học sinh.
+    function startBaiDrill(baiKey, baiName){
+      var questions = window.PrepScholarEngine.createBaiDrill(baiKey, 6);
+      if(!questions.length){
+        alert('Ngân hàng đề chưa có câu hỏi nào cho Bài này — thầy cô cần nạp thêm đề.');
+        return;
+      }
+      var session = { type: 'drill', title: 'Luyện Bài: ' + baiName, questions: questions, isSubmitted: false };
+      setExamSession(session);
+      setUserAnswers({});
+      setFlagged({});
+      setCurQIdx(0);
+      setTimeLeft(questions.length * 120);
+      setScoreResult(null);
+      setMasteryImpact(null);
+    }
+
     // Bắt đầu một bài Kiểm tra Chẩn đoán hoặc Thi thử
     function startExam(type){
       var questions = [];
@@ -303,8 +433,8 @@
 
       if(type === 'diagnostic'){
         questions = window.PrepScholarEngine.createDiagnosticExam();
-        title = 'Bài kiểm tra chẩn đoán năng lực toàn diện (Diagnostic Test)';
-        timeSec = 25 * 60;
+        title = 'Bài kiểm tra đầu vào (Diagnostic Test) — 28 câu chuẩn cấu trúc 2025-2026';
+        timeSec = 40 * 60;
       } else {
         questions = window.PrepScholarEngine.QUESTION_BANK.slice(0);
         title = 'Đề thi thử chuẩn cấu trúc Bộ GD&ĐT 2025 - 2026';
@@ -361,6 +491,23 @@
       var newMastery = Object.assign({}, student.mastery);
       var impactMsg = [];
 
+      // Cập nhật Tag (nano-point) NGAY TẠI CHỖ theo đúng công thức Squirrel AI
+      // (không cần đợi vòng lưu/tải lại Firestore): Đúng câu khó (M3/M4) +25 ·
+      // Đúng câu dễ (M1/M2) +15 · Sai -20, khởi điểm trung lập 50, giới hạn
+      // 0-100. Với học sinh thật, giá trị này sẽ được ghi đè ngay sau đó bằng
+      // số liệu tính lại từ TOÀN BỘ lịch sử thật (cùng công thức) khi
+      // OPC_LIVE.saveAttempt/loadAttempts hoàn tất — chỗ này chỉ để Trang chủ
+      // cập nhật tức thì, không phải đợi mạng.
+      var newNanoMastery = Object.assign({}, student.nanoMastery || {});
+      scored.perQuestionResults.forEach(function(res){
+        var q = res.question;
+        var nanoId = q && q.nanoId;
+        if(!nanoId) return;
+        var cur = (newNanoMastery[nanoId] != null) ? newNanoMastery[nanoId] : 50;
+        var delta = res.isFullCorrect ? ((q.level === 'M3' || q.level === 'M4') ? 25 : 15) : -20;
+        newNanoMastery[nanoId] = Math.max(0, Math.min(100, cur + delta));
+      });
+
       Object.keys(scored.topicStats).forEach(function(k){
         var stat = scored.topicStats[k];
         if(stat.total > 0){
@@ -411,7 +558,8 @@
       setStudent(function(prev){
         return Object.assign({}, prev, {
           mastery: newMastery,
-          predicted: newPredicted
+          predicted: newPredicted,
+          nanoMastery: newNanoMastery
         });
       });
 
@@ -425,10 +573,10 @@
       if(student.isLive && window.OPC_LIVE && window.OPC_LIVE.saveAttempt){
         var studentId = student.id;
         var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null };
+          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null };
         });
         var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null };
+          return { qId: r.question.id, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null };
         });
         var attemptRecord = {
           type: examSession.type,
@@ -607,6 +755,11 @@
       h('div', { className: 'ps-nav-tabs' },
         h('button', {
           type: 'button',
+          className: 'ps-tab-btn ' + (tab === 'home' ? 'active' : ''),
+          onClick: function(){ setTab('home'); setExamSession(null); }
+        }, '🏠 Trang chủ'),
+        h('button', {
+          type: 'button',
           className: 'ps-tab-btn ' + (tab === 'map' ? 'active' : ''),
           onClick: function(){ setTab('map'); setExamSession(null); }
         }, '🧬 Bản đồ kiến thức'),
@@ -627,12 +780,7 @@
         },
           '🔄 Sổ tay câu sai (Mistake Review)',
           h('span', { className: 'ps-tab-badge' }, mistakeLog.length)
-        ),
-        h('button', {
-          type: 'button',
-          className: 'ps-tab-btn ' + (tab === 'plan' ? 'active' : ''),
-          onClick: function(){ setTab('plan'); setExamSession(null); }
-        }, '📋 Lộ trình học tuần này')
+        )
       ),
 
       // 4. Main Body Content based on Tab & Exam State
@@ -650,7 +798,11 @@
               ),
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
               h('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' } },
-                h('button', {
+                (examSession && examSession.type === 'diagnostic') ? h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  onClick: function(){ setExamSession(null); setTab('home'); }
+                }, '🏠 Xem Trang chủ (kết quả phân loại Tag) ➔') : h('button', {
                   type: 'button',
                   className: 'btn btn-primary',
                   onClick: function(){ setExamSession(null); setTab('drill'); }
@@ -999,12 +1151,12 @@
               h('div', { className: 'ps-topic-grid' },
                 h('div', { className: 'ps-topic-card' },
                   h('div', null,
-                    h('div', { className: 'ps-topic-title' }, '🎯 Bài kiểm tra chẩn đoán (Diagnostic Test)'),
+                    h('div', { className: 'ps-topic-title' }, '🎯 Bài kiểm tra đầu vào (Diagnostic Test)'),
                     h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: '8px' } },
-                      'Bài kiểm tra 12 câu bao phủ đủ cả 4 chuyên đề cốt lõi. Giúp xác định chính xác điểm bắt đầu và phân loại điểm mạnh/yếu theo phương pháp PrepScholar.'
+                      'Đúng cấu trúc đề thi THPT 2025-2026: Phần I 18 câu, Phần II 4 câu, Phần III 6 câu (28 câu) — phủ rộng nhất có thể trong 48 Tag kiến thức. Sau khi nộp bài, Trang chủ sẽ tự phân loại Xanh/Vàng/Đỏ và khoá phần đã vững.'
                     ),
                     h('div', { style: { marginTop: '12px', fontSize: '0.8rem', color: 'var(--muted)' } },
-                      '⏱️ Thời gian: 25 phút · 12 câu hỏi (Phần I, II, III)'
+                      '⏱️ Thời gian: 40 phút · 28 câu hỏi (Phần I, II, III)'
                     )
                   ),
                   h('div', { className: 'ps-topic-card-actions' },
@@ -1084,59 +1236,112 @@
               )
             );
           } else {
-            // TAB 4: LỘ TRÌNH HỌC TUẦN NÀY (WEEKLY STUDY PLAN)
-            return h('div', null,
-              h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '20px' } },
-                h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--line)', paddingBottom: '12px' } },
-                  h('div', null,
-                    h('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Kế hoạch học tập tuần 14 · Mục tiêu: ' + student.target + '+'),
-                    h('p', { style: { margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--muted)' } }, 'Đã học: ' + student.hours + ' / 5.0 giờ tuần này')
-                  ),
-                  h('span', { style: { fontFamily: 'IBM Plex Mono, monospace', fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent-strong)' } }, 'Hoàn thành: 2 / 4 nhiệm vụ')
-                ),
+            // TAB "TRANG CHỦ" (Personal Dashboard) — đúng luồng giáo viên yêu
+            // cầu: [Diagnostic Test] -> [Chấm điểm & cập nhật Tag] -> [Phân
+            // loại Xanh/Vàng/Đỏ] -> [Trang chủ: khoá bài Xanh, đẩy remediation
+            // Đỏ lên đầu]. Dữ liệu lấy từ student.nanoMastery thật (tính từ
+            // lịch sử làm bài qua computeStudentStatsFromAttempts).
+            var nanoMastery = student.nanoMastery || {};
+            var hasAnyTag = Object.keys(nanoMastery).length > 0;
 
-                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
-                  h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', background: 'var(--surface-2)', borderRadius: '10px' } },
-                    h('span', { style: { color: 'var(--good)', fontWeight: 700 } }, '✓'),
-                    h('div', { style: { flex: 1 } },
-                      h('div', { style: { fontWeight: 600, fontSize: '0.9rem', textDecoration: 'line-through', color: 'var(--muted)' } }, '1. Bài kiểm tra chẩn đoán đầu tuần'),
-                      h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)' } }, 'Đạt 7.8/10 · Đã phân tích 4 chuyên đề')
+            if(!hasAnyTag){
+              return h('div', { style: { textAlign: 'center', padding: '48px 24px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--line)' } },
+                h('div', { style: { fontSize: '2.6rem', marginBottom: '10px' } }, '🧭'),
+                h('h3', { style: { marginBottom: '8px' } }, 'Bắt đầu với Bài kiểm tra đầu vào'),
+                h('p', { style: { color: 'var(--ink-2)', fontSize: '0.88rem', maxWidth: '480px', margin: '0 auto 18px', lineHeight: 1.6 } },
+                  'Làm 28 câu (đúng cấu trúc đề thi THPT 2025-2026) để hệ thống chấm và phân loại từng Tag kiến thức (Xanh/Vàng/Đỏ) — Trang chủ sẽ tự khoá phần đã vững và đẩy phần cần luyện ngay lên đầu.'
+                ),
+                h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  onClick: function(){ startExam('diagnostic'); }
+                }, 'Làm bài kiểm tra đầu vào (28 câu) ➔')
+              );
+            }
+
+            var baiStatus = window.PrepScholarEngine.buildBaiMasteryStatus(nanoMastery);
+            var redTags = window.PrepScholarEngine.getRedTags(nanoMastery, 5);
+            var STATUS_META = {
+              green: { label: '🔒 Đã vững — tạm khoá', color: 'var(--good)', bg: 'color-mix(in srgb, var(--good) 10%, transparent)' },
+              yellow: { label: 'Cần luyện thêm', color: 'var(--warning)', bg: 'color-mix(in srgb, var(--warning) 10%, transparent)' },
+              red: { label: '‼ Mất gốc — ưu tiên', color: 'var(--critical)', bg: 'color-mix(in srgb, var(--critical) 10%, transparent)' },
+              unknown: { label: 'Chưa kiểm tra', color: 'var(--muted)', bg: 'var(--surface-2)' }
+            };
+            var greenCount = baiStatus.filter(function(b){ return b.status === 'green'; }).length;
+
+            return h('div', null,
+              h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between' } },
+                  h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+                    h('span', { style: { fontSize: '1.4rem' } }, '🏠'),
+                    h('div', null,
+                      h('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Trang chủ học tập cá nhân hoá'),
+                      h('p', { style: { margin: '3px 0 0', fontSize: '0.84rem', color: 'var(--ink-2)' } },
+                        'Đã khoá ' + greenCount + ' / 16 Bài (đạt Xanh ≥80%) · ' + redTags.length + ' Tag đang ở mức Đỏ cần luyện ngay'
+                      )
                     )
                   ),
-                  h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', background: 'var(--surface-2)', borderRadius: '10px' } },
-                    h('span', { style: { color: 'var(--good)', fontWeight: 700 } }, '✓'),
-                    h('div', { style: { flex: 1 } },
-                      h('div', { style: { fontWeight: 600, fontSize: '0.9rem', textDecoration: 'line-through', color: 'var(--muted)' } }, '2. Drill trọng tâm: Vật lí nhiệt (M3-M4)'),
-                      h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)' } }, 'Đạt 85% độ vững · Nâng mức lên Thành thạo')
-                    )
-                  ),
-                  h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', background: 'var(--surface-2)', borderRadius: '10px', border: '1px solid var(--accent)' } },
-                    h('span', { style: { color: 'var(--critical)', fontWeight: 700 } }, '‼'),
-                    h('div', { style: { flex: 1 } },
-                      h('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--ink)' } }, '3. Drill trọng tâm: Vật lí hạt nhân (Ưu tiên số 1)'),
-                      h('div', { style: { fontSize: '0.78rem', color: 'var(--ink-2)', marginTop: '2px' } }, 'Cần làm 1 bài Drill 5 câu để vượt ngưỡng 50%')
-                    ),
-                    h('button', {
-                      type: 'button',
-                      className: 'btn btn-primary',
-                      style: { padding: '4px 10px', fontSize: '0.78rem' },
-                      onClick: function(){ startDrill('hat-nhan', 5); }
-                    }, 'Làm ngay ➔')
-                  ),
-                  h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', background: 'var(--surface-2)', borderRadius: '10px' } },
-                    h('span', { style: { color: 'var(--warning)', fontWeight: 700 } }, '!'),
-                    h('div', { style: { flex: 1 } },
-                      h('div', { style: { fontWeight: 600, fontSize: '0.9rem', color: 'var(--ink)' } }, '4. Ôn lại 3 câu sai đến hạn trong Sổ tay câu sai'),
-                      h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '2px' } }, 'Lặp lại giãn cách để tránh mất điểm đáng tiếc trong kỳ thi thật')
-                    ),
-                    h('button', {
-                      type: 'button',
-                      className: 'btn btn-secondary',
-                      style: { padding: '4px 10px', fontSize: '0.78rem' },
-                      onClick: startMistakeDrill
-                    }, 'Ôn tập ➔')
-                  )
+                  h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ startExam('diagnostic'); } }, '🔁 Làm lại kiểm tra đầu vào')
                 )
+              ),
+
+              redTags.length ? h('div', { style: { marginBottom: '20px' } },
+                h('h3', { style: { fontFamily: 'Literata, serif', fontSize: '1.05rem', marginBottom: '4px' } }, '🚨 Cần luyện ngay (Tag màu Đỏ)'),
+                h('p', { style: { fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '10px' } }, 'Hệ thống tự đẩy lên đầu — không cần chờ giáo viên rà tay.'),
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+                  redTags.map(function(n){
+                    return h('div', { key: n.id, style: { background: 'var(--surface)', border: '1px solid var(--critical)', borderRadius: '12px', padding: '14px 16px' } },
+                      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' } },
+                        h('div', { style: { flex: 1, minWidth: '200px' } },
+                          h('div', { style: { fontWeight: 700, fontSize: '0.92rem' } }, n.name),
+                          h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '2px' } }, n.chuDeName + ' · ' + n.baiName)
+                        ),
+                        h('span', { style: { fontSize: '0.78rem', fontWeight: 700, color: 'var(--critical)', background: 'color-mix(in srgb, var(--critical) 12%, transparent)', padding: '3px 8px', borderRadius: '5px', whiteSpace: 'nowrap' } }, n.mastery + '%')
+                      ),
+                      n.videoUrl
+                        ? h('a', { href: n.videoUrl, target: '_blank', rel: 'noopener noreferrer', style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--accent-strong)', marginTop: '10px', textDecoration: 'none', fontWeight: 600 } }, '▶️ Video Nano 3 phút')
+                        : h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', marginTop: '10px', fontStyle: 'italic' } }, '▶️ Video Nano 3 phút — thầy cô đang chuẩn bị nội dung'),
+                      h('div', { style: { marginTop: '10px' } },
+                        h('button', {
+                          type: 'button',
+                          className: 'btn btn-primary',
+                          style: { fontSize: '0.8rem', padding: '6px 12px' },
+                          onClick: function(){ startNanoDrill(n.id, n.name); }
+                        }, '5 bài tập luyện Tag này ➔')
+                      )
+                    );
+                  })
+                )
+              ) : h('div', { style: { marginBottom: '20px', padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--good)', borderRadius: '12px', fontSize: '0.86rem', color: 'var(--ink-2)' } },
+                '✅ Hiện không có Tag nào ở mức Đỏ — tiếp tục duy trì phong độ!'
+              ),
+
+              h('h3', { style: { fontFamily: 'Literata, serif', fontSize: '1.05rem', marginBottom: '10px' } }, '16 Bài học · tự động khoá khi đạt Xanh'),
+              h('div', { className: 'ps-topic-grid' },
+                baiStatus.map(function(b){
+                  var meta = STATUS_META[b.status];
+                  return h('div', { key: b.key, className: 'ps-topic-card', style: { opacity: b.status === 'green' ? 0.82 : 1 } },
+                    h('div', null,
+                      h('div', { className: 'ps-topic-card-top' },
+                        h('div', { className: 'ps-topic-title', style: { fontSize: '0.92rem' } }, b.chuDeIcon + ' ' + b.name),
+                        h('span', { style: { fontSize: '0.72rem', fontWeight: 700, color: meta.color, background: meta.bg, padding: '3px 8px', borderRadius: '999px', whiteSpace: 'nowrap' } }, meta.label)
+                      ),
+                      h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '4px' } },
+                        b.mastery != null ? ('Trung bình các Tag: ' + b.mastery + '% (' + b.testedCount + '/' + b.totalCount + ' Tag đã kiểm tra)') : ('Chưa có Tag nào trong bài này được kiểm tra')
+                      )
+                    ),
+                    h('div', { className: 'ps-topic-card-actions' },
+                      h('span', { style: { fontSize: '0.78rem', color: 'var(--ink-2)' } }, b.chuDeName),
+                      b.status === 'green'
+                        ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, 'Có thể ôn lại tuỳ chọn')
+                        : h('button', {
+                            type: 'button',
+                            className: 'btn btn-secondary ps-drill-btn',
+                            onClick: function(){ startBaiDrill(b.key, b.name); }
+                          }, 'Luyện bài này ➔')
+                    )
+                  );
+                })
               )
             );
           }

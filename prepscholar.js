@@ -509,21 +509,26 @@
       if(topicAgg[k].max > 0) result.mastery[k] = Math.round((topicAgg[k].earned / topicAgg[k].max) * 100);
     });
 
-    // Mastery theo nano-point: tỉ lệ đúng / tổng số lần gặp.
+    // Mastery theo nano-point ("Tag") — thuật toán thích ứng kiểu Squirrel AI
+    // do giáo viên yêu cầu: CỘNG/TRỪ điểm trực tiếp theo từng câu trả lời
+    // (không phải tỉ lệ đúng/tổng như bản cũ):
+    //   Đúng câu khó (M3/M4): Tag +25 · Đúng câu dễ (M1/M2): Tag +15 · Sai: Tag -20
+    // Tag lần đầu được kiểm tra bắt đầu ở mức trung lập 50, luôn giới hạn
+    // trong khoảng 0-100. Áp dụng cho MỌI lượt nộp bài (Kiểm tra đầu vào,
+    // Drill, Thi thử, Ôn sổ tay câu sai) theo đúng thứ tự thời gian thật,
+    // nên mastery luôn phản ánh phong độ GẦN NHẤT của học sinh.
     var nanoAgg = {};
-    function bump(nanoId, correct){
+    function bump(nanoId, correct, level){
       if(!nanoId) return;
-      if(!nanoAgg[nanoId]) nanoAgg[nanoId] = { correct: 0, total: 0 };
-      nanoAgg[nanoId].total++;
-      if(correct) nanoAgg[nanoId].correct++;
+      var cur = (nanoAgg[nanoId] != null) ? nanoAgg[nanoId] : MASTERY_NEUTRAL_START;
+      var delta = correct ? ((level === 'M3' || level === 'M4') ? 25 : 15) : -20;
+      nanoAgg[nanoId] = Math.max(0, Math.min(100, cur + delta));
     }
     sorted.forEach(function(a){
-      (a.wrongQuestions || []).forEach(function(q){ bump(q.nanoId, false); });
-      (a.rightQuestions || []).forEach(function(q){ bump(q.nanoId, true); });
+      (a.wrongQuestions || []).forEach(function(q){ bump(q.nanoId, false, q.level); });
+      (a.rightQuestions || []).forEach(function(q){ bump(q.nanoId, true, q.level); });
     });
-    Object.keys(nanoAgg).forEach(function(id){
-      result.nanoMastery[id] = Math.round((nanoAgg[id].correct / nanoAgg[id].total) * 100);
-    });
+    result.nanoMastery = nanoAgg;
 
     // Điểm dự đoán: trung bình tối đa 5 lượt Thi thử/Chẩn đoán gần nhất;
     // nếu chưa từng thi, tạm lấy trung bình mọi lượt luyện gần nhất.
@@ -557,6 +562,62 @@
     }).sort(function(a, b){ return b.daysOverdue - a.daysOverdue; }).slice(0, 15);
 
     return result;
+  }
+
+  // ============================================================
+  // Phân loại Mastery theo Tag (nano-point) + khoá/mở "Bài" — dùng cho
+  // Trang chủ Học sinh (Personal Dashboard): Xanh (>=80%) tự động khoá bài
+  // đã vững, Vàng (50-79%) cần luyện thêm, Đỏ (<50%) mất gốc — đẩy remediation
+  // (video ngắn + 5 bài tập) lên đầu.
+  // ============================================================
+  var MASTERY_NEUTRAL_START = 50;
+  var MASTERY_GREEN_MIN = 80;
+  var MASTERY_YELLOW_MIN = 50;
+  function classifyMastery(val){
+    if(val == null) return 'unknown';
+    if(val >= MASTERY_GREEN_MIN) return 'green';
+    if(val >= MASTERY_YELLOW_MIN) return 'yellow';
+    return 'red';
+  }
+
+  // Gộp mastery từng Tag (nano-point) lên cấp "Bài" (trung bình các Tag ĐÃ
+  // từng được kiểm tra trong bài đó) để quyết định khoá bài học màu Xanh.
+  function buildBaiMasteryStatus(nanoMastery){
+    if(!window.OPC_NANO) return [];
+    nanoMastery = nanoMastery || {};
+    return window.OPC_NANO.BAI.map(function(b){
+      var nanos = window.OPC_NANO.getNanoByBai(b.key);
+      var tested = nanos.filter(function(n){ return nanoMastery[n.id] != null; });
+      var avg = tested.length ? Math.round(tested.reduce(function(s, n){ return s + nanoMastery[n.id]; }, 0) / tested.length) : null;
+      var chuDe = window.OPC_NANO.getChuDe(b.chuDeKey);
+      return {
+        key: b.key, name: b.name, chuDeKey: b.chuDeKey, chuDeName: chuDe ? chuDe.name : '', chuDeIcon: chuDe ? chuDe.icon : '',
+        mastery: avg, status: tested.length ? classifyMastery(avg) : 'unknown',
+        testedCount: tested.length, totalCount: nanos.length
+      };
+    });
+  }
+
+  // Các Tag (nano-point) màu Đỏ, điểm thấp nhất trước — nguồn dữ liệu cho
+  // khối "Cần luyện ngay" (video Nano 3 phút + 5 bài tập) trên Trang chủ.
+  function getRedTags(nanoMastery, n){
+    if(!window.OPC_NANO) return [];
+    nanoMastery = nanoMastery || {};
+    var reds = window.OPC_NANO.NANO.filter(function(nn){
+      var v = nanoMastery[nn.id];
+      return v != null && v < MASTERY_YELLOW_MIN;
+    }).map(function(nn){
+      var bai = window.OPC_NANO.getBai(nn.baiKey);
+      var chuDe = bai ? window.OPC_NANO.getChuDe(bai.chuDeKey) : null;
+      return Object.assign({}, nn, {
+        mastery: nanoMastery[nn.id],
+        baiName: bai ? bai.name : '',
+        chuDeKey: bai ? bai.chuDeKey : null,
+        chuDeName: chuDe ? chuDe.name : ''
+      });
+    });
+    reds.sort(function(a, b){ return a.mastery - b.mastery; });
+    return reds.slice(0, n || 5);
   }
 
   function getWeakestNanoPoints(map, n){
@@ -599,15 +660,62 @@
       count = Math.min(count || 5, pool.length);
       return pool.slice(0, count);
     },
+    // Bài kiểm tra đầu vào (Diagnostic Test) — theo đúng cấu trúc đề thi
+    // Vật lí THPT chương trình GDPT 2018: Phần I 18 câu, Phần II 4 câu,
+    // Phần III 6 câu (28 câu). Trong mỗi phần, ưu tiên chọn PHỦ RỘNG càng
+    // nhiều Tag (nano-point) khác nhau càng tốt trước khi lặp lại, để 1 lượt
+    // kiểm tra đo được nhiều Tag nhất có thể trong tổng số 48 Tag hiện có.
+    // Nếu ngân hàng đề thật chưa đủ câu cho 1 phần nào đó, tự động lấy ít
+    // hơn (không báo lỗi) — phần "Cần kiểm tra thêm" sẽ hiện "Chưa kiểm tra".
     createDiagnosticExam: function(){
-      // Lấy đều 3 câu từ mỗi một trong 4 chuyên đề (12 câu đủ 3 phần)
-      var res = [];
-      Object.keys(CHU_DE_MAP).forEach(function(k){
-        var list = QUESTION_BANK.filter(function(q){ return q.topicKey === k; });
-        res = res.concat(list.slice(0, 3));
+      var TARGET = { I: 18, II: 4, III: 6 };
+      function pickCoverage(pool, count){
+        var seenNano = {};
+        var picked = [];
+        for(var i = 0; i < pool.length && picked.length < count; i++){
+          var q = pool[i];
+          var key = q.nanoId || ('_' + q.id);
+          if(!seenNano[key]){ seenNano[key] = true; picked.push(q); }
+        }
+        if(picked.length < count){
+          var pickedIds = {};
+          picked.forEach(function(q){ pickedIds[q.id] = true; });
+          for(var j = 0; j < pool.length && picked.length < count; j++){
+            if(!pickedIds[pool[j].id]){ picked.push(pool[j]); pickedIds[pool[j].id] = true; }
+          }
+        }
+        return picked;
+      }
+      var out = [];
+      Object.keys(TARGET).forEach(function(part){
+        var pool = QUESTION_BANK.filter(function(q){ return q.part === part; });
+        out = out.concat(pickCoverage(pool, TARGET[part]));
       });
-      return res;
+      return out;
     },
+    // "5 bài tập" luyện lại đúng 1 Tag (nano-point) cụ thể — dùng cho khối
+    // remediation màu Đỏ trên Trang chủ Học sinh.
+    createNanoDrill: function(nanoId, count){
+      var pool = QUESTION_BANK.filter(function(q){ return q.nanoId === nanoId; });
+      if(!pool.length && window.OPC_NANO){
+        var nano = window.OPC_NANO.getNano(nanoId);
+        if(nano) pool = QUESTION_BANK.filter(function(q){ return q.baiKey === nano.baiKey; });
+      }
+      count = Math.min(count || 5, pool.length);
+      return pool.slice(0, count);
+    },
+    // Luyện lại cả 1 "Bài" (gộp các Tag con) — dùng cho nút "Luyện bài này"
+    // trên lưới 16 Bài của Trang chủ Học sinh.
+    createBaiDrill: function(baiKey, count){
+      var pool = QUESTION_BANK.filter(function(q){ return q.baiKey === baiKey; });
+      count = Math.min(count || 5, pool.length);
+      return pool.slice(0, count);
+    },
+    classifyMastery: classifyMastery,
+    buildBaiMasteryStatus: buildBaiMasteryStatus,
+    getRedTags: getRedTags,
+    MASTERY_GREEN_MIN: MASTERY_GREEN_MIN,
+    MASTERY_YELLOW_MIN: MASTERY_YELLOW_MIN,
     // Bản đồ kiến thức mức nano — truyền vào mastery theo chuyên đề của 1 học
     // sinh cụ thể (vd. student.mastery) để làm mốc tính, và (tuỳ chọn)
     // realNanoMastery tính từ lịch sử làm bài thật (student.nanoMastery) để
