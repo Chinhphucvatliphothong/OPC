@@ -69,6 +69,22 @@
   // ============================================================
   // 3) NANO-POINT — đơn vị kiến thức nhỏ nhất, 3 điểm / Bài
   // ============================================================
+  // Mỗi nano-point có thể có thêm 2 trường TÙY CHỌN (chưa nhập cho entry
+  // nào ở dưới — chỉ khai báo chỗ cắm, KHÔNG tự bịa nội dung; giao diện
+  // học sinh (xem renderRemediationStep trong prepscholar-ui.js) tự kiểm
+  // tra sự tồn tại và bỏ qua bước tương ứng một cách trung thực nếu chưa
+  // có, giống hệt cách videoUrl đã hoạt động trước đây):
+  //   videoUrl:    string — link Micro-video 3-5 phút (Youtube/Drive...).
+  //   conceptCard: { formula, note, example } — Thẻ ghi nhớ (Concept Card):
+  //                formula: công thức cốt lõi (có thể chứa $...$ LaTeX);
+  //                note: ghi chú/sơ đồ tư duy ngắn gọn;
+  //                example: 1 ví dụ mẫu đã giải sẵn.
+  //                Chỉ cần điền trường nào có, bỏ trống trường chưa có —
+  //                UI chỉ hiển thị dòng nào thực sự có nội dung.
+  // Nhập trực tiếp vào entry tương ứng bên dưới, ví dụ:
+  //   { id:'tt-luctu.1', baiKey:'tt-luctu', name:'...',
+  //     videoUrl:'https://...',
+  //     conceptCard:{ formula:'$F = BIL\\sin\\alpha$', note:'...', example:'...' } }
   var NANO = [
     { id:'nhiet-dl1.1', baiKey:'nhiet-dl1', name:'Quy ước dấu A, Q trong ΔU = A + Q' },
     { id:'nhiet-dl1.2', baiKey:'nhiet-dl1', name:'Nhận biết hệ nhận/tỏa nhiệt, nhận/sinh công' },

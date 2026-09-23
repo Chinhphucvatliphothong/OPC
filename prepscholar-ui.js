@@ -390,6 +390,22 @@
     var adaptiveLastResult = adaptiveLastResultState[0];
     var setAdaptiveLastResult = adaptiveLastResultState[1];
 
+    // ===== Màn hình Học & Vá lỗi (Learning & Remediation Flow) =====
+    // Khi bấm vào 1 Tag màu Đỏ ở Trang chủ: khoá các phần khác (ẩn thanh
+    // điều hướng + hồ sơ + chỉ số) và dẫn qua quy trình 3 bước khép kín:
+    // 1. Video Nano (nếu Tag có videoUrl) → 2. Thẻ ghi nhớ Concept Card (nếu
+    // Tag có conceptCard) → 3. Luyện tập tức thì (5 câu, dùng lại đúng pipeline
+    // startNanoDrill/examSession có sẵn). Bước nào chưa có NỘI DUNG THẬT thì
+    // tự động bỏ qua (không hiện màn hình trống) — không bịa video/thẻ ghi
+    // nhớ giả, đúng nguyên tắc trung thực dữ liệu của toàn bộ ứng dụng.
+    // remediation = null (không ở trong quy trình) | { nano, phase } với
+    // phase ∈ 'video' | 'concept'. Khi bước 3 (luyện tập) bắt đầu,
+    // remediation được đặt về null nhưng examSession.fromRemediation giữ
+    // khoá điều hướng cho tới khi nộp bài xong.
+    var remediationState = React.useState(null);
+    var remediation = remediationState[0];
+    var setRemediation = remediationState[1];
+
     // Sổ tay câu sai (Mistake Log) — giai đoạn thật: bắt đầu trống, chỉ nạp
     // từ lịch sử làm bài thật của học sinh sau khi đăng nhập (hydrateAndEnter).
     var mistakeLogState = React.useState([]);
@@ -447,6 +463,85 @@
       setTimeLeft(questions.length * 120);
       setScoreResult(null);
       setMasteryImpact(null);
+    }
+
+    // Bước 3 (Luyện tập tức thì) của quy trình Vá lỗi — giống startNanoDrill
+    // nhưng gắn thêm fromRemediation:true để giữ khoá thanh điều hướng cho
+    // tới khi nộp bài, và đặt tiêu đề đúng ngữ cảnh "vá lỗi" thay vì "luyện Tag".
+    function startRemediationPractice(nano){
+      var questions = window.PrepScholarEngine.createNanoDrill(nano.id, 5);
+      if(!questions.length){
+        alert('Ngân hàng đề chưa có câu hỏi nào gắn Tag này — thầy cô cần nạp thêm đề.');
+        setRemediation(null);
+        return;
+      }
+      var session = { type: 'drill', title: 'Vá lỗi kiến thức: ' + nano.name, questions: questions, isSubmitted: false, fromRemediation: true };
+      setExamSession(session);
+      setUserAnswers({});
+      setFlagged({});
+      setCurQIdx(0);
+      setTimeLeft(questions.length * 120);
+      setScoreResult(null);
+      setMasteryImpact(null);
+      setRemediation(null);
+    }
+
+    // Điểm vào quy trình Vá lỗi từ 1 Tag màu Đỏ — tự bỏ qua bước 1/2 nếu
+    // Tag đó chưa có videoUrl/conceptCard thật (xem ghi chú ở nano-map.js).
+    function startRemediation(nano){
+      if(nano.videoUrl){ setRemediation({ nano: nano, phase: 'video' }); }
+      else if(nano.conceptCard){ setRemediation({ nano: nano, phase: 'concept' }); }
+      else { startRemediationPractice(nano); }
+    }
+
+    function remediationNext(){
+      if(!remediation) return;
+      var nano = remediation.nano;
+      if(remediation.phase === 'video' && nano.conceptCard){ setRemediation({ nano: nano, phase: 'concept' }); }
+      else { startRemediationPractice(nano); }
+    }
+
+    function remediationExit(){
+      setRemediation(null);
+    }
+
+    // Màn hình khoá riêng cho bước 1 (Video) / bước 2 (Concept Card) của quy
+    // trình Vá lỗi — bước 3 (luyện tập) tái dùng nguyên màn hình làm bài có
+    // sẵn (examSession.type === 'drill'), không vẽ lại.
+    function renderRemediationStep(rem){
+      var nano = rem.nano;
+      var bai = (window.OPC_NANO && window.OPC_NANO.getBai) ? window.OPC_NANO.getBai(nano.baiKey) : null;
+      var chuDe = (bai && window.OPC_NANO.getChuDe) ? window.OPC_NANO.getChuDe(bai.chuDeKey) : null;
+      var totalSteps = 1 + (nano.videoUrl ? 1 : 0) + (nano.conceptCard ? 1 : 0);
+      var stepNo = rem.phase === 'video' ? 1 : (nano.videoUrl ? 2 : 1);
+
+      return h('div', { className: 'ps-remediation-screen' },
+        h('div', { className: 'ps-remediation-step-badge' },
+          '🔒 Bước ' + stepNo + '/' + totalSteps + ' · ' + (rem.phase === 'video' ? 'Xem Video Nano' : 'Thẻ ghi nhớ (Concept Card)')),
+        h('h3', { style: { fontFamily: 'Literata, serif', margin: '10px 0 2px' } }, nano.name),
+        h('p', { style: { fontSize: '0.82rem', color: 'var(--muted)', marginBottom: '18px' } },
+          (chuDe ? chuDe.name + ' · ' : '') + (bai ? bai.name : '')),
+
+        rem.phase === 'video'
+          ? h('div', { className: 'ps-remediation-card-block' },
+              h('p', { style: { fontSize: '0.86rem', marginBottom: '14px' } }, 'Xem hết video ngắn (3-5 phút) rồi quay lại bấm nút bên dưới để tiếp tục.'),
+              h('a', { href: nano.videoUrl, target: '_blank', rel: 'noopener noreferrer', className: 'btn btn-primary' }, '▶️ Mở Video Nano 3 phút')
+            )
+          : (function(){
+              var card = nano.conceptCard || {};
+              var rows = [];
+              if(card.formula) rows.push(h('div', { key: 'f', className: 'ps-remediation-card-block' }, h('b', null, 'Công thức: '), renderLatexText(card.formula)));
+              if(card.note) rows.push(h('div', { key: 'n', className: 'ps-remediation-card-block' }, h('b', null, 'Ghi nhớ: '), renderLatexText(card.note)));
+              if(card.example) rows.push(h('div', { key: 'e', className: 'ps-remediation-card-block' }, h('b', null, 'Ví dụ mẫu: '), renderLatexText(card.example)));
+              return rows.length ? rows : h('div', { className: 'ps-remediation-card-block' }, 'Thầy cô đang chuẩn bị nội dung thẻ ghi nhớ cho Tag này.');
+            })(),
+
+        h('div', { style: { marginTop: '22px', display: 'flex', gap: '10px', flexWrap: 'wrap' } },
+          h('button', { type: 'button', className: 'btn btn-primary', onClick: remediationNext },
+            (stepNo < totalSteps ? 'Tiếp tục ➔' : 'Bắt đầu luyện tập (5 câu) ➔')),
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: remediationExit }, 'Thoát')
+        )
+      );
     }
 
     // Luyện lại cả 1 "Bài" — nút trên lưới 16 Bài của Trang chủ Học sinh.
@@ -809,9 +904,27 @@
     // Tính overall mastery
     var avgMastery = Math.round((student.mastery['nhiet'] + student.mastery['khi'] + student.mastery['tu-truong'] + student.mastery['hat-nhan']) / 4);
 
+    // Đang ở trong quy trình Vá lỗi khép kín (bước 1/2 chưa có examSession,
+    // hoặc bước 3 đang làm bài chưa nộp) → khoá Hồ sơ + Chỉ số + Điều hướng,
+    // chỉ để lại 1 thanh mỏng "Thoát" — đúng "tự động khóa các phần khác".
+    var lockedMode = !!remediation || (examSession && examSession.fromRemediation && !examSession.isSubmitted);
+
     return h('div', { className: 'ps-wrapper', key: 'bank-' + bankVersion },
       bankIsLive ? null : h('div', { className: 'banner warn', style: { marginBottom: '14px' } },
         h('span', null, 'ℹ️'), h('div', null, 'Đang tải ngân hàng đề thật từ Firestore… nếu chờ lâu mà vẫn thấy thông báo này, báo thầy cô kiểm tra lại đề đã nạp trong trang admin.')),
+
+      // 1-3. Hồ sơ + Chỉ số + Điều hướng — ẨN khi đang khoá trong quy trình
+      // Vá lỗi, thay bằng 1 thanh "Thoát" mỏng để học sinh không lạc sang
+      // phần khác giữa chừng quy trình 3 bước.
+      lockedMode
+        ? h('div', { className: 'ps-lock-topbar', key: 'lockbar' },
+            h('span', null, '🔒 Đang vá lỗi kiến thức' + (remediation ? ': ' + remediation.nano.name : (examSession ? ': ' + examSession.title : ''))),
+            h('button', {
+              type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.78rem', padding: '6px 12px' },
+              onClick: function(){ setRemediation(null); setExamSession(null); setTab('home'); }
+            }, 'Thoát ➔ Trang chủ')
+          )
+        : h('div', { key: 'chrome' },
       // 1. Profile Bar
       h('div', { className: 'ps-profile-bar' },
         h('div', { className: 'ps-student-picker' },
@@ -903,9 +1016,14 @@
           '🔄 Sổ tay câu sai (Mistake Review)',
           h('span', { className: 'ps-tab-badge' }, mistakeLog.length)
         )
-      ),
+      )
+      ), // đóng div "chrome" (Hồ sơ + Chỉ số + Điều hướng, ẩn khi lockedMode)
 
-      // 4. Main Body Content based on Tab & Exam State
+      // 4. Main Body Content — nếu đang ở bước 1/2 Vá lỗi (video/concept)
+      // thì hiện màn hình khoá riêng; ngược lại giữ nguyên nội dung theo
+      // Tab & Exam State như trước (bước 3 Vá lỗi dùng lại đúng nhánh
+      // examSession bên dưới, không có gì khác biệt với 1 bài Drill thường).
+      remediation ? renderRemediationStep(remediation) : (
       examSession ? (
         // MÀN HÌNH ĐANG LÀM BÀI HOẶC XEM KẾT QUẢ
         examSession.isSubmitted && scoreResult ? (
@@ -920,7 +1038,7 @@
               ),
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
               h('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' } },
-                (examSession && (examSession.type === 'diagnostic' || examSession.type === 'adaptive')) ? h('button', {
+                (examSession && (examSession.type === 'diagnostic' || examSession.type === 'adaptive' || examSession.fromRemediation)) ? h('button', {
                   type: 'button',
                   className: 'btn btn-primary',
                   onClick: function(){ setExamSession(null); setTab('home'); }
@@ -1548,16 +1666,17 @@
                         ),
                         h('span', { style: { fontSize: '0.78rem', fontWeight: 700, color: 'var(--critical)', background: 'color-mix(in srgb, var(--critical) 12%, transparent)', padding: '3px 8px', borderRadius: '5px', whiteSpace: 'nowrap' } }, n.mastery + '%')
                       ),
-                      n.videoUrl
-                        ? h('a', { href: n.videoUrl, target: '_blank', rel: 'noopener noreferrer', style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--accent-strong)', marginTop: '10px', textDecoration: 'none', fontWeight: 600 } }, '▶️ Video Nano 3 phút')
-                        : h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', marginTop: '10px', fontStyle: 'italic' } }, '▶️ Video Nano 3 phút — thầy cô đang chuẩn bị nội dung'),
+                      h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', marginTop: '10px' } },
+                        (n.videoUrl ? '▶️ Có Video Nano 3 phút' : '▶️ Video Nano 3 phút — thầy cô đang chuẩn bị nội dung') +
+                        ' · ' + (n.conceptCard ? '📋 Có Thẻ ghi nhớ' : '📋 Thẻ ghi nhớ — thầy cô đang chuẩn bị nội dung')
+                      ),
                       h('div', { style: { marginTop: '10px' } },
                         h('button', {
                           type: 'button',
                           className: 'btn btn-primary',
                           style: { fontSize: '0.8rem', padding: '6px 12px' },
-                          onClick: function(){ startNanoDrill(n.id, n.name); }
-                        }, '5 bài tập luyện Tag này ➔')
+                          onClick: function(){ startRemediation(n); }
+                        }, (n.videoUrl || n.conceptCard) ? '🔒 Bắt đầu Vá lỗi (Video → Thẻ ghi nhớ → 5 bài tập) ➔' : '5 bài tập luyện Tag này ➔')
                       )
                     );
                   })
@@ -1597,6 +1716,7 @@
           }
         })()
       )
+      ) // đóng ternary "remediation ? renderRemediationStep(...) : ( examSession ? ... )"
     );
   }
 

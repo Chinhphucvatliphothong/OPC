@@ -344,6 +344,53 @@
   gap: 6px;
 }
 
+/* Thanh "Thoát" mỏng thay cho Hồ sơ+Chỉ số+Điều hướng khi đang khoá trong
+   quy trình Vá lỗi (Learning & Remediation Flow) — xem renderRemediationStep
+   và lockedMode trong prepscholar-ui.js. */
+.ps-lock-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid var(--accent-strong, var(--line));
+  border-radius: 12px;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+/* Màn hình bước 1 (Video) / bước 2 (Concept Card) của quy trình Vá lỗi */
+.ps-remediation-screen {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px 26px;
+  max-width: 640px;
+  margin: 0 auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+}
+.ps-remediation-step-badge {
+  display: inline-block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.ps-remediation-card-block {
+  font-size: 0.92rem;
+  line-height: 1.7;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
 /* Active Exam Taking Room */
 .ps-exam-screen {
   background: var(--surface);
