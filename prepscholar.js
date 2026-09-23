@@ -284,7 +284,12 @@
       mastery: {}, nanoMastery: {}, predicted: null, mistakeLog: [],
       radar5: { lyThuyet: null, vdc: null, neBayTF: null, doThi: null, tinhNhanh: null },
       levelXp: computeLevelXP([]),
-      currentChuDe: getCurrentChuDe({})
+      currentChuDe: getCurrentChuDe({}),
+      // completedExamsCount/averageScore/highestScore: THÊM 23/9/2026 để
+      // trang admin (Danh sách học sinh) hiển thị đúng số đề đã làm/điểm TB/
+      // điểm cao nhất THẬT thay vì luôn = 0 — xem syncStudentStats trong
+      // prepscholar-ui.js và calculateStudentKPIs trong admin.html.
+      completedExamsCount: 0, averageScore: 0, highestScore: 0
     };
     attempts = attempts || [];
     if(!attempts.length) return result;
@@ -359,6 +364,16 @@
     result.radar5 = computeRadar5(sorted);
     result.levelXp = computeLevelXP(sorted);
     result.currentChuDe = getCurrentChuDe(result.mastery);
+
+    // Đề đã làm / Điểm TB / Điểm cao nhất — tính trên MỌI lượt nộp bài thật
+    // (Kiểm tra đầu vào, Drill, Thi thử, Luyện thích ứng, Đề được giao...),
+    // không phân biệt loại, để khớp đúng nghĩa "Đề đã làm" trên trang admin.
+    result.completedExamsCount = sorted.length;
+    var scoreVals = sorted.map(function(a){ return Number(a.scaledScore10); }).filter(function(n){ return !isNaN(n); });
+    if(scoreVals.length){
+      result.averageScore = Math.round((scoreVals.reduce(function(s, n){ return s + n; }, 0) / scoreVals.length) * 10) / 10;
+      result.highestScore = Math.max.apply(null, scoreVals);
+    }
 
     return result;
   }

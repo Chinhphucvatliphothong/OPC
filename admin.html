@@ -1218,10 +1218,20 @@
 
   function calculateStudentKPIs(s){
     s = s || {};
+    // completed: TỔNG số lượt nộp bài thật (mọi loại — Kiểm tra đầu vào,
+    // Drill, Thi thử, Luyện thích ứng, Đề được giao...) — do trang luyện tập
+    // tự tính và đẩy lên student_stats.completedExamsCount sau mỗi lần nộp
+    // bài (xem computeStudentStatsFromAttempts trong prepscholar.js).
     var completed = Number(s.completedExamsCount) || 0;
-    // Standard PrepScholar / OPC roadmap package is 20 practice exams
-    var totalAssigned = Number(s.assignedExamsCount) || Number(s.totalExams) || 20;
-    var completionRate = Math.min(100, Math.round((completed / totalAssigned) * 100));
+
+    // Hoàn thành: % số ĐỀ ĐƯỢC GIAO (qua "Giao đề cá nhân hóa" trong admin)
+    // mà học sinh đã làm xong — thay cho "mục tiêu 20 đề" bịa trước đây.
+    // Chỉ có ý nghĩa khi thầy đã giao ít nhất 1 đề; chưa giao thì hiện thật
+    // "Chưa giao đề" thay vì suy ra %.
+    var assignedTotal = Number(s.assignedExamsCount) || 0;
+    var assignedCompleted = Number(s.assignedExamsCompletedCount) || 0;
+    var hasAssigned = assignedTotal > 0;
+    var completionRate = hasAssigned ? Math.min(100, Math.round((assignedCompleted / assignedTotal) * 100)) : 0;
 
     var avg = Number(s.averageScore) || 0;
     var highest = Number(s.highestScore) || 0;
@@ -1257,21 +1267,21 @@
       ];
       topics.sort(function(a, b){ return a.val - b.val; });
       weakTopic = topics[0].name + ' (' + topics[0].val + '%)';
-    } else if(avg > 0 && avg < 7.0){
-      weakTopic = 'Vật lí hạt nhân & Từ trường';
-    } else if(avg >= 7.0 && avg < 8.5){
-      weakTopic = 'Câu hỏi Vận dụng cao (M4)';
-    } else if(avg >= 8.5){
-      weakTopic = 'Duy trì phong độ & Tối ưu tốc độ';
     }
+    // (Bỏ các nhánh suy đoán chuyên đề yếu từ mỗi điểm TB — không có căn cứ
+    // thật; nếu chưa có số liệu mastery theo chuyên đề thì để "Chưa xác định".)
 
-    var mistakes = Number(s.mistakeCount) || (completed > 0 ? Math.max(1, Math.round((10 - avg) * 2)) : 0);
+    var mistakes = Number(s.mistakeCount) || 0;
 
     return {
       completed: completed,
-      totalAssigned: totalAssigned,
+      assignedTotal: assignedTotal,
+      assignedCompleted: assignedCompleted,
+      hasAssigned: hasAssigned,
+      totalAssigned: assignedTotal, // giữ tên trường cũ cho các chỗ còn tham chiếu (CSV, tổng hợp lớp)
       completionRate: completionRate,
-      completionRatePct: completionRate + '%',
+      completionRatePct: hasAssigned ? (completionRate + '%') : 'Chưa giao đề',
+      completionBarPct: completionRate + '%', // luôn là số hợp lệ để làm CSS width (0% khi chưa giao đề)
       avgScore: avg.toFixed(1),
       highestScore: highest.toFixed(1),
       targetScore: target.toFixed(1),
@@ -1288,15 +1298,21 @@
     var totalStudents = students.length;
     var activeStudents = students.filter(function(s){ return s.status === 'active'; }).length;
 
-    var sumAvgScore = students.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
-    var avgClassScore = totalStudents > 0 ? (sumAvgScore / totalStudents).toFixed(1) : '0.0';
-
-    var totalCompleted = students.reduce(function(acc, s){ return acc + (Number(s.completedExamsCount) || 0); }, 0);
-    var totalAssigned = students.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || Number(s.totalExams) || 20); }, 0);
-    var avgCompletionRate = totalAssigned > 0 ? Math.min(100, Math.round((totalCompleted / totalAssigned) * 100)) : 0;
+    // Điểm TB lớp / Điểm cao nhất khóa: chỉ tính trên các em ĐÃ TỪNG làm bài
+    // thật (completedExamsCount > 0) — chưa ai làm bài thì hiện "—" trung
+    // thực, không hiện 0.0 (dễ hiểu nhầm là điểm liệt).
+    var practiced = students.filter(function(s){ return (Number(s.completedExamsCount) || 0) > 0; });
+    var sumAvgScore = practiced.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
+    var avgClassScore = practiced.length > 0 ? (sumAvgScore / practiced.length).toFixed(1) : null;
 
     var maxScore = students.reduce(function(max, s){ return Math.max(max, Number(s.highestScore) || 0); }, 0);
-    var highestClassScore = maxScore > 0 ? (maxScore.toFixed ? maxScore.toFixed(1) : maxScore) : '0.0';
+    var highestClassScore = maxScore > 0 ? maxScore.toFixed(1) : null;
+
+    // Hoàn thành: tổng số đề được giao đã hoàn thành / tổng số đề được giao
+    // (tính năng "Giao đề cá nhân hóa") — không còn mục tiêu 20 đề/em bịa ra.
+    var totalAssignedClass = students.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || 0); }, 0);
+    var totalAssignedCompletedClass = students.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCompletedCount) || 0); }, 0);
+    var avgCompletionRate = totalAssignedClass > 0 ? Math.min(100, Math.round((totalAssignedCompletedClass / totalAssignedClass) * 100)) : null;
 
     var sumTarget = students.reduce(function(acc, s){ return acc + (Number(s.targetScore) || 9.0); }, 0);
     var avgTarget = totalStudents > 0 ? (sumTarget / totalStudents).toFixed(1) : '9.0';
@@ -1316,23 +1332,23 @@
         ),
         h('div',{id:'metric-avg-score', className:'sm-summary-item'},
           h('div',{className:'sm-summary-label'}, 'Điểm trung bình lớp'),
-          h('div',{className:'sm-summary-val', style:{color:'var(--accent-strong)'}}, avgClassScore),
-          h('div',{className:'sm-summary-sub'}, 'Mục tiêu trung bình: ' + avgTarget + '+')
+          h('div',{className:'sm-summary-val', style:{color:'var(--accent-strong)'}}, avgClassScore != null ? avgClassScore : '—'),
+          h('div',{className:'sm-summary-sub'}, avgClassScore != null ? ('Mục tiêu trung bình: ' + avgTarget + '+') : 'Chưa có em nào làm bài')
         ),
         h('div',{id:'metric-completion-rate', className:'sm-summary-item'},
-          h('div',{className:'sm-summary-label'}, 'Tỷ lệ hoàn thành TB'),
-          h('div',{className:'sm-summary-val', style:{color:'var(--accent)'}}, avgCompletionRate + '%'),
+          h('div',{className:'sm-summary-label'}, 'Tỷ lệ hoàn thành đề đã giao'),
+          h('div',{className:'sm-summary-val', style:{color:'var(--accent)'}}, avgCompletionRate != null ? (avgCompletionRate + '%') : '—'),
           h('div',{style:{display:'flex', alignItems:'center', gap:6, marginTop:4}},
             h('div',{style:{width:48, height:5, background:'var(--line)', borderRadius:3, overflow:'hidden', display:'inline-block'}},
-              h('div',{style:{height:'100%', width:avgCompletionRate + '%', background:'var(--accent)'}})
+              h('div',{style:{height:'100%', width:(avgCompletionRate || 0) + '%', background:'var(--accent)'}})
             ),
-            h('span',{className:'sm-summary-sub', style:{marginTop:0}}, totalCompleted + '/' + totalAssigned + ' đề')
+            h('span',{className:'sm-summary-sub', style:{marginTop:0}}, totalAssignedClass > 0 ? (totalAssignedCompletedClass + '/' + totalAssignedClass + ' đề') : 'Chưa giao đề nào')
           )
         ),
         h('div',{id:'metric-top-score', className:'sm-summary-item'},
           h('div',{className:'sm-summary-label'}, 'Điểm cao nhất khóa'),
-          h('div',{className:'sm-summary-val', style:{color:'var(--good)'}}, highestClassScore),
-          h('div',{className:'sm-summary-sub'}, 'Kỷ lục thi thử cao nhất')
+          h('div',{className:'sm-summary-val', style:{color:'var(--good)'}}, highestClassScore != null ? highestClassScore : '—'),
+          h('div',{className:'sm-summary-sub'}, highestClassScore != null ? 'Kỷ lục thi thử cao nhất' : 'Chưa có kết quả nào')
         )
       )
     );
@@ -1365,6 +1381,38 @@
       return function(){ unsub(); };
     }, []);
 
+    // Số liệu học tập THẬT (đề đã làm/điểm TB/cao nhất/tiến độ đề được giao)
+    // — do chính trang luyện tập ghi vào collection "student_stats" sau mỗi
+    // lần nộp bài (xem syncStudentStats trong prepscholar-ui.js). Gộp theo
+    // id, ĐÈ LÊN các trường tĩnh completedExamsCount/averageScore/highestScore
+    // vốn chỉ được gán 0 lúc tạo tài khoản và không tự cập nhật (xem
+    // calculateStudentKPIs — cùng cách PrepScholarMonitoringPanel đã làm).
+    var statsByIdState = React.useState({}); var statsById = statsByIdState[0], setStatsById = statsByIdState[1];
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.studentStats) return;
+      var unsub = OPCref.studentStats.subscribe(function(snap){
+        var map = {};
+        snap.docs.forEach(function(d){ map[d.id] = d.data() || {}; });
+        setStatsById(map);
+      }, function(err){ console.error('Lỗi tải số liệu học tập thật (Danh sách học sinh):', err); });
+      return function(){ unsub(); };
+    }, []);
+
+    var displayStudents = students.map(function(s){
+      var st = statsById[s.id];
+      if(!st) return s;
+      return Object.assign({}, s, {
+        completedExamsCount: st.completedExamsCount != null ? st.completedExamsCount : s.completedExamsCount,
+        averageScore: st.averageScore != null ? st.averageScore : s.averageScore,
+        highestScore: st.highestScore != null ? st.highestScore : s.highestScore,
+        assignedExamsCount: st.assignedExamsCount != null ? st.assignedExamsCount : s.assignedExamsCount,
+        assignedExamsCompletedCount: st.assignedExamsCompletedCount != null ? st.assignedExamsCompletedCount : s.assignedExamsCompletedCount,
+        predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
+        mastery: st.mastery || s.mastery,
+        mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount
+      });
+    });
+
     React.useEffect(function(){
       if(!selected && !addOpen && !importOpen) return;
       function onKey(e){
@@ -1381,7 +1429,7 @@
     function setField(key, val){ setForm(function(prev){ var next = Object.assign({}, prev); next[key] = val; return next; }); }
 
     var q = search.trim().toLowerCase();
-    var filtered = students.filter(function(s){
+    var filtered = displayStudents.filter(function(s){
       if(!q) return true;
       return (s.name||'').toLowerCase().indexOf(q)>-1 || (s.school||'').toLowerCase().indexOf(q)>-1 || (s.email||'').toLowerCase().indexOf(q)>-1;
     });
@@ -1411,9 +1459,9 @@
         'Điểm trung bình (GPA)',
         'Điểm thi cao nhất',
         'Điểm dự đoán tốt nghiệp',
-        'Số đề đã hoàn thành',
-        'Mục tiêu tổng số đề (Lộ trình)',
-        'Tỷ lệ hoàn thành lộ trình (%)',
+        'Số đề đã làm (mọi loại)',
+        'Số đề được giao (Cá nhân hóa)',
+        'Tỷ lệ hoàn thành đề được giao (%)',
         'Tiến độ đạt mục tiêu điểm (%)',
         'Đánh giá học lực',
         'Chuyên đề trọng tâm cần ôn',
@@ -1425,7 +1473,7 @@
         'Số dư hoa hồng (VNĐ)'
       ];
 
-      var rows = students.map(function(s, idx){
+      var rows = displayStudents.map(function(s, idx){
         var kpi = calculateStudentKPIs(s);
         return [
           idx + 1,
@@ -1455,15 +1503,17 @@
         ];
       });
 
-      // Calculate class-wide summary KPI row
-      var totalCompleted = students.reduce(function(acc, s){ return acc + (Number(s.completedExamsCount) || 0); }, 0);
-      var totalAssigned = students.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || 20); }, 0);
-      var classAvgCompletion = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
-      var sumAvgScore = students.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
-      var classAvgScore = students.length > 0 ? (sumAvgScore / students.length).toFixed(1) : '0.0';
-      var sumTargetScore = students.reduce(function(acc, s){ return acc + (Number(s.targetScore) || 9.0); }, 0);
-      var classAvgTarget = students.length > 0 ? (sumTargetScore / students.length).toFixed(1) : '9.0';
-      var maxClassScore = students.reduce(function(max, s){ return Math.max(max, Number(s.highestScore) || 0); }, 0).toFixed(1);
+      // Calculate class-wide summary KPI row — dùng đúng số liệu thật (đề
+      // được giao/đã hoàn thành), không còn mục tiêu 20 đề/em bịa ra.
+      var totalAssignedCompleted = displayStudents.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCompletedCount) || 0); }, 0);
+      var totalAssigned = displayStudents.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || 0); }, 0);
+      var classAvgCompletion = totalAssigned > 0 ? Math.round((totalAssignedCompleted / totalAssigned) * 100) : 0;
+      var practicedForExport = displayStudents.filter(function(s){ return (Number(s.completedExamsCount) || 0) > 0; });
+      var sumAvgScore = practicedForExport.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
+      var classAvgScore = practicedForExport.length > 0 ? (sumAvgScore / practicedForExport.length).toFixed(1) : '0.0';
+      var sumTargetScore = displayStudents.reduce(function(acc, s){ return acc + (Number(s.targetScore) || 9.0); }, 0);
+      var classAvgTarget = displayStudents.length > 0 ? (sumTargetScore / displayStudents.length).toFixed(1) : '9.0';
+      var maxClassScore = displayStudents.reduce(function(max, s){ return Math.max(max, Number(s.highestScore) || 0); }, 0).toFixed(1);
 
       var dividerRow = new Array(headers.length).fill('---');
       var summaryRow = [
@@ -1479,8 +1529,8 @@
         'Điểm TB lớp: ' + classAvgScore,
         'Điểm cao nhất: ' + maxClassScore,
         'Dự đoán TB: ' + (Number(classAvgScore) * 0.96 + 0.2).toFixed(1),
-        'Tổng đề: ' + totalCompleted,
-        'Tổng mục tiêu: ' + totalAssigned,
+        'Đề được giao đã hoàn thành: ' + totalAssignedCompleted,
+        'Tổng đề được giao: ' + totalAssigned,
         'Tỷ lệ HT chung: ' + classAvgCompletion + '%',
         'Đạt MT: ' + (Number(classAvgTarget) > 0 ? Math.round((Number(classAvgScore) / Number(classAvgTarget)) * 100) : 0) + '%',
         'Khảo sát toàn khóa',
@@ -1680,7 +1730,7 @@
         h('button',{type:'button', className:'btn btn-primary', onClick:function(){ setAddOpen(true); }}, '+ Thêm học sinh')
       )
     );
-    var summaryCard = renderClassSummaryCard(students);
+    var summaryCard = renderClassSummaryCard(displayStudents);
     var searchRow = h('div',{className:'sm-search-row'},
       h('div',{className:'sm-search'}, h(IconSearch),
         h('input',{type:'text', value:search, placeholder:'Tìm theo tên, trường, email...', onChange:function(e){ setSearch(e.target.value); }})),
@@ -1706,11 +1756,11 @@
                 h('td',null, s.school),
                 h('td',{className:'sm-num', style:{textAlign:'center'}}, (s.completedExamsCount||0)+' đề'),
                 h('td',{style:{textAlign:'center'}},
-                  h('div',{style:{display:'inline-flex', alignItems:'center', gap:6}},
+                  kpi.hasAssigned ? h('div',{style:{display:'inline-flex', alignItems:'center', gap:6}},
                     h('div',{style:{width:40, height:6, background:'var(--line)', borderRadius:3, overflow:'hidden', display:'inline-block'}},
-                      h('div',{style:{height:'100%', width:kpi.completionRatePct, background:'var(--accent)'}})),
+                      h('div',{style:{height:'100%', width:kpi.completionBarPct, background:'var(--accent)'}})),
                     h('span',{style:{fontFamily:'"IBM Plex Mono",monospace', fontSize:'0.78rem', fontWeight:700, color:'var(--ink)'}}, kpi.completionRatePct)
-                  )
+                  ) : h('span',{style:{fontSize:'0.76rem', color:'var(--muted)'}}, 'Chưa giao đề')
                 ),
                 h('td',{className:'sm-num', style:{textAlign:'center', fontWeight:700, color:'var(--accent-strong)'}}, kpi.avgScore),
                 h('td',{className:'sm-num', style:{textAlign:'center', color:'var(--good)', fontWeight:700}}, kpi.highestScore),
@@ -3187,7 +3237,16 @@
       return Object.assign({}, s, {
         mastery: st.mastery || s.mastery,
         predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
-        mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount
+        mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount,
+        // completedExamsCount/averageScore/highestScore/assignedExams...:
+        // THÊM 23/9/2026 để "Xuất CSV & KPI" ở panel này cũng xuất đúng số
+        // liệu thật, đồng bộ với bảng "Danh sách học sinh" — xem
+        // calculateStudentKPIs.
+        completedExamsCount: st.completedExamsCount != null ? st.completedExamsCount : s.completedExamsCount,
+        averageScore: st.averageScore != null ? st.averageScore : s.averageScore,
+        highestScore: st.highestScore != null ? st.highestScore : s.highestScore,
+        assignedExamsCount: st.assignedExamsCount != null ? st.assignedExamsCount : s.assignedExamsCount,
+        assignedExamsCompletedCount: st.assignedExamsCompletedCount != null ? st.assignedExamsCompletedCount : s.assignedExamsCompletedCount
       });
     });
 
@@ -3249,7 +3308,7 @@
     }
 
     function handleExportKPI(){
-      var dataToExport = students.length ? students : displayStudents;
+      var dataToExport = displayStudents;
       if(!dataToExport.length){ props.fireToast('Chưa có học sinh để xuất file CSV.', true); return; }
 
       var headers = [
@@ -3265,9 +3324,9 @@
         'Điểm trung bình (GPA)',
         'Điểm thi cao nhất',
         'Điểm dự đoán tốt nghiệp',
-        'Số đề đã hoàn thành',
-        'Mục tiêu tổng số đề (Lộ trình)',
-        'Tỷ lệ hoàn thành lộ trình (%)',
+        'Số đề đã làm (mọi loại)',
+        'Số đề được giao (Cá nhân hóa)',
+        'Tỷ lệ hoàn thành đề được giao (%)',
         'Tiến độ đạt mục tiêu điểm (%)',
         'Đánh giá học lực',
         'Chuyên đề trọng tâm cần ôn',
@@ -3309,11 +3368,12 @@
         ];
       });
 
-      var totalCompleted = dataToExport.reduce(function(acc, s){ return acc + (Number(s.completedExamsCount) || 0); }, 0);
-      var totalAssigned = dataToExport.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || 20); }, 0);
-      var classAvgCompletion = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
-      var sumAvgScore = dataToExport.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
-      var classAvgScore = dataToExport.length > 0 ? (sumAvgScore / dataToExport.length).toFixed(1) : '0.0';
+      var totalAssignedCompleted = dataToExport.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCompletedCount) || 0); }, 0);
+      var totalAssigned = dataToExport.reduce(function(acc, s){ return acc + (Number(s.assignedExamsCount) || 0); }, 0);
+      var classAvgCompletion = totalAssigned > 0 ? Math.round((totalAssignedCompleted / totalAssigned) * 100) : 0;
+      var practicedForExport = dataToExport.filter(function(s){ return (Number(s.completedExamsCount) || 0) > 0; });
+      var sumAvgScore = practicedForExport.reduce(function(acc, s){ return acc + (Number(s.averageScore) || 0); }, 0);
+      var classAvgScore = practicedForExport.length > 0 ? (sumAvgScore / practicedForExport.length).toFixed(1) : '0.0';
 
       var dividerRow = new Array(headers.length).fill('---');
       var summaryRow = [
@@ -3325,8 +3385,8 @@
         'Điểm TB lớp: ' + classAvgScore,
         '',
         'Dự đoán TB: ' + (Number(classAvgScore) * 0.96 + 0.2).toFixed(1),
-        'Tổng đề: ' + totalCompleted,
-        'Tổng mục tiêu: ' + totalAssigned,
+        'Đề được giao đã hoàn thành: ' + totalAssignedCompleted,
+        'Tổng đề được giao: ' + totalAssigned,
         'Tỷ lệ HT chung: ' + classAvgCompletion + '%',
         '', 'Khảo sát PrepScholar', '', '', '', '', '', '', ''
       ];

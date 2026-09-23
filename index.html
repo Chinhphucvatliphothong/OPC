@@ -706,7 +706,7 @@
     </div>
     <figure class="wave-figure">
       <svg id="heroWave" viewBox="0 0 1032 140" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <figcaption class="wave-caption"><span class="mono">x(t) = A·e^(−βt)·cos(ωt)</span> — dao động tắt dần, chương mở đầu quen thuộc của Vật Lí 12</figcaption>
+      <figcaption class="wave-caption"><span class="mono">Q = mc·Δt</span> — đồ thị nhiệt độ theo nhiệt lượng cung cấp (Vật Lí Nhiệt), chương mở đầu Vật Lí 12 chương trình GDPT 2018</figcaption>
     </figure>
   </div>
 </header>
@@ -1065,17 +1065,24 @@
 
 <script>
 (function(){
-  // ---- Hero damped oscillation wave ----
+  // ---- Hero heating-curve wave (Vật Lí Nhiệt: nhiệt độ theo nhiệt lượng) ----
+  // Đồ thị đường đun nóng vật chất: rắn nóng lên -> nóng chảy (đoạn nằm
+  // ngang, đổi pha rắn-lỏng) -> lỏng nóng lên -> hóa hơi (đoạn nằm ngang,
+  // đổi pha lỏng-khí) -> hơi nóng lên tiếp. Đây là hình ảnh gắn liền với
+  // chương mở đầu "Vật Lí Nhiệt" của Vật Lí 12 (GDPT 2018), thay cho đồ thị
+  // dao động tắt dần vốn không còn là chương mở đầu ở chương trình mới.
   var svg = document.getElementById('heroWave');
-  var W = 1032, H = 140, mid = H/2;
-  var pts = [];
-  var cycles = 3.4, amp = 46, damping = 1.35;
-  for(var i=0;i<=220;i++){
-    var x = (i/220)*W;
-    var t = i/220;
-    var y = mid - amp*Math.exp(-damping*t)*Math.cos(2*Math.PI*cycles*t);
-    pts.push(x.toFixed(1)+","+y.toFixed(1));
-  }
+  var W = 1032, H = 140;
+  // Các điểm mốc (phần trăm chiều rộng, toạ độ y theo px): rắn nóng lên ->
+  // nóng chảy (phẳng) -> lỏng nóng lên -> hóa hơi (phẳng) -> hơi nóng lên.
+  var keyPts = [
+    [0.00, 118], [0.16, 76],
+    [0.30, 76],  // đoạn nóng chảy
+    [0.46, 34],
+    [0.62, 34],  // đoạn hóa hơi
+    [1.00, 14]
+  ];
+  var pts = keyPts.map(function(p){ return (p[0]*W).toFixed(1)+","+p[1].toFixed(1); });
   var ns = "http://www.w3.org/2000/svg";
   var gridColor = "rgba(243,244,238,0.08)";
   for(var gx=0; gx<=W; gx+=86){
@@ -1087,7 +1094,7 @@
   }
   var baseline = document.createElementNS(ns,"line");
   baseline.setAttribute("x1",0); baseline.setAttribute("x2",W);
-  baseline.setAttribute("y1",mid); baseline.setAttribute("y2",mid);
+  baseline.setAttribute("y1",118); baseline.setAttribute("y2",118);
   baseline.setAttribute("stroke","rgba(243,244,238,0.14)"); baseline.setAttribute("stroke-width","1");
   svg.appendChild(baseline);
   var path = document.createElementNS(ns,"path");
@@ -1098,6 +1105,15 @@
   path.setAttribute("stroke-linecap","round");
   path.setAttribute("stroke-linejoin","round");
   svg.appendChild(path);
+  // Chấm mốc tại 2 đoạn đổi pha (nóng chảy / hóa hơi) để gợi rõ đây là đồ
+  // thị chuyển thể, không phải đường thẳng ngẫu nhiên.
+  [[0.16,76],[0.30,76],[0.46,34],[0.62,34]].forEach(function(p){
+    var dot = document.createElementNS(ns,"circle");
+    dot.setAttribute("cx",(p[0]*W).toFixed(1)); dot.setAttribute("cy",p[1]);
+    dot.setAttribute("r","3.4"); dot.setAttribute("fill","#f3f4ee");
+    dot.setAttribute("stroke","#c98a2f"); dot.setAttribute("stroke-width","1.6");
+    svg.appendChild(dot);
+  });
 
   // ---- Tooltip helper ----
   var tt = document.getElementById('tooltip');

@@ -341,6 +341,17 @@
       if(stats.radar5) payload.radar5 = stats.radar5;
       if(stats.levelXp) payload.levelXp = stats.levelXp;
       if(stats.currentChuDe) payload.currentChuDe = stats.currentChuDe;
+      // completedExamsCount/averageScore/highestScore: THÊM 23/9/2026 — để
+      // trang admin (Danh sách học sinh) hiển thị đúng số đề đã làm/điểm TB/
+      // điểm cao nhất THẬT (xem calculateStudentKPIs trong admin.html).
+      if(stats.completedExamsCount != null) payload.completedExamsCount = stats.completedExamsCount;
+      if(stats.averageScore != null) payload.averageScore = stats.averageScore;
+      if(stats.highestScore != null) payload.highestScore = stats.highestScore;
+      // assignedExamsCount/assignedExamsCompletedCount: THÊM 23/9/2026 — để
+      // cột "Hoàn thành" trên trang admin phản ánh đúng tiến độ làm ĐỀ ĐƯỢC
+      // GIAO (qua tính năng "Giao đề cá nhân hóa"), không phải mục tiêu bịa.
+      if(stats.assignedExamsTotal != null) payload.assignedExamsCount = stats.assignedExamsTotal;
+      if(stats.assignedExamsCompleted != null) payload.assignedExamsCompletedCount = stats.assignedExamsCompleted;
       window.OPC_LIVE.saveStudentStats(studentId, payload).catch(function(err){
         console.error('Lỗi lưu số liệu học tập (student_stats):', err);
       });
@@ -352,14 +363,18 @@
       setAuthState('in');
       setMistakeLog([]); // học sinh thật bắt đầu từ sổ tay trống, không dùng seed minh hoạ
       setAssignedExams([]);
-      if(window.OPC_LIVE && window.OPC_LIVE.loadAssignedExams){
-        window.OPC_LIVE.loadAssignedExams(real.id).then(function(list){
-          setAssignedExams(list || []);
-        });
-      }
-      if(!window.OPC_LIVE || !window.OPC_LIVE.loadAttempts) return;
-      window.OPC_LIVE.loadAttempts(real.id).then(function(attempts){
-        if(!attempts || !attempts.length) return;
+      if(!window.OPC_LIVE) return;
+      // Tải SONG SONG lịch sử làm bài + đề được giao, rồi xử lý CÙNG LÚC khi
+      // cả hai đã xong — cần cả 2 để tính đúng "Hoàn thành X/Y đề được giao"
+      // (so khớp assignedExamId của từng lượt làm bài với danh sách đề được
+      // giao) trước khi đẩy lên student_stats cho trang admin đọc.
+      var loadAttemptsP = window.OPC_LIVE.loadAttempts ? window.OPC_LIVE.loadAttempts(real.id) : Promise.resolve([]);
+      var loadAssignedP = window.OPC_LIVE.loadAssignedExams ? window.OPC_LIVE.loadAssignedExams(real.id) : Promise.resolve([]);
+      Promise.all([loadAttemptsP, loadAssignedP]).then(function(results){
+        var attempts = results[0] || [];
+        var assigned = results[1] || [];
+        setAssignedExams(assigned);
+        if(!attempts.length) return;
         var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
         setStudent(function(prev){
           if(!prev || prev.id !== appStu.id) return prev; // đã đăng xuất/đổi tài khoản trong lúc đang tải
@@ -376,6 +391,10 @@
           return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
         });
         setMistakeLog(withQ);
+        stats.assignedExamsTotal = assigned.length;
+        stats.assignedExamsCompleted = assigned.filter(function(ae){
+          return attempts.some(function(a){ return a.assignedExamId === ae.id; });
+        }).length;
         syncStudentStats(real.id, stats);
       });
     }
@@ -1007,6 +1026,13 @@
             return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
           });
           setMistakeLog(withQ);
+          // Hoàn thành đề được giao: dùng danh sách assignedExams đã có sẵn
+          // trong state (tải lúc đăng nhập) — so khớp với attemptRecord vừa
+          // lưu để cập nhật đúng số đã hoàn thành mỗi khi nộp bài.
+          stats.assignedExamsTotal = assignedExams.length;
+          stats.assignedExamsCompleted = assignedExams.filter(function(ae){
+            return attempts.some(function(a){ return a.assignedExamId === ae.id; });
+          }).length;
           syncStudentStats(studentId, stats);
         }).catch(function(err){ console.error('Lỗi lưu/tải lại lịch sử luyện tập:', err); });
       }
