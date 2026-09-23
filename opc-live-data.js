@@ -135,6 +135,30 @@ async function loadAttempts(studentId, max){
   }
 }
 
+// ================= Số liệu học tập thật (cho trang Giám sát của thầy cô) ====
+// Ghi vào collection RIÊNG ở cấp cao nhất "student_stats/{studentId}" (KHÔNG
+// phải subcollection của students/{studentId}) vì phiên học của học sinh
+// không có quyền ghi vào chính document students/{studentId} (document đó
+// admin-only, xem firestore.rules). student_stats là bản "snapshot" mastery/
+// điểm dự đoán/sổ câu sai mới nhất do CHÍNH trang luyện tập tự tính (qua
+// computeStudentStatsFromAttempts trong prepscholar.js) rồi ghi đè lại sau
+// mỗi lần nộp bài — nhờ vậy trang admin (PrepScholarMonitoringPanel) chỉ cần
+// đọc 1 lần toàn bộ collection này thay vì đọc attempts của từng học sinh.
+// Ghi chú bảo mật: cùng đánh đổi như saveAttempt ở trên — chưa có Auth thật
+// nên tạm mở ghi theo đúng studentId (xem match /student_stats/{studentId}
+// trong firestore.rules).
+async function saveStudentStats(studentId, stats){
+  if(!studentId) return { ok: false, error: 'Thiếu studentId.' };
+  try{
+    var ref = doc(db, 'student_stats', studentId);
+    await setDoc(ref, Object.assign({}, stats, { updatedAt: new Date().toISOString() }), { merge: true });
+    return { ok: true };
+  }catch(e){
+    console.error('Lỗi lưu số liệu học tập:', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+
 // ================= Hình ảnh minh họa =================
 // Ảnh được nạp ở CẤP ĐỀ THI (giáo viên chọn nhiều file cùng lúc khi upload
 // .tex), không gắn trực tiếp theo từng câu trong Firestore. parseTexBank
@@ -253,6 +277,7 @@ window.OPC_LIVE = {
   resumeSession: resumeSession,
   loadRealQuestionBank: loadRealQuestionBank,
   saveAttempt: saveAttempt,
-  loadAttempts: loadAttempts
+  loadAttempts: loadAttempts,
+  saveStudentStats: saveStudentStats
 };
 try{ window.dispatchEvent(new CustomEvent('opc-live-ready')); }catch(e){}

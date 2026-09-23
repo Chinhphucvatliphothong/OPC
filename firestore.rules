@@ -55,6 +55,17 @@ service cloud.firestore {
       }
     }
 
+    // Số liệu học tập THẬT (mastery/điểm dự đoán/sổ câu sai) — snapshot mới
+    // nhất do CHÍNH trang luyện tập của học sinh tự ghi lại sau mỗi lần nộp
+    // bài (xem OPC_LIVE.saveStudentStats trong opc-live-data.js), để trang
+    // admin (PrepScholarMonitoringPanel) đọc TOÀN BỘ collection 1 lần thay
+    // vì đọc attempts của từng học sinh. Đọc/ghi công khai — cùng đánh đổi
+    // bảo mật với "attempts" ở trên vì chưa có Auth thật cho học sinh.
+    match /student_stats/{studentId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Ngân hàng đề: đọc công khai (get + list) để học sinh luyện tập; ghi
     // vẫn chỉ admin (nạp/sửa/xoá đề qua admin.html).
     match /de_thi/{examId} {

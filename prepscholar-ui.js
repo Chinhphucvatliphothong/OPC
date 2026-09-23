@@ -10,12 +10,10 @@
   var ReactDOM = window.ReactDOM;
   var h = React.createElement;
 
-  var STUDENTS = [
-    { id: 's1', name: 'Học Sinh A (Trần Văn An)', email: 'hocsinha@opc.edu.vn', target: 9.0, predicted: 7.8, hours: 3.5, mastery: { 'nhiet': 85, 'khi': 68, 'tu-truong': 60, 'hat-nhan': 42 } },
-    { id: 's2', name: 'Nguyễn Bảo Châu', email: 'chaund@gmail.com', target: 8.5, predicted: 6.9, hours: 2.0, mastery: { 'nhiet': 78, 'khi': 45, 'tu-truong': 72, 'hat-nhan': 55 } },
-    { id: 's3', name: 'Trần Minh Khôi', email: 'khoitm@gmail.com', target: 9.5, predicted: 8.6, hours: 4.5, mastery: { 'nhiet': 92, 'khi': 85, 'tu-truong': 88, 'hat-nhan': 78 } },
-    { id: 'guest', name: 'Khách thử nghiệm tự do', email: 'khach@opc.edu.vn', target: 8.0, predicted: 7.0, hours: 0.5, mastery: { 'nhiet': 70, 'khi': 60, 'tu-truong': 55, 'hat-nhan': 50 } }
-  ];
+  // GIAI ĐOẠN THẬT HOÀN TOÀN (từ 23/9/2026): đã bỏ hẳn danh sách học sinh
+  // minh hoạ và chế độ "Học thử với dữ liệu minh hoạ" — trang chỉ còn 1
+  // đường vào duy nhất là đăng nhập bằng tài khoản thật do giáo viên cấp
+  // trong admin. Không còn STUDENTS[] giả lập, không còn student.id === 'guest'.
 
   // Chuyển hồ sơ học sinh THẬT (từ Firestore, do admin.html tạo) sang đúng
   // hình dạng mà giao diện luyện tập cần. predicted/mastery/nanoMastery ở
@@ -23,7 +21,9 @@
   // xong lịch sử làm bài thật (nếu có) và ghi đè lại bằng số liệu thật —
   // xem computeStudentStatsFromAttempts trong prepscholar.js.
   function toAppStudent(real){
-    var defMastery = { 'nhiet': 70, 'khi': 65, 'tu-truong': 60, 'hat-nhan': 55 };
+    // Mốc trung lập khi chưa có số liệu thật (giai đoạn thật hoàn toàn —
+    // không giả định trước em nào yếu/mạnh chuyên đề nào).
+    var defMastery = { 'nhiet': 50, 'khi': 50, 'tu-truong': 50, 'hat-nhan': 50 };
     return {
       id: real.id,
       name: real.name || 'Học sinh',
@@ -203,6 +203,11 @@
     var liveReadyState = React.useState(function(){ return !!window.OPC_LIVE; });
     var liveReady = liveReadyState[0];
     var setLiveReady = liveReadyState[1];
+    // Giai đoạn thật hoàn toàn: không còn lối thoát sang dữ liệu minh hoạ nếu
+    // kết nối Firestore không nạp được — báo lỗi rõ ràng thay vì im lặng.
+    var liveFailedState = React.useState(false);
+    var liveFailed = liveFailedState[0];
+    var setLiveFailed = liveFailedState[1];
     React.useEffect(function(){
       if(liveReady) return;
       function onReady(){ setLiveReady(true); }
@@ -211,7 +216,7 @@
       var timer = setInterval(function(){
         tries++;
         if(window.OPC_LIVE){ setLiveReady(true); clearInterval(timer); }
-        else if(tries > 100){ clearInterval(timer); } // ~20s, bỏ cuộc — vào chế độ minh hoạ
+        else if(tries > 100){ clearInterval(timer); setLiveFailed(true); } // ~20s, báo lỗi kết nối
       }, 200);
       return function(){ window.removeEventListener('opc-live-ready', onReady); clearInterval(timer); };
     }, [liveReady]);
@@ -226,7 +231,7 @@
     var loginErrState = React.useState(''); var loginErr = loginErrState[0], setLoginErr = loginErrState[1];
     var loginBusyState = React.useState(false); var loginBusy = loginBusyState[0], setLoginBusy = loginBusyState[1];
 
-    var studentState = React.useState(STUDENTS[0]);
+    var studentState = React.useState(null);
     var student = studentState[0];
     var setStudent = studentState[1];
 
@@ -235,6 +240,23 @@
     // tính lại mastery/điểm dự đoán/Sổ tay câu sai từ dữ liệu thật — CHỖ CẮM
     // DỮ LIỆU THẬT đã hoạt động (xem computeStudentStatsFromAttempts trong
     // prepscholar.js).
+    // Đẩy số liệu học tập thật (mastery/điểm dự đoán/sổ câu sai) vừa tính lại
+    // lên collection "student_stats" để trang admin (Giám sát thích ứng) đọc
+    // được ngay — xem OPC_LIVE.saveStudentStats trong opc-live-data.js và
+    // OPC.studentStats trong admin.html. Không chặn UI: lỗi mạng chỉ log ra
+    // console, học sinh vẫn thấy số liệu của mình bình thường.
+    function syncStudentStats(studentId, stats){
+      if(!studentId || !window.OPC_LIVE || !window.OPC_LIVE.saveStudentStats) return;
+      var payload = {};
+      if(stats.mastery) payload.mastery = stats.mastery;
+      if(stats.predicted != null) payload.predicted = stats.predicted;
+      if(stats.nanoMastery) payload.nanoMastery = stats.nanoMastery;
+      if(stats.mistakeLog) payload.mistakeCount = stats.mistakeLog.length;
+      window.OPC_LIVE.saveStudentStats(studentId, payload).catch(function(err){
+        console.error('Lỗi lưu số liệu học tập (student_stats):', err);
+      });
+    }
+
     function hydrateAndEnter(real){
       var appStu = toAppStudent(real);
       setStudent(appStu);
@@ -256,6 +278,7 @@
           return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
         });
         setMistakeLog(withQ);
+        syncStudentStats(real.id, stats);
       });
     }
 
@@ -273,7 +296,9 @@
     }, [liveReady]);
 
     // Nạp ngân hàng đề thật (không phụ thuộc trạng thái đăng nhập — xem ghi
-    // chú bảo mật trong opc-live-data.js) và thay cho dữ liệu minh hoạ nếu có.
+    // chú bảo mật trong opc-live-data.js). Giai đoạn thật hoàn toàn: không
+    // còn ngân hàng minh hoạ để rơi vào — QUESTION_BANK bắt đầu trống, ai vào
+    // trước khi nạp xong sẽ thấy banner "Đang tải ngân hàng đề thật…".
     var bankVersionState = React.useState(0); var bankVersion = bankVersionState[0], setBankVersion = bankVersionState[1];
     var bankLiveState = React.useState(false); var bankIsLive = bankLiveState[0], setBankIsLive = bankLiveState[1];
     React.useEffect(function(){
@@ -302,14 +327,9 @@
       }).catch(function(){ setLoginBusy(false); setLoginErr('Lỗi kết nối — thử lại.'); });
     }
 
-    function handleGuestEnter(){
-      setStudent(STUDENTS[0]);
-      setAuthState('in');
-    }
-
     function handleLogout(){
       if(window.OPC_LIVE) window.OPC_LIVE.logoutStudent();
-      setStudent(STUDENTS[0]);
+      setStudent(null);
       setAuthState('form');
     }
 
@@ -346,12 +366,9 @@
     var masteryImpact = masteryImpactState[0];
     var setMasteryImpact = masteryImpactState[1];
 
-    // Sổ tay câu sai (Mistake Log)
-    var mistakeLogState = React.useState([
-      { id: 'm1', qId: 'q_hn_03', topicKey: 'hat-nhan', topicName: 'Vật lí hạt nhân', title: 'Định luật phóng xạ & Chu kỳ bán rã', reason: 'Nhầm lẫn điều kiện phụ thuộc của chu kỳ bán rã', daysOverdue: 2, intervalDays: 1, question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === 'q_hn_03'; })[0] },
-      { id: 'm2', qId: 'q_khi_02', topicKey: 'khi', topicName: 'Khí lí tưởng', title: 'Định luật Charles & Khí thực nghiệm', reason: 'Quên đổi độ C sang độ Kelvin', daysOverdue: 1, intervalDays: 3, question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === 'q_khi_02'; })[0] },
-      { id: 'm3', qId: 'q_tu_03', topicKey: 'tu-truong', topicName: 'Từ trường & Cảm ứng điện từ', title: 'Khung dây quay trong từ trường', reason: 'Nhầm pha giữa suất điện động và từ thông', daysOverdue: 0, intervalDays: 7, question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === 'q_tu_03'; })[0] }
-    ]);
+    // Sổ tay câu sai (Mistake Log) — giai đoạn thật: bắt đầu trống, chỉ nạp
+    // từ lịch sử làm bài thật của học sinh sau khi đăng nhập (hydrateAndEnter).
+    var mistakeLogState = React.useState([]);
     var mistakeLog = mistakeLogState[0];
     var setMistakeLog = mistakeLogState[1];
 
@@ -606,6 +623,7 @@
             return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
           });
           setMistakeLog(withQ);
+          syncStudentStats(studentId, stats);
         }).catch(function(err){ console.error('Lỗi lưu/tải lại lịch sử luyện tập:', err); });
       }
     }
@@ -648,15 +666,18 @@
       });
     }
 
-    // Tính overall mastery
-    var avgMastery = Math.round((student.mastery['nhiet'] + student.mastery['khi'] + student.mastery['tu-truong'] + student.mastery['hat-nhan']) / 4);
-
     // ================= Màn hình đăng nhập =================
     // Chỉ vào thẳng giao diện luyện tập khi đã xác định xong trạng thái đăng
     // nhập ('in'). Khi đang dò phiên cũ ('checking') hoặc chưa đăng nhập
     // ('form'), hiện màn hình riêng — không hiện dữ liệu của học sinh khác.
     if(authState !== 'in'){
       if(authState === 'checking'){
+        if(liveFailed){
+          return h('div', { className: 'ps-wrapper', style: { maxWidth: '420px', margin: '0 auto', textAlign: 'center', padding: '40px 20px' } },
+            h('div', { style: { fontSize: '2.2rem', marginBottom: '10px' } }, '⚠️'),
+            h('p', { style: { color: 'var(--ink-2)', fontSize: '0.9rem', lineHeight: 1.6 } }, 'Không kết nối được tới máy chủ dữ liệu. Kiểm tra lại kết nối mạng rồi tải lại trang; nếu vẫn lỗi, báo thầy cô kiểm tra cấu hình Firebase.'),
+            h('button', { type: 'button', className: 'btn btn-primary', style: { marginTop: '14px' }, onClick: function(){ window.location.reload(); } }, 'Tải lại trang'));
+        }
         return h('div', { className: 'ps-wrapper', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '320px' } },
           h('p', { style: { color: 'var(--ink-2)', fontSize: '0.9rem' } }, 'Đang kiểm tra phiên đăng nhập…'));
       }
@@ -675,17 +696,25 @@
             loginErr ? h('div', { className: 'banner warn', style: { marginBottom: '12px' } }, h('span', null, '⚠️'), h('div', null, loginErr)) : null,
             h('button', { type: 'submit', className: 'btn btn-primary', style: { width: '100%' }, disabled: loginBusy || !liveReady }, loginBusy ? 'Đang đăng nhập…' : (liveReady ? 'Đăng nhập' : 'Đang kết nối…'))
           ),
-          h('div', { style: { textAlign: 'center', margin: '16px 0', color: 'var(--muted)', fontSize: '0.78rem' } }, '— hoặc —'),
-          h('button', { type: 'button', className: 'btn btn-secondary', style: { width: '100%' }, onClick: handleGuestEnter }, '👀 Học thử với dữ liệu minh hoạ'),
           h('p', { style: { fontSize: '0.74rem', color: 'var(--muted)', marginTop: '14px', lineHeight: 1.5 } },
             'Chưa có tài khoản? Liên hệ thầy cô để được cấp tên đăng nhập và mật khẩu.')
         )
       );
     }
 
+    // student chỉ null khi chưa đăng nhập xong — authState !== 'in' đã chặn ở
+    // trên nên tới đây luôn có hồ sơ thật; giữ 1 lưới an toàn tối thiểu.
+    if(!student){
+      return h('div', { className: 'ps-wrapper', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '320px' } },
+        h('p', { style: { color: 'var(--ink-2)', fontSize: '0.9rem' } }, 'Đang tải hồ sơ học sinh…'));
+    }
+
+    // Tính overall mastery
+    var avgMastery = Math.round((student.mastery['nhiet'] + student.mastery['khi'] + student.mastery['tu-truong'] + student.mastery['hat-nhan']) / 4);
+
     return h('div', { className: 'ps-wrapper', key: 'bank-' + bankVersion },
       bankIsLive ? null : h('div', { className: 'banner warn', style: { marginBottom: '14px' } },
-        h('span', null, 'ℹ️'), h('div', null, 'Ngân hàng đề thật chưa có câu hỏi phù hợp — đang hiển thị câu hỏi minh hoạ để bạn xem trước giao diện.')),
+        h('span', null, 'ℹ️'), h('div', null, 'Đang tải ngân hàng đề thật từ Firestore… nếu chờ lâu mà vẫn thấy thông báo này, báo thầy cô kiểm tra lại đề đã nạp trong trang admin.')),
       // 1. Profile Bar
       h('div', { className: 'ps-profile-bar' },
         h('div', { className: 'ps-student-picker' },
@@ -695,27 +724,7 @@
             h('p', null, 'Tài khoản luyện thi cá nhân hóa · ' + student.email)
           )
         ),
-        student.isLive
-          ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: handleLogout }, '🚪 Đăng xuất')
-          : h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
-              h('label', { style: { fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 600 } }, 'Đổi học sinh (minh hoạ):'),
-              h('select', {
-                className: 'ps-student-select',
-                value: student.id,
-                onChange: function(e){
-                  var found = STUDENTS.filter(function(s){ return s.id === e.target.value; })[0];
-                  if(found){
-                    setStudent(found);
-                    setExamSession(null);
-                    setScoreResult(null);
-                  }
-                }
-              },
-                STUDENTS.map(function(s){
-                  return h('option', { key: s.id, value: s.id }, s.name + ' (Dự đoán: ' + s.predicted + ')');
-                })
-              )
-            )
+        h('button', { type: 'button', className: 'btn btn-secondary', onClick: handleLogout }, '🚪 Đăng xuất')
       ),
 
       // 2. PrepScholar Core Metrics Grid
@@ -1081,24 +1090,37 @@
             // TAB 1: LUYỆN TẬP TRỌNG TÂM
             return h('div', null,
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },
-                h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
-                  h('span', { style: { fontSize: '1.4rem' } }, '🎯'),
-                  h('div', null,
-                    h('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Khuyến nghị PrepScholar tuần này'),
-                    h('p', { style: { margin: '3px 0 0', fontSize: '0.84rem', color: 'var(--ink-2)' } },
-                      'Điểm yếu lớn nhất của bạn hiện tại là ',
-                      h('b', { style: { color: 'var(--critical)' } }, 'Vật lí hạt nhân (' + student.mastery['hat-nhan'] + '%)'),
-                      '. Hệ thống đề xuất làm ngay 1 bài Drill 5 câu để nâng độ thành thạo lên trên 55%.'
+                (function(){
+                  // Chuyên đề yếu nhất tính TỪ DỮ LIỆU THẬT của chính em này —
+                  // không còn giả định cứng "Vật lí hạt nhân luôn yếu nhất".
+                  var weakestKey = Object.keys(window.PrepScholarEngine.CHU_DE_MAP).reduce(function(worst, k){
+                    var v = student.mastery[k] != null ? student.mastery[k] : 50;
+                    var wv = student.mastery[worst] != null ? student.mastery[worst] : 50;
+                    return v < wv ? k : worst;
+                  }, Object.keys(window.PrepScholarEngine.CHU_DE_MAP)[0]);
+                  var weakestName = window.PrepScholarEngine.CHU_DE_MAP[weakestKey].name;
+                  var weakestVal = student.mastery[weakestKey] != null ? student.mastery[weakestKey] : 50;
+                  return h(React.Fragment, null,
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+                      h('span', { style: { fontSize: '1.4rem' } }, '🎯'),
+                      h('div', null,
+                        h('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Khuyến nghị luyện tập'),
+                        h('p', { style: { margin: '3px 0 0', fontSize: '0.84rem', color: 'var(--ink-2)' } },
+                          'Điểm yếu lớn nhất của bạn hiện tại là ',
+                          h('b', { style: { color: 'var(--critical)' } }, weakestName + ' (' + weakestVal + '%)'),
+                          '. Hệ thống đề xuất làm ngay 1 bài Drill 5 câu để nâng độ thành thạo.'
+                        )
+                      )
+                    ),
+                    h('div', { style: { marginTop: '12px' } },
+                      h('button', {
+                        type: 'button',
+                        className: 'btn btn-primary',
+                        onClick: function(){ startDrill(weakestKey, 5); }
+                      }, 'Bắt đầu bài Drill: ' + weakestName + ' (5 câu) ➔')
                     )
-                  )
-                ),
-                h('div', { style: { marginTop: '12px' } },
-                  h('button', {
-                    type: 'button',
-                    className: 'btn btn-primary',
-                    onClick: function(){ startDrill('hat-nhan', 5); }
-                  }, 'Bắt đầu bài Drill: Vật lí hạt nhân (5 câu) ➔')
-                )
+                  );
+                })()
               ),
 
               h('h3', { style: { fontFamily: 'Literata, serif', fontSize: '1.2rem', marginBottom: '8px' } }, 'Chọn chuyên đề để luyện tập tập trung:'),
