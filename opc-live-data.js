@@ -159,6 +159,41 @@ async function saveStudentStats(studentId, stats){
   }
 }
 
+// ================= Mặt bằng chung (peer benchmark) cho Radar 5 chiều ========
+// Đọc TOÀN BỘ collection student_stats (đã cho phép "read" công khai — xem
+// firestore.rules, cùng đánh đổi bảo mật với attempts/student_stats ở trên)
+// để tính trung bình cộng radar5 của MỌI học sinh THẬT đã có số liệu, dùng
+// vẽ đường "Mặt bằng chung" trên biểu đồ Radar của từng em. Đây là số liệu
+// THẬT (trung bình của các bạn học cùng hệ thống OPC) — KHÔNG PHẢI mặt bằng
+// chuẩn quốc gia "THPT 2026" (không có nguồn dữ liệu đó) nên giao diện phải
+// ghi rõ "Mặt bằng chung OPC", không được gắn nhãn quốc gia dễ gây hiểu nhầm.
+// Trả về null nếu chưa có học sinh nào có đủ số liệu cho ít nhất 1 chiều.
+async function loadPeerRadar5(){
+  try{
+    var snap = await getDocs(collection(db, 'student_stats'));
+    var sums = { lyThuyet: 0, vdc: 0, neBayTF: 0, doThi: 0, tinhNhanh: 0 };
+    var counts = { lyThuyet: 0, vdc: 0, neBayTF: 0, doThi: 0, tinhNhanh: 0 };
+    var studentsCounted = 0;
+    snap.forEach(function(d){
+      var r = (d.data() || {}).radar5;
+      if(!r) return;
+      var any = false;
+      Object.keys(sums).forEach(function(k){
+        if(r[k] != null){ sums[k] += Number(r[k]); counts[k]++; any = true; }
+      });
+      if(any) studentsCounted++;
+    });
+    if(!studentsCounted) return null;
+    var avg = {};
+    Object.keys(sums).forEach(function(k){ avg[k] = counts[k] ? Math.round(sums[k] / counts[k]) : null; });
+    avg.sampleSize = studentsCounted;
+    return avg;
+  }catch(e){
+    console.error('Lỗi tải mặt bằng chung Radar 5 chiều:', e);
+    return null;
+  }
+}
+
 // ================= Hình ảnh minh họa =================
 // Ảnh được nạp ở CẤP ĐỀ THI (giáo viên chọn nhiều file cùng lúc khi upload
 // .tex), không gắn trực tiếp theo từng câu trong Firestore. parseTexBank
@@ -278,6 +313,7 @@ window.OPC_LIVE = {
   loadRealQuestionBank: loadRealQuestionBank,
   saveAttempt: saveAttempt,
   loadAttempts: loadAttempts,
-  saveStudentStats: saveStudentStats
+  saveStudentStats: saveStudentStats,
+  loadPeerRadar5: loadPeerRadar5
 };
 try{ window.dispatchEvent(new CustomEvent('opc-live-ready')); }catch(e){}

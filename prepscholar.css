@@ -344,6 +344,127 @@
   gap: 6px;
 }
 
+/* ===== Thẻ Cấp độ/XP + Radar năng lực 5 chiều (Trang chủ) ===== */
+.ps-hero-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 700px) {
+  .ps-hero-grid { grid-template-columns: 1fr; }
+}
+.ps-hero-forecast { justify-content: center; }
+
+.ps-level-card {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ps-level-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ps-level-badge {
+  flex-shrink: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #fff;
+  background: var(--accent-strong);
+  border-radius: 999px;
+  padding: 8px 14px;
+}
+.ps-level-titles { min-width: 0; }
+.ps-level-title {
+  font-family: "Literata", serif;
+  font-weight: 700;
+  font-size: 1.02rem;
+  color: var(--ink);
+}
+.ps-level-xp-text {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  margin-top: 2px;
+}
+.ps-level-xp-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.ps-level-xp-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  transition: width 0.3s ease;
+}
+.ps-level-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+.ps-level-log-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-strong);
+  font-weight: 600;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.ps-level-log-link:hover { text-decoration: underline; }
+
+.ps-radar-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px 20px;
+  margin-bottom: 18px;
+}
+.ps-radar-card-head { margin-bottom: 6px; }
+.ps-radar-wrap { padding-top: 4px; }
+.ps-radar-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+.ps-radar-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.ps-radar-legend-item.muted { color: var(--muted); font-style: italic; }
+.ps-radar-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+}
+.ps-radar-swatch.dashed {
+  background: none;
+  border: 2px dashed var(--muted);
+  width: 8px;
+  height: 8px;
+}
+.ps-radar-empty-note {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 10px;
+  font-style: italic;
+}
+
 /* Thanh "Thoát" mỏng thay cho Hồ sơ+Chỉ số+Điều hướng khi đang khoá trong
    quy trình Vá lỗi (Learning & Remediation Flow) — xem renderRemediationStep
    và lockedMode trong prepscholar-ui.js. */

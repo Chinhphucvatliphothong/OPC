@@ -37,6 +37,14 @@
       hours: Number(real.weeklyHours) || 0,
       mastery: real.mastery || defMastery,
       nanoMastery: {},
+      // radar5/levelXp/currentChuDe: mốc khởi điểm TRUNG THỰC trước khi tải
+      // xong lịch sử làm bài thật (hydrateAndEnter ghi đè ngay sau đó bằng
+      // window.PrepScholarEngine.computeStudentStatsFromAttempts) — radar5
+      // toàn null (chưa đủ dữ liệu), Cấp 1/0 XP, chương hiện tại mặc định
+      // chủ đề đầu chương trình. Không bịa số đẹp cho học sinh mới.
+      radar5: { lyThuyet: null, vdc: null, neBayTF: null, doThi: null, tinhNhanh: null },
+      levelXp: { totalXP: 0, level: 1, xpIntoLevel: 0, xpForNextLevel: 2000 },
+      currentChuDe: 'nhiet',
       isLive: true
     };
   }
@@ -182,6 +190,77 @@
     );
   }
 
+  // ===== Radar năng lực 5 chiều (SVG thuần, không thư viện ngoài) =====
+  // 5 chiều SUY RA TỰ ĐỘNG từ dữ liệu làm bài thật (computeRadar5 trong
+  // prepscholar.js) — KHÔNG phải nhãn giáo viên gắn thủ công. "Mặt bằng
+  // chung OPC" (peerRadar5) là trung bình cộng THẬT của các bạn học cùng
+  // hệ thống (loadPeerRadar5 trong opc-live-data.js), KHÔNG PHẢI chuẩn
+  // quốc gia — luôn ghi rõ "OPC" để không gây hiểu nhầm là số liệu Bộ GD&ĐT.
+  var RADAR_DIMS = [
+    { key: 'lyThuyet', label: 'Lý thuyết' },
+    { key: 'tinhNhanh', label: 'Tính nhanh' },
+    { key: 'doThi', label: 'Đồ thị' },
+    { key: 'neBayTF', label: 'Né bẫy TF' },
+    { key: 'vdc', label: 'VDC' }
+  ];
+  function renderRadarChart(studentRadar5, peerRadar5){
+    var size = 280, center = size / 2, maxR = 92;
+    var hasAnyStudent = RADAR_DIMS.some(function(d){ return studentRadar5 && studentRadar5[d.key] != null; });
+
+    function angleOf(idx){ return (-90 + idx * (360 / RADAR_DIMS.length)) * Math.PI / 180; }
+    function pointFor(idx, valuePct){
+      var a = angleOf(idx);
+      var r = maxR * (Math.max(0, Math.min(100, valuePct)) / 100);
+      return { x: center + r * Math.cos(a), y: center + r * Math.sin(a) };
+    }
+
+    var gridPolys = [20, 40, 60, 80, 100].map(function(lvl){
+      var pts = RADAR_DIMS.map(function(d, idx){ var p = pointFor(idx, lvl); return p.x + ',' + p.y; }).join(' ');
+      return h('polygon', { key: 'grid' + lvl, points: pts, fill: 'none', stroke: 'var(--line)', strokeWidth: 1, opacity: lvl === 100 ? 0.7 : 0.35 });
+    });
+    var axisLines = RADAR_DIMS.map(function(d, idx){
+      var end = pointFor(idx, 100);
+      return h('line', { key: 'axis' + idx, x1: center, y1: center, x2: end.x, y2: end.y, stroke: 'var(--line)', strokeWidth: 1 });
+    });
+
+    function seriesPolygon(data, colorVar, dashed, keyName){
+      var pts = RADAR_DIMS.map(function(d, idx){
+        var v = (data && data[d.key] != null) ? data[d.key] : 0;
+        var p = pointFor(idx, v);
+        return p.x + ',' + p.y;
+      }).join(' ');
+      return h('polygon', {
+        key: keyName, points: pts,
+        fill: dashed ? 'none' : 'color-mix(in srgb, ' + colorVar + ' 22%, transparent)',
+        stroke: colorVar, strokeWidth: 2, strokeDasharray: dashed ? '5,4' : 'none'
+      });
+    }
+    var peerPoly = peerRadar5 ? seriesPolygon(peerRadar5, 'var(--muted)', true, 'peer-poly') : null;
+    var studentPoly = hasAnyStudent ? seriesPolygon(studentRadar5, 'var(--accent-strong)', false, 'student-poly') : null;
+
+    var labels = RADAR_DIMS.map(function(d, idx){
+      var a = angleOf(idx);
+      var lp = { x: center + (maxR + 30) * Math.cos(a), y: center + (maxR + 26) * Math.sin(a) };
+      var anchor = Math.abs(lp.x - center) < 6 ? 'middle' : (lp.x > center ? 'start' : 'end');
+      var val = studentRadar5 && studentRadar5[d.key];
+      return h('text', { key: 'label' + idx, x: lp.x, y: lp.y, fontSize: 11, fontWeight: 600, fill: 'var(--ink-2)', textAnchor: anchor },
+        d.label + (val != null ? ' (' + val + '%)' : ''));
+    });
+
+    return h('div', { className: 'ps-radar-wrap' },
+      h('svg', { viewBox: '0 0 ' + size + ' ' + size, width: '100%', style: { maxWidth: '320px', display: 'block', margin: '0 auto' } },
+        gridPolys, axisLines, peerPoly, studentPoly, labels
+      ),
+      h('div', { className: 'ps-radar-legend' },
+        h('span', { className: 'ps-radar-legend-item' }, h('i', { className: 'ps-radar-swatch', style: { background: 'var(--accent-strong)' } }), 'Học sinh'),
+        peerRadar5
+          ? h('span', { className: 'ps-radar-legend-item' }, h('i', { className: 'ps-radar-swatch dashed', style: { borderColor: 'var(--muted)' } }), 'Mặt bằng chung OPC (' + peerRadar5.sampleSize + ' bạn)')
+          : h('span', { className: 'ps-radar-legend-item muted' }, 'Chưa đủ học sinh khác để so sánh')
+      ),
+      !hasAnyStudent ? h('p', { className: 'ps-radar-empty-note' }, 'Chưa có chiều nào đủ dữ liệu thật — làm thêm bài kiểm tra đầu vào/luyện tập để Radar hiện số liệu của em.') : null
+    );
+  }
+
   function PrepScholarApp(){
     // Lưới an toàn: nếu vì lý do gì đó (mạng chậm, script bị chặn...) KaTeX
     // chưa sẵn sàng ngay lần render đầu, tự động re-render lại khi nó đã load
@@ -256,6 +335,12 @@
       if(stats.predicted != null) payload.predicted = stats.predicted;
       if(stats.nanoMastery) payload.nanoMastery = stats.nanoMastery;
       if(stats.mistakeLog) payload.mistakeCount = stats.mistakeLog.length;
+      // radar5/levelXp: đẩy lên để (1) trang admin có thể xem thêm nếu cần,
+      // và (2) MỌI học sinh khác đọc được (student_stats đọc công khai) để
+      // tính đường "Mặt bằng chung" trên Radar — xem OPC_LIVE.loadPeerRadar5.
+      if(stats.radar5) payload.radar5 = stats.radar5;
+      if(stats.levelXp) payload.levelXp = stats.levelXp;
+      if(stats.currentChuDe) payload.currentChuDe = stats.currentChuDe;
       window.OPC_LIVE.saveStudentStats(studentId, payload).catch(function(err){
         console.error('Lỗi lưu số liệu học tập (student_stats):', err);
       });
@@ -275,7 +360,10 @@
           return Object.assign({}, prev, {
             mastery: Object.assign({}, prev.mastery, stats.mastery),
             predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
-            nanoMastery: stats.nanoMastery
+            nanoMastery: stats.nanoMastery,
+            radar5: stats.radar5 || prev.radar5,
+            levelXp: stats.levelXp || prev.levelXp,
+            currentChuDe: stats.currentChuDe || prev.currentChuDe
           });
         });
         var withQ = stats.mistakeLog.map(function(m){
@@ -313,6 +401,23 @@
         window.PrepScholarEngine.replaceQuestionBank(list);
         setBankIsLive(true);
         setBankVersion(function(v){ return v + 1; });
+      });
+      return function(){ cancelled = true; };
+    }, [liveReady]);
+
+    // "Mặt bằng chung OPC" cho Radar 5 chiều — trung bình cộng radar5 THẬT
+    // của mọi học sinh đã có số liệu (đọc 1 lần collection student_stats,
+    // công khai — xem loadPeerRadar5 trong opc-live-data.js). null nếu
+    // chưa đủ dữ liệu (hệ thống còn quá ít học sinh đã luyện tập) — Radar
+    // khi đó chỉ vẽ đa giác của riêng học sinh, không vẽ đường so sánh giả.
+    var peerRadar5State = React.useState(null);
+    var peerRadar5 = peerRadar5State[0];
+    var setPeerRadar5 = peerRadar5State[1];
+    React.useEffect(function(){
+      if(!liveReady || !window.OPC_LIVE || !window.OPC_LIVE.loadPeerRadar5) return;
+      var cancelled = false;
+      window.OPC_LIVE.loadPeerRadar5().then(function(avg){
+        if(!cancelled && avg) setPeerRadar5(avg);
       });
       return function(){ cancelled = true; };
     }, [liveReady]);
@@ -436,7 +541,8 @@
         topicKey: topicKey,
         title: 'Luyện tập trọng tâm: ' + window.PrepScholarEngine.CHU_DE_MAP[topicKey].name,
         questions: questions,
-        isSubmitted: false
+        isSubmitted: false,
+        initialTimeSec: questions.length * 120 // 2 phút mỗi câu — dùng để tính "Tính nhanh" (Radar 5 chiều) khi nộp bài
       };
       setExamSession(session);
       setUserAnswers({});
@@ -455,7 +561,7 @@
         alert('Ngân hàng đề chưa có câu hỏi nào gắn Tag này — thầy cô cần nạp thêm đề.');
         return;
       }
-      var session = { type: 'drill', title: 'Luyện Tag: ' + nanoName, questions: questions, isSubmitted: false };
+      var session = { type: 'drill', title: 'Luyện Tag: ' + nanoName, questions: questions, isSubmitted: false, initialTimeSec: questions.length * 120 };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
@@ -475,7 +581,7 @@
         setRemediation(null);
         return;
       }
-      var session = { type: 'drill', title: 'Vá lỗi kiến thức: ' + nano.name, questions: questions, isSubmitted: false, fromRemediation: true };
+      var session = { type: 'drill', title: 'Vá lỗi kiến thức: ' + nano.name, questions: questions, isSubmitted: false, fromRemediation: true, initialTimeSec: questions.length * 120 };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
@@ -544,6 +650,31 @@
       );
     }
 
+    // Thẻ Cấp độ/XP (gamification) trên Trang chủ — Cấp/XP suy từ khối
+    // lượng luyện tập thật (window.PrepScholarEngine.computeLevelXP), danh
+    // xưng "Chiến Binh ..." đổi theo "chương hiện tại" (chủ đề đầu chương
+    // trình chưa đạt Xanh — getCurrentChuDe). "Xem nhật ký chẩn đoán" mở
+    // đúng tab Bản đồ kiến thức (chưa có trang nhật ký lịch sử riêng).
+    function renderLevelXPCard(stu){
+      var lx = stu.levelXp || { totalXP: 0, level: 1, xpIntoLevel: 0, xpForNextLevel: 2000 };
+      var chuDeInfo = window.PrepScholarEngine.CHU_DE_MAP[stu.currentChuDe] || {};
+      var pct = Math.max(0, Math.min(100, Math.round((lx.xpIntoLevel / (lx.xpForNextLevel || 2000)) * 100)));
+      return h('div', { className: 'ps-level-card' },
+        h('div', { className: 'ps-level-top' },
+          h('div', { className: 'ps-level-badge' }, 'Cấp ' + lx.level),
+          h('div', { className: 'ps-level-titles' },
+            h('div', { className: 'ps-level-title' }, chuDeInfo.warriorTitle || 'Chiến Binh OPC'),
+            h('div', { className: 'ps-level-xp-text' }, lx.xpIntoLevel + ' / ' + lx.xpForNextLevel + ' XP')
+          )
+        ),
+        h('div', { className: 'ps-level-xp-bar' }, h('div', { className: 'ps-level-xp-fill', style: { width: pct + '%' } })),
+        h('div', { className: 'ps-level-meta' },
+          h('span', null, 'Chương hiện tại: ', h('b', null, chuDeInfo.name || '—')),
+          h('button', { type: 'button', className: 'ps-level-log-link', onClick: function(){ setTab('map'); setExamSession(null); } }, 'Xem nhật ký chẩn đoán ›')
+        )
+      );
+    }
+
     // Luyện lại cả 1 "Bài" — nút trên lưới 16 Bài của Trang chủ Học sinh.
     function startBaiDrill(baiKey, baiName){
       var questions = window.PrepScholarEngine.createBaiDrill(baiKey, 6);
@@ -551,7 +682,7 @@
         alert('Ngân hàng đề chưa có câu hỏi nào cho Bài này — thầy cô cần nạp thêm đề.');
         return;
       }
-      var session = { type: 'drill', title: 'Luyện Bài: ' + baiName, questions: questions, isSubmitted: false };
+      var session = { type: 'drill', title: 'Luyện Bài: ' + baiName, questions: questions, isSubmitted: false, initialTimeSec: questions.length * 120 };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
@@ -581,7 +712,8 @@
         type: type,
         title: title,
         questions: questions,
-        isSubmitted: false
+        isSubmitted: false,
+        initialTimeSec: timeSec
       };
       setExamSession(session);
       setUserAnswers({});
@@ -603,7 +735,8 @@
         type: 'mistakes',
         title: 'Luyện lại Sổ tay câu sai (Spaced Repetition)',
         questions: questions,
-        isSubmitted: false
+        isSubmitted: false,
+        initialTimeSec: questions.length * 150
       };
       setExamSession(session);
       setUserAnswers({});
@@ -628,7 +761,8 @@
         type: 'adaptive',
         title: 'Luyện tập thích ứng thời gian thực',
         questions: [firstQ],
-        isSubmitted: false
+        isSubmitted: false,
+        initialTimeSec: ADAPTIVE_TARGET_COUNT * 90
       };
       setExamSession(session);
       setUserAnswers({});
@@ -781,12 +915,23 @@
       // (ghi đè lên số liệu ước lượng tức thời ở trên ngay khi tải xong).
       if(student.isLive && window.OPC_LIVE && window.OPC_LIVE.saveAttempt){
         var studentId = student.id;
+        // part/hasImage: THÊM từ 23/9/2026 để tính Radar năng lực 5 chiều
+        // (Né bẫy TF ~ Phần II, Đồ thị ~ câu có ảnh) — suy trực tiếp từ dữ
+        // liệu câu hỏi đã có sẵn (q.part, q.images), KHÔNG cần giáo viên gắn
+        // nhãn thủ công gì thêm. Lượt làm bài TRƯỚC 23/9/2026 không có 2
+        // trường này — computeRadar5 tự bỏ qua, không tính sai lệch.
         var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null };
+          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
         });
         var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null };
+          return { qId: r.question.id, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
         });
+        // timeAllocatedSec/timeUsedSec: THÊM từ 23/9/2026 để tính chiều "Tính
+        // nhanh" của Radar — examSession.initialTimeSec là ngân sách thời
+        // gian lúc bắt đầu (xem các hàm start*), timeLeft là số giây còn lại
+        // TẠI THỜI ĐIỂM nộp bài (state React, đọc trực tiếp — không phải
+        // ước lượng). Lượt làm bài trước đó không có initialTimeSec —
+        // computeRadar5 tự bỏ qua các lượt thiếu trường này.
         var attemptRecord = {
           type: examSession.type,
           topicKey: examSession.topicKey || null,
@@ -795,7 +940,9 @@
           totalQuestions: scored.totalQuestions,
           topicStats: scored.topicStats,
           wrongQuestions: wrongQuestions,
-          rightQuestions: rightQuestions
+          rightQuestions: rightQuestions,
+          timeAllocatedSec: (examSession.initialTimeSec != null) ? examSession.initialTimeSec : null,
+          timeUsedSec: (examSession.initialTimeSec != null) ? Math.max(0, examSession.initialTimeSec - timeLeft) : null
         };
         window.OPC_LIVE.saveAttempt(studentId, attemptRecord).then(function(res){
           if(!res || !res.ok) return null;
@@ -808,7 +955,10 @@
             return Object.assign({}, prev, {
               mastery: Object.assign({}, prev.mastery, stats.mastery),
               predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
-              nanoMastery: stats.nanoMastery
+              nanoMastery: stats.nanoMastery,
+              radar5: stats.radar5 || prev.radar5,
+              levelXp: stats.levelXp || prev.levelXp,
+              currentChuDe: stats.currentChuDe || prev.currentChuDe
             });
           });
           var withQ = stats.mistakeLog.map(function(m){
@@ -1635,6 +1785,30 @@
             var greenCount = baiStatus.filter(function(b){ return b.status === 'green'; }).length;
 
             return h('div', null,
+              // Thẻ Cấp độ/XP + Dự báo điểm THPT + Radar năng lực 5 chiều —
+              // theo đúng thiết kế thầy gửi. 5 chiều Radar SUY RA TỰ ĐỘNG từ
+              // dữ liệu làm bài thật (xem computeRadar5 trong prepscholar.js),
+              // không cần giáo viên gắn nhãn gì thêm; chiều nào chưa đủ dữ
+              // liệu hiện "Chưa đủ dữ liệu" thay vì số bịa.
+              h('div', { className: 'ps-hero-grid' },
+                renderLevelXPCard(student),
+                h('div', { className: 'ps-metric-card accent ps-hero-forecast' },
+                  h('div', { className: 'ps-metric-label' }, '🎯 Dự báo điểm THPT'),
+                  h('div', { className: 'ps-metric-val' },
+                    student.predicted != null ? student.predicted.toFixed(1) : '—',
+                    h('span', { style: { fontSize: '0.9rem', color: 'var(--muted)' } }, '/ 10.0')
+                  ),
+                  h('div', { className: 'ps-metric-sub' },
+                    student.predicted != null ? 'Kỳ vọng: ' + student.target.toFixed(2) : 'Chưa có dữ liệu — hãy làm Bài kiểm tra đầu vào')
+                )
+              ),
+              h('div', { className: 'ps-radar-card' },
+                h('div', { className: 'ps-radar-card-head' },
+                  h('h4', { style: { margin: 0, fontSize: '0.98rem', fontWeight: 700 } }, '🧭 Radar năng lực 5 chiều'),
+                  h('p', { style: { margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--ink-2)' } }, 'Đối sánh học sinh vs Mặt bằng chung OPC')
+                ),
+                renderRadarChart(student.radar5, peerRadar5)
+              ),
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between' } },
                   h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },

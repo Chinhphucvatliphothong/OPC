@@ -15,12 +15,18 @@
   // chuyên đề đó (chỉ là lưới an toàn hiển thị, không phải nhận định trước
   // học sinh yếu/mạnh môn nào — giai đoạn thật hoàn toàn không còn số liệu
   // minh hoạ giả định sẵn "Vật lí hạt nhân luôn yếu nhất" như bản cũ).
+  // warriorTitle: danh xưng gamification hiển thị ở thẻ Cấp độ/XP trên Trang
+  // chủ (kiểu "Chiến Binh Nhiệt Học") khi chủ đề này đang là "chương hiện
+  // tại" của học sinh — xem getCurrentChuDe bên dưới.
   var CHU_DE_MAP = {
-    'nhiet': { name: 'Vật lí nhiệt', icon: '🔥', defaultMastery: 50 },
-    'khi': { name: 'Khí lí tưởng', icon: '💨', defaultMastery: 50 },
-    'tu-truong': { name: 'Từ trường & Cảm ứng điện từ', icon: '🧲', defaultMastery: 50 },
-    'hat-nhan': { name: 'Vật lí hạt nhân', icon: '⚛️', defaultMastery: 50 }
+    'nhiet': { name: 'Vật lí nhiệt', icon: '🔥', defaultMastery: 50, warriorTitle: 'Chiến Binh Nhiệt Học' },
+    'khi': { name: 'Khí lí tưởng', icon: '💨', defaultMastery: 50, warriorTitle: 'Chiến Binh Khí Lí Tưởng' },
+    'tu-truong': { name: 'Từ trường & Cảm ứng điện từ', icon: '🧲', defaultMastery: 50, warriorTitle: 'Chiến Binh Từ Trường' },
+    'hat-nhan': { name: 'Vật lí hạt nhân', icon: '⚛️', defaultMastery: 50, warriorTitle: 'Chiến Binh Hạt Nhân' }
   };
+  // Thứ tự chương trình học — dùng để xác định "chương hiện tại" (chủ đề
+  // đầu tiên chưa đạt Xanh), giống 1 "mặt trận" học sinh đang chinh chiến.
+  var CHU_DE_ORDER = ['nhiet', 'khi', 'tu-truong', 'hat-nhan'];
 
   // Ngân hàng câu hỏi THẬT — nạp từ Firestore (collection "de_thi", qua
   // opc-live-data.js -> replaceQuestionBank()). Giai đoạn thật hoàn toàn
@@ -191,8 +197,95 @@
   // % thành thạo theo chuyên đề, % thành thạo theo nano-point, và Sổ tay
   // câu sai — thay cho toàn bộ số liệu minh hoạ trước đây.
   // ============================================================
+  // ============================================================
+  // RADAR NĂNG LỰC 5 CHIỀU + CẤP ĐỘ/XP (gamification) — 23/9/2026.
+  // Cả 2 đều SUY RA TỰ ĐỘNG từ dữ liệu làm bài thật đã có sẵn (qId, level,
+  // part, hasImage, nanoId... đã lưu trong wrongQuestions/rightQuestions
+  // của mỗi attempt) — KHÔNG cần giáo viên gắn nhãn thủ công gì thêm khi
+  // nạp đề, đúng theo lựa chọn của thầy khi được hỏi.
+  //
+  // 5 chiều Radar:
+  //   Lý thuyết  = % đúng các câu mức M1 (Nhận biết)
+  //   VDC        = % đúng các câu mức M4 (Vận dụng cao)
+  //   Né bẫy TF  = % đúng các câu Phần II (mệnh đề Đúng/Sai — hay có bẫy)
+  //   Đồ thị     = % đúng các câu có kèm hình ảnh minh hoạ (đồ thị/sơ đồ)
+  //   Tính nhanh = so sánh THỜI GIAN LÀM BÀI THẬT với thời gian được cấp,
+  //                trung bình trên các lượt có ghi thời gian
+  // Chiều nào CHƯA có dữ liệu thật (0 câu thuộc diện đó, hoặc lượt làm bài
+  // đều từ trước khi hệ thống bắt đầu ghi part/hasImage/thời gian) trả về
+  // null — giao diện PHẢI hiển thị "Chưa đủ dữ liệu", không được bịa % mặc định.
+  function computeRadar5(sorted){
+    var acc = {
+      lyThuyet: { right: 0, total: 0 },
+      vdc: { right: 0, total: 0 },
+      neBayTF: { right: 0, total: 0 },
+      doThi: { right: 0, total: 0 }
+    };
+    function tally(q, correct){
+      if(q.level === 'M1'){ acc.lyThuyet.total++; if(correct) acc.lyThuyet.right++; }
+      if(q.level === 'M4'){ acc.vdc.total++; if(correct) acc.vdc.right++; }
+      if(q.part === 'II'){ acc.neBayTF.total++; if(correct) acc.neBayTF.right++; }
+      if(q.hasImage){ acc.doThi.total++; if(correct) acc.doThi.right++; }
+    }
+    var timeRatios = [];
+    (sorted || []).forEach(function(a){
+      (a.wrongQuestions || []).forEach(function(q){ tally(q, false); });
+      (a.rightQuestions || []).forEach(function(q){ tally(q, true); });
+      if(a.timeAllocatedSec > 0 && a.timeUsedSec > 0){
+        timeRatios.push(a.timeAllocatedSec / a.timeUsedSec);
+      }
+    });
+    function pct(a){ return a.total > 0 ? Math.round((a.right / a.total) * 100) : null; }
+    var tinhNhanh = null;
+    if(timeRatios.length){
+      var avgRatio = timeRatios.reduce(function(s, r){ return s + r; }, 0) / timeRatios.length;
+      // avgRatio ~1 = dùng đúng bằng thời gian được cấp ("đúng nhịp") -> ~70đ
+      // mốc giữa; nhanh hơn (ratio>1) -> điểm cao hơn; chậm hơn -> thấp hơn.
+      tinhNhanh = Math.max(0, Math.min(100, Math.round(avgRatio * 70)));
+    }
+    return { lyThuyet: pct(acc.lyThuyet), vdc: pct(acc.vdc), neBayTF: pct(acc.neBayTF), doThi: pct(acc.doThi), tinhNhanh: tinhNhanh };
+  }
+
+  // Cấp độ (Level) & Điểm kinh nghiệm (XP) — chỉ số phản ánh KHỐI LƯỢNG
+  // luyện tập thật đã làm (không phải mastery/điểm số): +10 XP/câu làm
+  // ĐÚNG, +2 XP/câu làm SAI (vẫn có công luyện), 2000 XP/cấp.
+  var XP_PER_RIGHT = 10;
+  var XP_PER_WRONG = 2;
+  var XP_PER_LEVEL = 2000;
+  function computeLevelXP(sorted){
+    var totalXP = 0;
+    (sorted || []).forEach(function(a){
+      totalXP += (a.rightQuestions || []).length * XP_PER_RIGHT;
+      totalXP += (a.wrongQuestions || []).length * XP_PER_WRONG;
+    });
+    return {
+      totalXP: totalXP,
+      level: Math.floor(totalXP / XP_PER_LEVEL) + 1,
+      xpIntoLevel: totalXP % XP_PER_LEVEL,
+      xpForNextLevel: XP_PER_LEVEL
+    };
+  }
+
+  // "Chương hiện tại": chủ đề ĐẦU TIÊN theo thứ tự chương trình (CHU_DE_ORDER)
+  // mà mastery chưa đạt Xanh (>=80%) — dùng làm danh xưng "Chiến Binh ..."
+  // trên thẻ Cấp độ. Nếu cả 4 chủ đề đã Xanh, trả về chủ đề cuối cùng.
+  function getCurrentChuDe(masteryByTopic){
+    masteryByTopic = masteryByTopic || {};
+    for(var i = 0; i < CHU_DE_ORDER.length; i++){
+      var key = CHU_DE_ORDER[i];
+      var m = masteryByTopic[key];
+      if(m == null || m < MASTERY_GREEN_MIN) return key;
+    }
+    return CHU_DE_ORDER[CHU_DE_ORDER.length - 1];
+  }
+
   function computeStudentStatsFromAttempts(attempts){
-    var result = { mastery: {}, nanoMastery: {}, predicted: null, mistakeLog: [] };
+    var result = {
+      mastery: {}, nanoMastery: {}, predicted: null, mistakeLog: [],
+      radar5: { lyThuyet: null, vdc: null, neBayTF: null, doThi: null, tinhNhanh: null },
+      levelXp: computeLevelXP([]),
+      currentChuDe: getCurrentChuDe({})
+    };
     attempts = attempts || [];
     if(!attempts.length) return result;
 
@@ -262,6 +355,10 @@
         nanoId: info.q.nanoId
       };
     }).sort(function(a, b){ return b.daysOverdue - a.daysOverdue; }).slice(0, 15);
+
+    result.radar5 = computeRadar5(sorted);
+    result.levelXp = computeLevelXP(sorted);
+    result.currentChuDe = getCurrentChuDe(result.mastery);
 
     return result;
   }
@@ -409,6 +506,10 @@
   // Khởi tạo và xuất đối tượng sang window
   window.PrepScholarEngine = {
     CHU_DE_MAP: CHU_DE_MAP,
+    CHU_DE_ORDER: CHU_DE_ORDER,
+    computeRadar5: computeRadar5,
+    computeLevelXP: computeLevelXP,
+    getCurrentChuDe: getCurrentChuDe,
     QUESTION_BANK: QUESTION_BANK,
     replaceQuestionBank: replaceQuestionBank,
     scoreExam: scoreExam,
