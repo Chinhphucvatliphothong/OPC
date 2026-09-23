@@ -102,6 +102,9 @@
   .btn-secondary:hover{ border-color: var(--ink-2); }
   .btn-danger{ background:transparent; color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, var(--line)); }
   .btn-danger:hover{ background: color-mix(in srgb, var(--critical) 8%, transparent); }
+  .btn-success{ background:#16a34a; color:#fff; border-color:#16a34a; }
+  .btn-success:hover{ background:#15803d; }
+  .btn-success:disabled{ opacity:0.5; cursor:not-allowed; }
   .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .btn:disabled{ opacity:0.5; cursor:not-allowed; }
 
@@ -596,6 +599,27 @@
       deleteStorageFile: function(path){
         if(!path) return Promise.resolve();
         try{ return deleteObject(ref(storage, path)).catch(function(){}); }catch(e){ return Promise.resolve(); }
+      }
+    };
+
+    // ================= Đề cá nhân hóa ĐÃ GIAO cho học sinh =================
+    // Lưu dưới subcollection students/{studentId}/assignedExams — khi thầy
+    // bấm "Giao đề cho học sinh" trong PersonalizedExamGeneratorPanel, đề
+    // vừa tạo (đã CHUYỂN sang đúng hình dạng câu hỏi mà trang luyện tập học
+    // sinh dùng — xem toStudentQuestionShape) được ghi vào đây để trang học
+    // sinh (prepscholar-ui.js) đọc và cho làm bài trực tiếp trên web, không
+    // cần tải file .tex về nữa. Ghi chú bảo mật: CHỈ admin được ghi (đúng ý
+    // nghĩa thật — chỉ giáo viên mới giao đề), khác với "attempts"/
+    // "student_stats" (học sinh tự ghi, không có Auth thật nên phải mở công
+    // khai) — xem match /students/{id}/assignedExams/{id} trong firestore.rules.
+    OPC.assignedExams = {
+      subscribeForStudent: function(studentId, onNext, onErr){
+        return onSnapshot(query(collection(db, 'students', studentId, 'assignedExams'), orderBy('createdAt', 'desc')), onNext, onErr);
+      },
+      save: async function(studentId, examData){
+        var refDoc = doc(collection(db, 'students', studentId, 'assignedExams'));
+        await setDoc(refDoc, Object.assign({}, examData, { createdAt: serverTimestamp() }));
+        return refDoc;
       }
     };
    }catch(err){
@@ -2572,6 +2596,7 @@
 
     var generatedState = React.useState(null); var generated = generatedState[0], setGenerated = generatedState[1];
     var loadErrState = React.useState(null); var loadErr = loadErrState[0], setLoadErr = loadErrState[1];
+    var assigningState = React.useState(false); var assigning = assigningState[0], setAssigning = assigningState[1];
 
     React.useEffect(function(){
       var unsub1 = OPCref.students.subscribe(function(snap){
@@ -2594,7 +2619,12 @@
       var pool = [];
       exams.forEach(function(exam){
         (exam.questions || []).forEach(function(q){
-          pool.push(Object.assign({}, q, {examTitle: exam.title, chuDe: exam.chuDe}));
+          // examId/examImages: THÊM để khi giao đề cá nhân hóa cho học sinh
+          // (handleAssignToStudent) biết chính xác câu hỏi này gốc từ đề nào
+          // — cần để (1) tạo đúng id câu hỏi kiểu "<examId>_q<index>" khớp
+          // với ngân hàng đề thật, và (2) khớp đúng ảnh minh hoạ của ĐÚNG đề
+          // gốc (câu hỏi được gộp từ NHIỀU đề khác nhau vào 1 pool).
+          pool.push(Object.assign({}, q, {examTitle: exam.title, chuDe: exam.chuDe, examId: exam.id, examImages: exam.images}));
         });
       });
       return pool;
@@ -2829,6 +2859,122 @@
       props.fireToast('Đã tải xuống file .tex: ' + filename);
     }
 
+    // ============ Giao đề cá nhân hóa cho học sinh (lên web OPC) ============
+    // Chuyển 1 câu hỏi từ định dạng "thô" (parseTexBank, như trong questionPool)
+    // sang ĐÚNG định dạng mà trang luyện tập học sinh (prepscholar-ui.js /
+    // QUESTION_BANK) hiểu — LẶP LẠI logic của transformQuestion/
+    // resolveQuestionImages trong opc-live-data.js (không import được vì đó là
+    // ES module riêng cho học sinh, admin.html không dùng type=module).
+    // Quan trọng: dùng ĐÚNG công thức id "<examId>_q<index>" như bên đó, để
+    // sau này nếu câu hỏi này cũng trùng với câu trong QUESTION_BANK (vì cùng
+    // nguồn de_thi), việc tra cứu theo id (vd trong "Sổ tay câu sai") vẫn khớp.
+    function normalizeImgNameLocal(name){
+      return String(name || '').trim().toLowerCase().replace(/^.*[\\/]/, '').replace(/\.[a-z0-9]+$/i, '');
+    }
+    function resolveQuestionImagesLocal(q, examImages){
+      var refs = q.images || [];
+      if(!refs.length || !examImages || !examImages.length) return [];
+      var out = [];
+      refs.forEach(function(ref){
+        var key = normalizeImgNameLocal(ref);
+        var found = examImages.filter(function(im){ return normalizeImgNameLocal(im.name) === key; })[0];
+        var url = found ? (found.url || found.dataUrl) : '';
+        if(url) out.push({ name: ref, url: url });
+      });
+      return out;
+    }
+    function toStudentQuestionShape(q, examId, examTitle, resolvedImages){
+      var NANO = window.OPC_NANO;
+      var chuDe = NANO ? NANO.findChuDeByText(q.chuDeLon) : null;
+      var bai = null;
+      if(NANO){
+        bai = (q.nanoBaiKey && NANO.getBai(q.nanoBaiKey)) || NANO.findBaiByText(q.dangBai, chuDe ? chuDe.key : null);
+      }
+      var topicKey = chuDe ? chuDe.key : (bai ? bai.chuDeKey : null);
+      var out = {
+        id: examId + '_q' + q.index,
+        topicKey: topicKey,
+        topicName: chuDe ? chuDe.name : (q.chuDeLon || 'Khác'),
+        subtopic: bai ? bai.name : (q.dangBai || ''),
+        part: q.part || 'I',
+        level: q.level || 'M2',
+        stem: q.stem || '',
+        loiGiai: q.loigiai || '',
+        images: resolveQuestionImagesLocal(q, resolvedImages),
+        examTitle: examTitle,
+        examId: examId,
+        baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
+        nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null
+      };
+      if(q.type === 'choiceTF'){
+        out.statements = (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; });
+      } else if(q.type === 'shortans'){
+        var m = String(q.shortans || '').match(/-?\d+([.,]\d+)?/);
+        out.correctAnswer = m ? Number(m[0].replace(',', '.')) : null;
+        out.tolerance = 0.5;
+        out.unit = '';
+      } else {
+        out.options = (q.options || []).map(function(o){ return { key: o.key, text: o.text }; });
+        var correct = (q.options || []).filter(function(o){ return o.isTrue; })[0];
+        out.correctKey = correct ? correct.key : null;
+      }
+      return out;
+    }
+
+    // Giao đề vừa tạo (generated) vào students/{id}/assignedExams để học sinh
+    // làm trực tiếp trên trang cá nhân của mình, không cần tải file nào cả.
+    async function handleAssignToStudent(){
+      if(!generated || !generated.student){
+        props.fireToast('Chưa tạo đề hoặc chưa chọn học sinh.', true);
+        return;
+      }
+      setAssigning(true);
+      try{
+        var allQ = generated.p1.concat(generated.p2).concat(generated.p3);
+        // Gom câu hỏi theo examId nguồn — vì đề cá nhân hóa có thể trộn câu
+        // từ NHIỀU đề khác nhau, mỗi đề cần tải riêng danh sách ảnh của nó.
+        var byExam = {};
+        allQ.forEach(function(q){
+          var key = q.examId || 'unknown';
+          if(!byExam[key]) byExam[key] = { examId: q.examId, examTitle: q.examTitle, examImages: q.examImages, questions: [] };
+          byExam[key].questions.push(q);
+        });
+        var examIds = Object.keys(byExam);
+        var resolvedByExam = {};
+        for(var i = 0; i < examIds.length; i++){
+          var grp = byExam[examIds[i]];
+          resolvedByExam[examIds[i]] = grp.examId
+            ? await OPCref.examBank.loadExamImages(grp.examId, grp.examImages)
+            : [];
+        }
+        // Giữ đúng thứ tự câu hỏi gốc (p1 rồi p2 rồi p3), không theo thứ tự gộp examId
+        var transformed = allQ.map(function(q){
+          var resolvedImages = resolvedByExam[q.examId || 'unknown'] || [];
+          return toStudentQuestionShape(q, q.examId || 'unknown', q.examTitle || '', resolvedImages);
+        });
+
+        var examData = {
+          title: generated.title,
+          goalProfile: goalProfile,
+          examCode: generated.examCode,
+          chuDeFilter: selectedTopic,
+          createdAt: generated.createdAt,
+          totalQuestions: transformed.length,
+          partCounts: { p1: generated.stats.p1, p2: generated.stats.p2, p3: generated.stats.p3 },
+          levelCounts: { m1: generated.stats.m1, m2: generated.stats.m2, m3: generated.stats.m3, m4: generated.stats.m4 },
+          questions: transformed
+        };
+
+        await OPCref.assignedExams.save(generated.student.id, examData);
+        props.fireToast('Đã giao đề cho học sinh ' + generated.student.name + ' — bạn ấy có thể làm ngay trên trang cá nhân!');
+      }catch(err){
+        console.error('Lỗi giao đề cho học sinh:', err);
+        props.fireToast('Có lỗi khi giao đề: ' + (err && err.message ? err.message : err), true);
+      }finally{
+        setAssigning(false);
+      }
+    }
+
     if(loading){
       return h('div',{className:'card'}, h('p',{style:{color:'var(--ink-2)'}}, 'Đang tải dữ liệu ngân hàng đề…'));
     }
@@ -2941,7 +3087,10 @@
                       'Mã đề: ' + generated.examCode + ' · Tổng số: ' + generated.stats.total + ' câu (P1: ' + generated.stats.p1 + ' | P2: ' + generated.stats.p2 + ' | P3: ' + generated.stats.p3 + ')'
                     )
                   ),
-                  h('button',{type:'button', className:'btn btn-primary', onClick:handleExportTeX}, '📄 Tải file .tex chuẩn Bộ GD')
+                  h('div',{style:{display:'flex', gap:'8px', flexWrap:'wrap'}},
+                    h('button',{type:'button', className:'btn btn-primary', onClick:handleExportTeX}, '📄 Tải file .tex chuẩn Bộ GD'),
+                    h('button',{type:'button', className:'btn btn-success', disabled:assigning, onClick:handleAssignToStudent}, assigning ? 'Đang giao đề…' : '🚀 Giao đề cho học sinh')
+                  )
                 ),
 
                 // Matrix summary

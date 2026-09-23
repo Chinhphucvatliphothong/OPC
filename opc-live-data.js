@@ -135,6 +135,31 @@ async function loadAttempts(studentId, max){
   }
 }
 
+// ================= Đề cá nhân hóa được giao =================
+// Lưu dưới subcollection students/{studentId}/assignedExams — GHI chỉ do
+// admin.html (Firebase Auth thật) khi giáo viên bấm "Giao đề cho học sinh"
+// trong panel "Tạo đề theo lộ trình cá nhân hóa". Mỗi đề đã chứa SẴN câu hỏi
+// ở đúng định dạng QUESTION_BANK (xem toStudentQuestionShape trong
+// admin.html, lặp lại transformQuestion/resolveQuestionImages ở trên) nên
+// trang luyện tập chỉ cần đọc và cho làm bài ngay, không cần transform gì
+// thêm.
+async function loadAssignedExams(studentId, max){
+  if(!studentId) return [];
+  try{
+    var snap = await getDocs(query(
+      collection(db, 'students', studentId, 'assignedExams'),
+      orderBy('createdAt', 'desc'),
+      limit(max || 20)
+    ));
+    var out = [];
+    snap.forEach(function(d){ out.push(Object.assign({ id: d.id }, d.data())); });
+    return out;
+  }catch(e){
+    console.error('Lỗi tải đề được giao:', e);
+    return [];
+  }
+}
+
 // ================= Số liệu học tập thật (cho trang Giám sát của thầy cô) ====
 // Ghi vào collection RIÊNG ở cấp cao nhất "student_stats/{studentId}" (KHÔNG
 // phải subcollection của students/{studentId}) vì phiên học của học sinh
@@ -313,6 +338,7 @@ window.OPC_LIVE = {
   loadRealQuestionBank: loadRealQuestionBank,
   saveAttempt: saveAttempt,
   loadAttempts: loadAttempts,
+  loadAssignedExams: loadAssignedExams,
   saveStudentStats: saveStudentStats,
   loadPeerRadar5: loadPeerRadar5
 };

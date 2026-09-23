@@ -53,6 +53,17 @@ service cloud.firestore {
         allow read: if true;
         allow write: if true;
       }
+
+      // Đề cá nhân hóa mà giáo viên GIAO cho học sinh này (từ panel "Tạo đề
+      // theo lộ trình cá nhân hóa" trong admin.html) để em làm trực tiếp
+      // trên web, không cần tải file. Khác với "attempts"/"student_stats" ở
+      // trên: admin.html đăng nhập bằng Firebase Auth THẬT (isOpcAdmin) nên
+      // GHI chỉ dành cho admin — chặt hơn, vì chỉ giáo viên mới được giao đề.
+      // Đọc vẫn công khai (cùng lý do chưa có Auth thật cho học sinh).
+      match /assignedExams/{examId} {
+        allow read: if true;
+        allow write: if isOpcAdmin();
+      }
     }
 
     // Số liệu học tập THẬT (mastery/điểm dự đoán/sổ câu sai) — snapshot mới

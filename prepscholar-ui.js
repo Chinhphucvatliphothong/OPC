@@ -351,6 +351,12 @@
       setStudent(appStu);
       setAuthState('in');
       setMistakeLog([]); // học sinh thật bắt đầu từ sổ tay trống, không dùng seed minh hoạ
+      setAssignedExams([]);
+      if(window.OPC_LIVE && window.OPC_LIVE.loadAssignedExams){
+        window.OPC_LIVE.loadAssignedExams(real.id).then(function(list){
+          setAssignedExams(list || []);
+        });
+      }
       if(!window.OPC_LIVE || !window.OPC_LIVE.loadAttempts) return;
       window.OPC_LIVE.loadAttempts(real.id).then(function(attempts){
         if(!attempts || !attempts.length) return;
@@ -517,6 +523,13 @@
     var mistakeLog = mistakeLogState[0];
     var setMistakeLog = mistakeLogState[1];
 
+    // Đề cá nhân hóa được giáo viên GIAO trực tiếp cho học sinh này (qua
+    // panel "Tạo đề theo lộ trình cá nhân hóa" trong admin.html) — nạp độc
+    // lập với lịch sử làm bài (attempts), xem hydrateAndEnter bên dưới.
+    var assignedExamsState = React.useState([]);
+    var assignedExams = assignedExamsState[0];
+    var setAssignedExams = assignedExamsState[1];
+
     // Đếm ngược thời gian khi đang làm bài
     React.useEffect(function(){
       if(!examSession || examSession.isSubmitted) return;
@@ -562,6 +575,34 @@
         return;
       }
       var session = { type: 'drill', title: 'Luyện Tag: ' + nanoName, questions: questions, isSubmitted: false, initialTimeSec: questions.length * 120 };
+      setExamSession(session);
+      setUserAnswers({});
+      setFlagged({});
+      setCurQIdx(0);
+      setTimeLeft(questions.length * 120);
+      setScoreResult(null);
+      setMasteryImpact(null);
+    }
+
+    // Bắt đầu làm 1 đề cá nhân hóa mà GIÁO VIÊN đã giao (từ admin.html) —
+    // câu hỏi đã có sẵn trong ae.questions (đúng định dạng QUESTION_BANK,
+    // xem toStudentQuestionShape trong admin.html), không cần tạo lại.
+    // assignedExamId gắn vào session để attemptRecord lưu lại đề nào đã
+    // được giao đã hoàn thành (xem handleSubmitExam).
+    function startAssignedExam(ae){
+      var questions = ae.questions || [];
+      if(!questions.length){
+        alert('Đề này chưa có câu hỏi nào.');
+        return;
+      }
+      var session = {
+        type: 'assigned',
+        title: ae.title || 'Đề cá nhân hóa được giao',
+        questions: questions,
+        isSubmitted: false,
+        initialTimeSec: questions.length * 120,
+        assignedExamId: ae.id
+      };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
@@ -935,6 +976,7 @@
         var attemptRecord = {
           type: examSession.type,
           topicKey: examSession.topicKey || null,
+          assignedExamId: examSession.assignedExamId || null,
           scaledScore10: scored.scaledScore10,
           correctCount: scored.correctCount,
           totalQuestions: scored.totalQuestions,
@@ -1165,6 +1207,15 @@
         },
           '🔄 Sổ tay câu sai (Mistake Review)',
           h('span', { className: 'ps-tab-badge' }, mistakeLog.length)
+        ),
+        h('button', {
+          type: 'button',
+          className: 'ps-tab-btn ' + (tab === 'assigned' ? 'active' : ''),
+          title: 'Các đề thầy cô đã giao riêng cho em, dựa trên lộ trình cá nhân hóa.',
+          onClick: function(){ setTab('assigned'); setExamSession(null); }
+        },
+          '📋 Đề được giao',
+          assignedExams.length ? h('span', { className: 'ps-tab-badge' }, assignedExams.length) : null
         )
       )
       ), // đóng div "chrome" (Hồ sơ + Chỉ số + Điều hướng, ẩn khi lockedMode)
@@ -1192,7 +1243,11 @@
                   type: 'button',
                   className: 'btn btn-primary',
                   onClick: function(){ setExamSession(null); setTab('home'); }
-                }, '🏠 Xem Trang chủ (kết quả phân loại Tag) ➔') : h('button', {
+                }, '🏠 Xem Trang chủ (kết quả phân loại Tag) ➔') : (examSession && examSession.type === 'assigned') ? h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  onClick: function(){ setExamSession(null); setTab('assigned'); }
+                }, '📋 Xem các đề được giao khác ➔') : h('button', {
                   type: 'button',
                   className: 'btn btn-primary',
                   onClick: function(){ setExamSession(null); setTab('drill'); }
@@ -1746,6 +1801,50 @@
                     h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace' } },
                       'Chu kỳ giãn cách: ' + item.intervalDays + ' ngày'
                     )
+                  );
+                })
+              )
+            );
+          } else if(tab === 'assigned'){
+            // TAB "ĐỀ ĐƯỢC GIAO" — các đề cá nhân hóa thầy cô giao trực tiếp
+            // (xem OPC.assignedExams.save trong admin.html + loadAssignedExams
+            // trong opc-live-data.js). Câu hỏi đã sẵn đúng định dạng
+            // QUESTION_BANK nên bấm vào là làm bài ngay, không cần tải file.
+            return h('div', null,
+              !assignedExams.length ? (
+                h('div', { style: { textAlign: 'center', padding: '40px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--line)' } },
+                  h('div', { style: { fontSize: '2.5rem', marginBottom: '10px' } }, '📋'),
+                  h('h4', null, 'Chưa có đề nào được giao'),
+                  h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem', marginTop: '4px' } }, 'Khi thầy cô tạo đề theo lộ trình cá nhân hóa cho em, đề sẽ xuất hiện ở đây.')
+                )
+              ) : (
+                assignedExams.map(function(ae){
+                  var GOAL_LABEL = {
+                    foundation: 'Củng cố nền tảng',
+                    breakthrough: 'Bứt phá điểm số',
+                    advanced: 'Nâng cao (9-10)',
+                    moet_standard: 'Chuẩn cấu trúc Bộ GD'
+                  };
+                  var createdLabel = '';
+                  try{
+                    var d = ae.createdAt && ae.createdAt.toDate ? ae.createdAt.toDate() : (ae.createdAt ? new Date(ae.createdAt) : null);
+                    if(d && !isNaN(d.getTime())) createdLabel = d.toLocaleDateString('vi-VN');
+                  }catch(e){}
+                  return h('div', { key: ae.id, className: 'ps-solution-card', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' } },
+                    h('div', null,
+                      h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' } },
+                        h('span', { className: 'ps-q-badge' }, GOAL_LABEL[ae.goalProfile] || 'Cá nhân hóa'),
+                        h('b', { style: { fontSize: '0.95rem' } }, ae.title || 'Đề cá nhân hóa')
+                      ),
+                      h('div', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } },
+                        (ae.totalQuestions || (ae.questions || []).length) + ' câu' + (createdLabel ? ' · Giao ngày ' + createdLabel : '')
+                      )
+                    ),
+                    h('button', {
+                      type: 'button',
+                      className: 'btn btn-primary',
+                      onClick: function(){ setTab('assigned'); startAssignedExam(ae); }
+                    }, 'Bắt đầu làm đề ➔')
                   );
                 })
               )
