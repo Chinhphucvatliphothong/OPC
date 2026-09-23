@@ -153,33 +153,17 @@
   // chuẩn trong nano-map.js (window.OPC_NANO), nếu file đó đã được nạp.
   // Mỗi câu trong QUESTION_BANK được gắn 1 nano-point cụ thể (chọn theo
   // "Bài"/subtopic sẵn có + mức độ M1-M4 của câu, không cần sửa lại từng
-  // câu thủ công). Mastery của từng nano-point hiện là số liệu minh hoạ
-  // (suy ra từ defaultMastery của cả chuyên đề + dao động theo id) —
-  // CHỖ CẮM DỮ LIỆU THẬT sau này: thay hàm getNanoMastery() bằng số liệu
-  // tổng hợp từ lịch sử làm bài thật của từng học sinh trên Firestore.
+  // câu thủ công).
+  //
+  // GIAI ĐOẠN THẬT HOÀN TOÀN (23/9/2026): đã bỏ hẳn getNanoMastery() —
+  // hàm cũ suy ra mastery từng nano-point bằng hash(nanoId) trộn số ngẫu
+  // nhiên quanh mức trung bình chuyên đề, khiến bản đồ kiến thức hiện %
+  // cụ thể cho MỌI Tag dù học sinh chưa từng làm câu nào thuộc Tag đó —
+  // nhìn như số liệu cá nhân hoá thật nhưng thực chất là bịa. Nay: Tag nào
+  // CHƯA có lịch sử làm bài thật (không có trong realNanoMastery) trả về
+  // mastery: null, isReal: false — phía UI (prepscholar-ui.js) hiển thị rõ
+  // "Chưa kiểm tra" (màu xám) thay vì trộn lẫn vào thang đỏ/vàng/xanh.
   // ============================================================
-  function hashStr(s){
-    var h = 0;
-    s = String(s || '');
-    for(var i = 0; i < s.length; i++){ h = (h * 31 + s.charCodeAt(i)) >>> 0; }
-    return h;
-  }
-
-  function getNanoMastery(nanoId, baseMastery){
-    var base = (baseMastery != null) ? baseMastery : 60;
-    var variance = (hashStr(nanoId) % 30) - 15; // dao động -15..+14 quanh mức trung bình chuyên đề
-    return Math.max(5, Math.min(99, base + variance));
-  }
-
-  // (Đã bỏ assignNanoToSeedQuestions() — chỉ dùng để gắn nanoId cho 16 câu
-  // hỏi MINH HOẠ trước đây. Câu hỏi thật đã được gắn nanoId ngay khi nạp,
-  // xem transformQuestion() trong opc-live-data.js.)
-
-  // realNanoMastery (tuỳ chọn): {nanoId: %} tính từ lịch sử làm bài THẬT của
-  // học sinh (xem computeStudentStatsFromAttempts bên dưới) — nano nào có số
-  // liệu thật thì dùng số thật, nano nào chưa từng gặp câu nào (học sinh mới
-  // đăng nhập, chưa luyện) thì vẫn tạm dùng số liệu minh hoạ suy ra từ mức độ
-  // chuyên đề để bản đồ không bị trống trơn.
   function buildKnowledgeMap(studentMasteryByTopic, realNanoMastery){
     if(!window.OPC_NANO) return [];
     realNanoMastery = realNanoMastery || {};
@@ -189,13 +173,15 @@
       var bais = window.OPC_NANO.getBaiByChuDe(topicKey).map(function(b){
         var nanos = window.OPC_NANO.getNanoByBai(b.key).map(function(n){
           var real = realNanoMastery[n.id];
-          var mastery = (real != null) ? real : getNanoMastery(n.id, base);
-          return { id: n.id, name: n.name, mastery: mastery, isReal: real != null };
+          return { id: n.id, name: n.name, mastery: (real != null) ? real : null, isReal: real != null };
         });
-        var avg = nanos.length ? Math.round(nanos.reduce(function(s, n){ return s + n.mastery; }, 0) / nanos.length) : base;
+        var tested = nanos.filter(function(n){ return n.isReal; });
+        var avg = tested.length ? Math.round(tested.reduce(function(s, n){ return s + n.mastery; }, 0) / tested.length) : null;
         return { key: b.key, name: b.name, mastery: avg, nanos: nanos };
       });
-      return { topicKey: topicKey, topicName: topic.name, icon: topic.icon, mastery: base, bais: bais };
+      var testedBais = bais.filter(function(b){ return b.mastery != null; });
+      var topicAvg = testedBais.length ? Math.round(testedBais.reduce(function(s, b){ return s + b.mastery; }, 0) / testedBais.length) : null;
+      return { topicKey: topicKey, topicName: topic.name, icon: topic.icon, mastery: (topicAvg != null ? topicAvg : base), bais: bais };
     });
   }
 
@@ -392,11 +378,14 @@
     return reds.slice(0, n || 5);
   }
 
+  // Chỉ xếp hạng các Tag ĐÃ CÓ số liệu thật (isReal) — Tag chưa từng kiểm
+  // tra không được liệt vào "yếu nhất" chỉ vì thiếu dữ liệu.
   function getWeakestNanoPoints(map, n){
     var all = [];
     map.forEach(function(t){
       t.bais.forEach(function(b){
         b.nanos.forEach(function(nn){
+          if(!nn.isReal) return;
           all.push(Object.assign({}, nn, { topicName: t.topicName, topicKey: t.topicKey, baiName: b.name }));
         });
       });

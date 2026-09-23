@@ -29,7 +29,11 @@
       name: real.name || 'Học sinh',
       email: real.email || '',
       target: Number(real.targetScore) || 9.0,
-      predicted: Number(real.predictedScore) || Number(real.averageScore) || 7.0,
+      // Không còn fallback 7.0 giả — điểm dự đoán chỉ có khi ĐàTHẬT có ít
+      // nhất 1 lượt làm bài (real.predictedScore/averageScore do admin hoặc
+      // hydrateAndEnter/computeStudentStatsFromAttempts ghi vào); chưa từng
+      // luyện thì để null, UI hiển thị "Chưa có dữ liệu" thay vì số bịa.
+      predicted: (real.predictedScore != null) ? Number(real.predictedScore) : (real.averageScore ? Number(real.averageScore) : null),
       hours: Number(real.weeklyHours) || 0,
       mastery: real.mastery || defMastery,
       nanoMastery: {},
@@ -825,10 +829,10 @@
         h('div', { className: 'ps-metric-card accent' },
           h('div', { className: 'ps-metric-label' }, 'Dự đoán điểm thi'),
           h('div', { className: 'ps-metric-val' },
-            student.predicted.toFixed(1),
+            student.predicted != null ? student.predicted.toFixed(1) : '—',
             h('span', { style: { fontSize: '0.9rem', color: 'var(--muted)' } }, '/ 10.0')
           ),
-          h('div', { className: 'ps-metric-sub' }, 'Dựa trên mô hình chuẩn hoá của PrepScholar')
+          h('div', { className: 'ps-metric-sub' }, student.predicted != null ? 'Dựa trên lịch sử làm bài thật gần nhất' : 'Chưa có dữ liệu — hãy làm Bài kiểm tra đầu vào')
         ),
         h('div', { className: 'ps-metric-card good' },
           h('div', { className: 'ps-metric-label' }, 'Mục tiêu điểm số'),
@@ -836,12 +840,22 @@
             student.target.toFixed(1),
             h('span', { style: { fontSize: '0.9rem', color: 'var(--muted)' } }, '+')
           ),
-          h('div', { className: 'ps-metric-sub' }, 'Còn thiếu ' + Math.max(0, (student.target - student.predicted)).toFixed(1) + ' điểm để đạt mục tiêu')
+          h('div', { className: 'ps-metric-sub' },
+            student.predicted != null
+              ? 'Còn thiếu ' + Math.max(0, (student.target - student.predicted)).toFixed(1) + ' điểm để đạt mục tiêu'
+              : 'Do thầy cô đặt khi tạo tài khoản'
+          )
         ),
         h('div', { className: 'ps-metric-card ' + (avgMastery < 50 ? 'critical' : (avgMastery < 75 ? 'warning' : 'good')) },
           h('div', { className: 'ps-metric-label' }, 'Độ thành thạo toàn diện'),
           h('div', { className: 'ps-metric-val' }, avgMastery + '%'),
-          h('div', { className: 'ps-metric-sub' }, avgMastery < 75 ? 'Cần củng cố thêm 2 chuyên đề' : 'Đã đạt mức độ an toàn cao')
+          h('div', { className: 'ps-metric-sub' },
+            (function(){
+              if(avgMastery >= 75) return 'Đã đạt mức độ an toàn cao';
+              var weakCount = Object.keys(student.mastery).filter(function(k){ return (student.mastery[k] || 0) < 75; }).length;
+              return weakCount > 0 ? 'Cần củng cố thêm ' + weakCount + ' chuyên đề' : 'Đang trong ngưỡng cần cải thiện';
+            })()
+          )
         ),
         h('div', { className: 'ps-metric-card warning' },
           h('div', { className: 'ps-metric-label' }, 'Sổ tay câu sai đến hạn'),
@@ -862,7 +876,7 @@
         }, '🏠 Trang chủ'),
         h('button', {
           type: 'button',
-          className: 'ps-tab-btn',
+          className: 'ps-tab-btn ' + (examSession && examSession.type === 'adaptive' && !examSession.isSubmitted ? 'active' : ''),
           title: 'Luyện tập thích ứng thời gian thực: hệ thống tự chọn câu tiếp theo ngay sau mỗi câu trả lời, dựa trên Mastery mới nhất — giống cách Squirrel AI vận hành thật (CAT-lite), khác với Drill/Thi thử (soạn sẵn 1 danh sách câu cố định).',
           onClick: function(){ setTab('home'); startAdaptiveDrill(); }
         }, '⚡ Luyện tập thích ứng'),
@@ -1251,7 +1265,7 @@
 
               weakest.length ? h('div', { style: { marginBottom: '18px' } },
                 h('h3', { style: { fontFamily: 'Literata, serif', fontSize: '1.05rem', marginBottom: '4px' } }, '5 nano-point yếu nhất hiện tại'),
-                h('p', { style: { fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '10px' } }, 'Hệ thống tự xếp hạng — không cần giáo viên rà tay từng học sinh.'),
+                h('p', { style: { fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '10px' } }, 'Hệ thống tự xếp hạng dựa trên lịch sử làm bài thật — không cần giáo viên rà tay từng học sinh.'),
                 h('div', { className: 'ps-nano-weak-list' },
                   weakest.map(function(n){
                     var cls = n.mastery < 50 ? 'critical' : (n.mastery < 75 ? 'warning' : 'good');
@@ -1269,23 +1283,25 @@
                     );
                   })
                 )
-              ) : null,
+              ) : h('div', { style: { marginBottom: '18px', fontSize: '0.84rem', color: 'var(--muted)' } },
+                  'Chưa có Tag nào được kiểm tra — làm Bài kiểm tra đầu vào hoặc Luyện tập thích ứng để bắt đầu đo mức thành thạo từng Tag.'
+                ),
 
               h('div', { className: 'ps-nano-map' },
                 knowledgeMap.map(function(t){
                   return h('div', { key: t.topicKey, className: 'ps-nano-topic' },
                     h('div', { className: 'ps-nano-topic-head' },
                       h('span', null, t.icon + ' ' + t.topicName),
-                      h('span', { className: 'ps-nano-topic-mastery' }, t.mastery + '%')
+                      h('span', { className: 'ps-nano-topic-mastery' }, t.mastery != null ? t.mastery + '%' : 'Chưa kiểm tra')
                     ),
                     h('div', { className: 'ps-nano-bai-grid' },
                       t.bais.map(function(b){
                         return h('div', { key: b.key, className: 'ps-nano-bai' },
-                          h('div', { className: 'ps-nano-bai-name' }, b.name + ' · ' + b.mastery + '%'),
+                          h('div', { className: 'ps-nano-bai-name' }, b.name + ' · ' + (b.mastery != null ? b.mastery + '%' : 'Chưa kiểm tra')),
                           h('div', { className: 'ps-nano-tile-row' },
                             b.nanos.map(function(n){
-                              var cls = n.mastery < 50 ? 'crit' : (n.mastery < 75 ? 'warn' : 'good');
-                              return h('div', { key: n.id, className: 'ps-nano-tile ' + cls, title: n.name + ' — ' + n.mastery + '%' });
+                              var cls = !n.isReal ? 'untested' : (n.mastery < 50 ? 'crit' : (n.mastery < 75 ? 'warn' : 'good'));
+                              return h('div', { key: n.id, className: 'ps-nano-tile ' + cls, title: n.name + ' — ' + (n.isReal ? (n.mastery + '%') : 'Chưa kiểm tra') });
                             })
                           )
                         );
@@ -1353,7 +1369,7 @@
                       ),
                       h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace' } },
                         h('span', null, 'Độ vững: ' + val + '%'),
-                        h('span', null, 'Mục tiêu: 85%+')
+                        h('span', null, 'Mục tiêu: ' + window.PrepScholarEngine.MASTERY_GREEN_MIN + '%+ (Xanh)')
                       )
                     ),
 

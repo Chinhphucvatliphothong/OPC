@@ -327,6 +327,9 @@
 .ps-nano-tile.crit { background: color-mix(in srgb, var(--critical) 55%, transparent); border: 1px solid var(--critical); }
 .ps-nano-tile.warn { background: color-mix(in srgb, var(--warning) 45%, transparent); border: 1px solid var(--warning); }
 .ps-nano-tile.good { background: color-mix(in srgb, var(--good) 40%, transparent); border: 1px solid var(--good); }
+/* Tag chưa từng kiểm tra — không còn số minh hoạ, chỉ tô xám trung tính
+   để phân biệt rõ với đỏ/vàng/xanh (đã có số liệu thật). */
+.ps-nano-tile.untested { background: var(--surface-2); border: 1px dashed var(--line); }
 @media (max-width: 480px) {
   .ps-nano-tile { width: 26px; height: 26px; }
 }
