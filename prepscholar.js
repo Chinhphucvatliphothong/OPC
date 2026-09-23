@@ -238,8 +238,7 @@
     function bump(nanoId, correct, level){
       if(!nanoId) return;
       var cur = (nanoAgg[nanoId] != null) ? nanoAgg[nanoId] : MASTERY_NEUTRAL_START;
-      var delta = correct ? ((level === 'M3' || level === 'M4') ? 25 : 15) : -20;
-      nanoAgg[nanoId] = Math.max(0, Math.min(100, cur + delta));
+      nanoAgg[nanoId] = bumpNanoMastery(cur, correct, level);
     }
     sorted.forEach(function(a){
       (a.wrongQuestions || []).forEach(function(q){ bump(q.nanoId, false, q.level); });
@@ -295,6 +294,62 @@
     if(val >= MASTERY_GREEN_MIN) return 'green';
     if(val >= MASTERY_YELLOW_MIN) return 'yellow';
     return 'red';
+  }
+
+  // Công thức tăng/giảm Mastery 1 Tag (nano-point) theo 1 câu trả lời —
+  // dùng CHUNG cho: tính lại từ lịch sử thật (computeStudentStatsFromAttempts),
+  // cập nhật tức thì lúc nộp Drill/Thi thử (prepscholar-ui.js), và chọn câu
+  // kế tiếp trong Luyện tập thích ứng thời gian thực (pickAdaptiveQuestion).
+  // Gom về 1 chỗ để không bao giờ lệch công thức giữa 3 nơi dùng.
+  function bumpNanoMastery(current, correct, level){
+    var cur = (current != null) ? current : MASTERY_NEUTRAL_START;
+    var delta = correct ? ((level === 'M3' || level === 'M4') ? 25 : 15) : -20;
+    return Math.max(0, Math.min(100, cur + delta));
+  }
+
+  // ============================================================
+  // LUYỆN TẬP THÍCH ỨNG THỜI GIAN THỰC (CAT-lite, đúng kiểu Squirrel AI vận
+  // hành thật): chọn NGAY 1 câu tiếp theo sau MỖI câu trả lời, dựa trên
+  // mastery hiện tại của từng Tag — khác với Drill/Kiểm tra đầu vào (soạn
+  // sẵn 1 danh sách câu cố định, chỉ cập nhật Mastery sau khi nộp cả bài).
+  // Tag càng yếu càng được hỏi trước; độ khó câu hỏi (M1-M4) bám sát đúng
+  // mức thành thạo hiện tại của Tag đó — yếu thì hỏi câu dễ để củng cố nền
+  // tảng trước, khá hơn thì hỏi câu khó hơn để đẩy lên Xanh, giống hệt cách
+  // Squirrel AI mô tả "next item chosen right after each answer".
+  // nanoMastery: mastery hiện tại từng Tag (được truyền vào + cập nhật dần
+  // ở phía UI qua bumpNanoMastery sau mỗi câu, không đợi vòng lưu Firestore).
+  // askedIds: {qId: true} các câu ĐÃ hỏi trong lượt này — không lặp câu.
+  // ============================================================
+  function pickAdaptiveQuestion(nanoMastery, askedIds){
+    if(!QUESTION_BANK.length) return null;
+    nanoMastery = nanoMastery || {};
+    askedIds = askedIds || {};
+
+    var poolByNano = {};
+    QUESTION_BANK.forEach(function(q){
+      if(!q.nanoId || askedIds[q.id]) return;
+      (poolByNano[q.nanoId] || (poolByNano[q.nanoId] = [])).push(q);
+    });
+    var availableNanoIds = Object.keys(poolByNano);
+    if(!availableNanoIds.length) return null;
+
+    // Tag chưa từng kiểm tra = mức trung lập 50 — không được ưu tiên hơn
+    // Tag đã biết yếu thật (mastery thật < 50).
+    availableNanoIds.sort(function(a, b){
+      var va = nanoMastery[a] != null ? nanoMastery[a] : MASTERY_NEUTRAL_START;
+      var vb = nanoMastery[b] != null ? nanoMastery[b] : MASTERY_NEUTRAL_START;
+      return va - vb;
+    });
+    var targetNanoId = availableNanoIds[0];
+    var targetMastery = nanoMastery[targetNanoId] != null ? nanoMastery[targetNanoId] : MASTERY_NEUTRAL_START;
+
+    var preferredLevels = targetMastery < MASTERY_YELLOW_MIN ? ['M1', 'M2'] :
+      (targetMastery < MASTERY_GREEN_MIN ? ['M2', 'M3'] : ['M3', 'M4']);
+
+    var candidates = poolByNano[targetNanoId];
+    var byLevel = candidates.filter(function(q){ return preferredLevels.indexOf(q.level) > -1; });
+    var finalPool = byLevel.length ? byLevel : candidates;
+    return finalPool[Math.floor(Math.random() * finalPool.length)];
   }
 
   // Gộp mastery từng Tag (nano-point) lên cấp "Bài" (trung bình các Tag ĐÃ
@@ -431,8 +486,11 @@
     classifyMastery: classifyMastery,
     buildBaiMasteryStatus: buildBaiMasteryStatus,
     getRedTags: getRedTags,
+    bumpNanoMastery: bumpNanoMastery,
+    pickAdaptiveQuestion: pickAdaptiveQuestion,
     MASTERY_GREEN_MIN: MASTERY_GREEN_MIN,
     MASTERY_YELLOW_MIN: MASTERY_YELLOW_MIN,
+    MASTERY_NEUTRAL_START: MASTERY_NEUTRAL_START,
     // Bản đồ kiến thức mức nano — truyền vào mastery theo chuyên đề của 1 học
     // sinh cụ thể (vd. student.mastery) để làm mốc tính, và (tuỳ chọn)
     // realNanoMastery tính từ lịch sử làm bài thật (student.nanoMastery) để

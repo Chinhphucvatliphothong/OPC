@@ -530,6 +530,29 @@
   border-color: var(--accent);
 }
 
+/* Phản hồi tức thì trong Luyện tập thích ứng (CAT-lite): tô màu đáp án
+   đúng/sai ngay sau khi bấm "Kiểm tra đáp án" — không có ở các chế độ
+   khác (Drill/Thi thử/Kiểm tra đầu vào chỉ tô màu sau khi nộp cả bài). */
+.ps-choice-item.correct-answer {
+  border-color: var(--good);
+  background: color-mix(in srgb, var(--good) 14%, var(--surface));
+  font-weight: 600;
+}
+.ps-choice-item.correct-answer .ps-choice-key {
+  background: var(--good);
+  color: #fff;
+  border-color: var(--good);
+}
+.ps-choice-item.wrong-answer {
+  border-color: var(--critical);
+  background: color-mix(in srgb, var(--critical) 12%, var(--surface));
+}
+.ps-choice-item.wrong-answer .ps-choice-key {
+  background: var(--critical);
+  color: #fff;
+  border-color: var(--critical);
+}
+
 /* Part II: Statements Table */
 .ps-stmt-table {
   width: 100%;

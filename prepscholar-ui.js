@@ -366,6 +366,26 @@
     var masteryImpact = masteryImpactState[0];
     var setMasteryImpact = masteryImpactState[1];
 
+    // ===== Luyện tập thích ứng thời gian thực (CAT-lite, kiểu Squirrel AI) =====
+    // Khác với Drill/Kiểm tra đầu vào (examSession.questions cố định ngay từ
+    // đầu): ở chế độ này examSession.questions BẮT ĐẦU với 1 câu và được nối
+    // thêm dần — mỗi câu mới được chọn NGAY sau khi chấm câu trước, dựa trên
+    // adaptiveNanoMastery (bản mastery-theo-Tag chạy cục bộ, cập nhật tức thì
+    // qua bumpNanoMastery, không đợi vòng lưu Firestore). Xem pickAdaptiveQuestion
+    // trong prepscholar.js.
+    var ADAPTIVE_TARGET_COUNT = 12;
+    var adaptiveNanoMasteryState = React.useState({});
+    var adaptiveNanoMastery = adaptiveNanoMasteryState[0];
+    var setAdaptiveNanoMastery = adaptiveNanoMasteryState[1];
+
+    var adaptiveCheckedState = React.useState(false); // câu hiện tại đã chấm chưa
+    var adaptiveChecked = adaptiveCheckedState[0];
+    var setAdaptiveChecked = adaptiveCheckedState[1];
+
+    var adaptiveLastResultState = React.useState(null); // kết quả câu vừa chấm, để hiện phản hồi tức thì
+    var adaptiveLastResult = adaptiveLastResultState[0];
+    var setAdaptiveLastResult = adaptiveLastResultState[1];
+
     // Sổ tay câu sai (Mistake Log) — giai đoạn thật: bắt đầu trống, chỉ nạp
     // từ lịch sử làm bài thật của học sinh sau khi đăng nhập (hydrateAndEnter).
     var mistakeLogState = React.useState([]);
@@ -495,6 +515,80 @@
       setMasteryImpact(null);
     }
 
+    // Bắt đầu Luyện tập thích ứng thời gian thực (CAT-lite): chọn câu ĐẦU
+    // TIÊN dựa trên mastery-theo-Tag hiện tại của học sinh (nanoMastery thật
+    // nếu đã từng luyện, mức trung lập 50 cho Tag chưa từng kiểm tra).
+    function startAdaptiveDrill(){
+      var seedMastery = Object.assign({}, student.nanoMastery || {});
+      var firstQ = window.PrepScholarEngine.pickAdaptiveQuestion(seedMastery, {});
+      if(!firstQ){
+        alert('Ngân hàng đề chưa có đủ câu hỏi gắn Tag để luyện thích ứng — thầy cô cần nạp thêm đề (.tex) có gắn nano-point.');
+        return;
+      }
+      var session = {
+        type: 'adaptive',
+        title: 'Luyện tập thích ứng thời gian thực',
+        questions: [firstQ],
+        isSubmitted: false
+      };
+      setExamSession(session);
+      setUserAnswers({});
+      setFlagged({});
+      setCurQIdx(0);
+      setTimeLeft(ADAPTIVE_TARGET_COUNT * 90);
+      setScoreResult(null);
+      setMasteryImpact(null);
+      setAdaptiveNanoMastery(seedMastery);
+      setAdaptiveChecked(false);
+      setAdaptiveLastResult(null);
+    }
+
+    // Chấm NGAY câu hỏi thích ứng hiện tại (câu cuối cùng trong
+    // examSession.questions) và cập nhật adaptiveNanoMastery tức thì — đây
+    // chính là bước "thích ứng trong lúc làm bài" mà Diagnostic/Drill/Thi thử
+    // không có (các chế độ đó chỉ cập nhật Mastery SAU KHI nộp cả bài).
+    function handleCheckAdaptiveAnswer(){
+      if(!examSession || examSession.type !== 'adaptive') return;
+      var curQ = examSession.questions[examSession.questions.length - 1];
+      if(!curQ || adaptiveChecked) return;
+      var scored = window.PrepScholarEngine.scoreExam([curQ], userAnswers);
+      var res = scored.perQuestionResults[0];
+      if(!res) return;
+      setAdaptiveNanoMastery(function(prev){
+        if(!curQ.nanoId) return prev;
+        var next = Object.assign({}, prev);
+        var cur = (next[curQ.nanoId] != null) ? next[curQ.nanoId] : window.PrepScholarEngine.MASTERY_NEUTRAL_START;
+        next[curQ.nanoId] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, curQ.level);
+        return next;
+      });
+      setAdaptiveLastResult(res);
+      setAdaptiveChecked(true);
+    }
+
+    // Chọn và nối thêm câu hỏi TIẾP THEO dựa trên adaptiveNanoMastery vừa cập
+    // nhật — hoặc kết thúc lượt (đủ số câu mục tiêu, hoặc ngân hàng đề đã hết
+    // câu khả dụng) bằng đúng luồng chấm/lưu/đồng bộ sẵn có (handleSubmitExam).
+    function handleNextAdaptiveQuestion(){
+      if(!examSession || examSession.type !== 'adaptive') return;
+      if(examSession.questions.length >= ADAPTIVE_TARGET_COUNT){
+        handleSubmitExam();
+        return;
+      }
+      var askedIds = {};
+      examSession.questions.forEach(function(q){ askedIds[q.id] = true; });
+      var nextQ = window.PrepScholarEngine.pickAdaptiveQuestion(adaptiveNanoMastery, askedIds);
+      if(!nextQ){
+        handleSubmitExam(); // Hết câu hỏi khả dụng — vẫn chấm/lưu bình thường với số câu đã làm
+        return;
+      }
+      setExamSession(function(prev){
+        return Object.assign({}, prev, { questions: prev.questions.concat([nextQ]) });
+      });
+      setCurQIdx(function(i){ return i + 1; });
+      setAdaptiveChecked(false);
+      setAdaptiveLastResult(null);
+    }
+
     // Nộp bài và chấm điểm
     function handleSubmitExam(){
       if(!examSession) return;
@@ -521,8 +615,7 @@
         var nanoId = q && q.nanoId;
         if(!nanoId) return;
         var cur = (newNanoMastery[nanoId] != null) ? newNanoMastery[nanoId] : 50;
-        var delta = res.isFullCorrect ? ((q.level === 'M3' || q.level === 'M4') ? 25 : 15) : -20;
-        newNanoMastery[nanoId] = Math.max(0, Math.min(100, cur + delta));
+        newNanoMastery[nanoId] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, q.level);
       });
 
       Object.keys(scored.topicStats).forEach(function(k){
@@ -769,6 +862,12 @@
         }, '🏠 Trang chủ'),
         h('button', {
           type: 'button',
+          className: 'ps-tab-btn',
+          title: 'Luyện tập thích ứng thời gian thực: hệ thống tự chọn câu tiếp theo ngay sau mỗi câu trả lời, dựa trên Mastery mới nhất — giống cách Squirrel AI vận hành thật (CAT-lite), khác với Drill/Thi thử (soạn sẵn 1 danh sách câu cố định).',
+          onClick: function(){ setTab('home'); startAdaptiveDrill(); }
+        }, '⚡ Luyện tập thích ứng'),
+        h('button', {
+          type: 'button',
           className: 'ps-tab-btn ' + (tab === 'map' ? 'active' : ''),
           onClick: function(){ setTab('map'); setExamSession(null); }
         }, '🧬 Bản đồ kiến thức'),
@@ -807,7 +906,7 @@
               ),
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
               h('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' } },
-                (examSession && examSession.type === 'diagnostic') ? h('button', {
+                (examSession && (examSession.type === 'diagnostic' || examSession.type === 'adaptive')) ? h('button', {
                   type: 'button',
                   className: 'btn btn-primary',
                   onClick: function(){ setExamSession(null); setTab('home'); }
@@ -859,6 +958,115 @@
             })
           )
         ) : (
+          examSession.type === 'adaptive' ? (
+            // LUYỆN TẬP THÍCH ỨNG THỜI GIAN THỰC (CAT-lite, kiểu Squirrel AI
+            // thật): 1 câu 1 lúc — không có ô điều hướng nhảy câu (câu tiếp
+            // theo CHƯA tồn tại cho tới khi chấm xong câu này) và không có nút
+            // "câu trước". Chấm NGAY rồi mới chọn câu kế tiếp dựa trên Mastery
+            // vừa cập nhật, thay vì gộp cả bài rồi mới cập nhật 1 lần lúc nộp.
+            (function(){
+              var curQ = examSession.questions[examSession.questions.length - 1];
+              if(!curQ) return null;
+              var qNo = examSession.questions.length;
+              var curTagMastery = adaptiveNanoMastery[curQ.nanoId];
+              return h('div', { className: 'ps-exam-screen' },
+                h('div', { className: 'ps-exam-header' },
+                  h('div', { className: 'ps-exam-title-group' },
+                    h('h3', null, '⚡ ' + examSession.title),
+                    h('p', null, 'Câu ' + qNo + ' / ' + ADAPTIVE_TARGET_COUNT + ' · Hệ thống tự chọn câu tiếp theo ngay sau khi bạn trả lời')
+                  ),
+                  h('button', {
+                    type: 'button',
+                    className: 'btn btn-secondary',
+                    onClick: function(){
+                      if(confirm('Dừng luyện tập thích ứng và chấm điểm với ' + (adaptiveChecked ? qNo : qNo - 1) + ' câu đã làm?')){
+                        handleSubmitExam();
+                      }
+                    }
+                  }, 'Dừng & chấm điểm')
+                ),
+
+                h('div', { className: 'ps-q-meta-row' },
+                  h('div', { className: 'ps-q-badges' },
+                    h('span', { className: 'ps-q-badge' }, 'Phần ' + curQ.part),
+                    h('span', { className: 'ps-q-badge level-' + curQ.level.toLowerCase() }, curQ.level),
+                    h('span', { style: { fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 600 } }, curQ.topicName + ' · ' + curQ.subtopic),
+                    curTagMastery != null ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, '· Tag đang ở ' + curTagMastery + '%') : null
+                  )
+                ),
+
+                h('div', { className: 'ps-q-stem' }, renderLatexText(curQ.stem)),
+                renderQuestionImages(curQ),
+
+                curQ.part === 'I' ? (
+                  h('div', { className: 'ps-choice-list' },
+                    (curQ.options || []).map(function(opt){
+                      var isSel = (userAnswers[curQ.id] === opt.key);
+                      var extraCls = adaptiveChecked ? (opt.key === curQ.correctKey ? ' correct-answer' : (isSel ? ' wrong-answer' : '')) : '';
+                      return h('div', {
+                        key: opt.key,
+                        className: 'ps-choice-item ' + (isSel ? 'selected' : '') + extraCls,
+                        onClick: function(){ if(!adaptiveChecked) handleAnswerPart1(curQ.id, opt.key); }
+                      },
+                        h('div', { className: 'ps-choice-key' }, opt.key),
+                        h('div', null, renderLatexText(opt.text))
+                      );
+                    })
+                  )
+                ) : (curQ.part === 'II' ? (
+                  h('table', { className: 'ps-stmt-table' },
+                    h('tbody', null,
+                      (curQ.statements || []).map(function(st){
+                        var ansVal = (userAnswers[curQ.id] || {})[st.key];
+                        return h('tr', { key: st.key, className: 'ps-stmt-row' },
+                          h('td', { className: 'ps-stmt-text' },
+                            h('span', { className: 'ps-stmt-key' }, st.key + ')'),
+                            renderLatexText(st.text)
+                          ),
+                          h('td', { className: 'ps-stmt-actions' },
+                            h('div', { className: 'ps-stmt-toggle' },
+                              h('button', { type: 'button', disabled: adaptiveChecked, className: 'ps-stmt-btn ' + (ansVal === true ? 'active-true' : ''), onClick: function(){ handleAnswerPart2(curQ.id, st.key, true); } }, 'ĐÚNG'),
+                              h('button', { type: 'button', disabled: adaptiveChecked, className: 'ps-stmt-btn ' + (ansVal === false ? 'active-false' : ''), onClick: function(){ handleAnswerPart2(curQ.id, st.key, false); } }, 'SAI')
+                            )
+                          )
+                        );
+                      })
+                    )
+                  )
+                ) : (
+                  h('div', { className: 'ps-short-box' },
+                    h('div', { style: { fontSize: '0.85rem', color: 'var(--ink-2)' } }, 'Nhập đáp số (dạng số nguyên hoặc số thập phân):'),
+                    h('div', { className: 'ps-short-input-row' },
+                      h('input', {
+                        type: 'text', className: 'ps-short-input', disabled: adaptiveChecked,
+                        placeholder: 'Ví dụ: 2.5', value: userAnswers[curQ.id] || '',
+                        onChange: function(e){ handleAnswerPart3(curQ.id, e.target.value); }
+                      }),
+                      curQ.unit ? h('span', { className: 'ps-short-unit' }, curQ.unit) : null
+                    )
+                  )
+                )),
+
+                (adaptiveChecked && adaptiveLastResult) ? h('div', { className: 'ps-solution-card ' + (adaptiveLastResult.isFullCorrect ? 'correct' : 'wrong'), style: { marginTop: '16px' } },
+                  h('div', { style: { fontWeight: 700, color: adaptiveLastResult.isFullCorrect ? 'var(--good)' : 'var(--critical)' } },
+                    adaptiveLastResult.isFullCorrect ? '✓ Chính xác!' : '✗ Chưa chính xác'
+                  ),
+                  h('div', { className: 'ps-solution-body' },
+                    h('div', { style: { fontWeight: 700, color: 'var(--accent-strong)', marginBottom: '6px' } }, '💡 Lời giải chi tiết:'),
+                    h('div', { style: { whiteSpace: 'pre-wrap' } }, renderLatexText(curQ.loiGiai))
+                  )
+                ) : null,
+
+                h('div', { className: 'ps-exam-controls' },
+                  !adaptiveChecked ? h('button', {
+                    type: 'button', className: 'btn btn-primary', onClick: handleCheckAdaptiveAnswer
+                  }, 'Kiểm tra đáp án') : h('button', {
+                    type: 'button', className: 'btn btn-primary', onClick: handleNextAdaptiveQuestion
+                  }, qNo >= ADAPTIVE_TARGET_COUNT ? 'Xem kết quả ➔' : 'Câu tiếp theo →')
+                )
+              );
+            })()
+          ) : (
           // ĐANG LÀM BÀI (ACTIVE TAKING EXAM)
           h('div', { className: 'ps-exam-screen' },
             h('div', { className: 'ps-exam-header' },
@@ -1010,6 +1218,7 @@
                 }
               }, curQIdx === examSession.questions.length - 1 ? 'Nộp bài & Chấm điểm ➔' : 'Câu tiếp theo →')
             )
+          )
           )
         )
       ) : (
@@ -1303,7 +1512,10 @@
                       )
                     )
                   ),
-                  h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ startExam('diagnostic'); } }, '🔁 Làm lại kiểm tra đầu vào')
+                  h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+                    h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.8rem' }, onClick: startAdaptiveDrill }, '⚡ Luyện tập thích ứng ngay'),
+                    h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ startExam('diagnostic'); } }, '🔁 Làm lại kiểm tra đầu vào')
+                  )
                 )
               ),
 
