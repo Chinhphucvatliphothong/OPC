@@ -476,6 +476,18 @@
       }
     };
 
+    // Số liệu học tập THẬT của từng học sinh (mastery/điểm dự đoán/sổ câu
+    // sai), do chính trang luyện tập (opc-live-data.js) tự ghi lại sau mỗi
+    // lần nộp bài — xem match /student_stats/{id} trong firestore.rules.
+    // Đọc TOÀN BỘ collection 1 lần (không phải N lần theo từng học sinh) để
+    // trang "Giám sát thích ứng" hiển thị đúng số liệu thật, không còn hàng
+    // demo giả lập khi chưa có dữ liệu.
+    OPC.studentStats = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(collection(db, "student_stats"), onNext, onErr);
+      }
+    };
+
     OPC.examBank = {
       subscribe: function(onNext, onErr){
         return onSnapshot(query(collection(db, "de_thi"), orderBy("createdAt", "desc")), onNext, onErr);
@@ -2988,6 +3000,7 @@
   function PrepScholarMonitoringPanel(props){
     var OPCref = window.OPC;
     var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var statsState = React.useState({}); var statsById = statsState[0], setStatsById = statsState[1];
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
     var loadErrState = React.useState(null); var loadErr = loadErrState[0], setLoadErr = loadErrState[1];
     var drillModalState = React.useState(null); var drillModal = drillModalState[0], setDrillModal = drillModalState[1];
@@ -3001,16 +3014,85 @@
       return function(){ unsub(); };
     }, []);
 
-    var displayStudents = students.length ? students : [
-      { id:'s1', name:'Trần Văn An (Học Sinh A)', email:'vanan@gmail.com', targetScore:9.0, predictedScore:7.8, mastery:{ nhiet:85, khi:68, tutruong:60, hatnhan:42 }, mistakeCount:3 },
-      { id:'s2', name:'Nguyễn Bảo Châu', email:'chaund@gmail.com', targetScore:8.5, predictedScore:6.9, mastery:{ nhiet:78, khi:45, tutruong:72, hatnhan:55 }, mistakeCount:5 },
-      { id:'s3', name:'Trần Minh Khôi', email:'khoitm@gmail.com', targetScore:9.5, predictedScore:8.6, mastery:{ nhiet:92, khi:85, tutruong:88, hatnhan:78 }, mistakeCount:1 },
-      { id:'s4', name:'Lê Hoàng Nam', email:'namlh@gmail.com', targetScore:8.0, predictedScore:7.2, mastery:{ nhiet:70, khi:62, tutruong:58, hatnhan:48 }, mistakeCount:4 }
-    ];
+    // Số liệu học tập THẬT (mastery/điểm dự đoán/sổ câu sai) — do chính
+    // trang luyện tập ghi vào collection "student_stats" sau mỗi lần nộp bài
+    // (xem OPC_LIVE.saveStudentStats trong opc-live-data.js). Đọc riêng và
+    // gộp vào theo id, KHÔNG còn hàng demo giả lập khi chưa có dữ liệu.
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.studentStats) return;
+      var unsub = OPCref.studentStats.subscribe(function(snap){
+        var map = {};
+        snap.docs.forEach(function(d){ map[d.id] = d.data() || {}; });
+        setStatsById(map);
+      }, function(err){ console.error('Lỗi tải số liệu học tập thật:', err); });
+      return function(){ unsub(); };
+    }, []);
+
+    // Học sinh thật, gộp thêm số liệu thật nếu em đó đã từng luyện tập ít
+    // nhất 1 lần (chưa luyện lần nào thì các trường mastery/predictedScore
+    // vẫn để trống — calculateStudentKPIs() đã tự hiển thị "Chưa có dữ liệu"
+    // / "Mới nhập học" cho trường hợp này, không có số giả nào cả).
+    var displayStudents = students.map(function(s){
+      var st = statsById[s.id];
+      if(!st) return s;
+      return Object.assign({}, s, {
+        mastery: st.mastery || s.mastery,
+        predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
+        mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount
+      });
+    });
 
     function handleAssignDrill(stu){
       setDrillModal(stu);
     }
+
+    // Đọc 1 giá trị mastery của học sinh, chấp nhận cả 2 kiểu đặt tên khoá
+    // (có gạch nối "tu-truong"/"hat-nhan" — theo prepscholar.js — và không
+    // gạch nối "tutruong"/"hatnhan" — theo dữ liệu học sinh cũ trong Firestore).
+    function studentMasteryVal(stu, keys){
+      if(!stu || !stu.mastery) return null;
+      for(var i = 0; i < keys.length; i++){
+        if(stu.mastery[keys[i]] != null) return Number(stu.mastery[keys[i]]);
+      }
+      return null;
+    }
+
+    // Trung bình cộng 1 chuyên đề của CẢ LỚP, chỉ tính trên những em đã có
+    // số liệu thật (không còn 4 con số tĩnh "82%/64%/52%..." như bản demo).
+    function classAvgTopic(keys){
+      var vals = [];
+      displayStudents.forEach(function(s){
+        var v = studentMasteryVal(s, keys);
+        if(v != null) vals.push(v);
+      });
+      if(!vals.length) return null;
+      return Math.round(vals.reduce(function(a, b){ return a + b; }, 0) / vals.length);
+    }
+
+    function masteryColor(val){
+      if(val == null) return 'var(--muted)';
+      return val < 50 ? 'var(--critical)' : (val < 80 ? 'var(--warning)' : 'var(--good)');
+    }
+
+    var avgNhiet = classAvgTopic(['nhiet']);
+    var avgKhi = classAvgTopic(['khi']);
+    var avgTuTruong = classAvgTopic(['tu-truong', 'tutruong']);
+    var avgHatNhan = classAvgTopic(['hat-nhan', 'hatnhan']);
+
+    var studentsWithPredicted = displayStudents.filter(function(s){
+      return s.predictedScore != null || (s.averageScore != null && Number(s.averageScore) > 0);
+    });
+    var classAvgPredicted = null;
+    if(studentsWithPredicted.length){
+      var sumPredicted = studentsWithPredicted.reduce(function(acc, s){
+        var p = s.predictedScore != null ? Number(s.predictedScore) : Number(s.averageScore) * 0.95;
+        return acc + p;
+      }, 0);
+      classAvgPredicted = (sumPredicted / studentsWithPredicted.length).toFixed(1);
+    }
+
+    var drillKpi = drillModal ? calculateStudentKPIs(drillModal) : null;
+    var drillWeakTopicName = drillKpi ? drillKpi.weakTopic.split(' (')[0] : '';
 
     function confirmAssignDrill(stu, topic, count){
       props.fireToast('Đã giao thành công bài Drill ' + count + ' câu chuyên đề ' + topic + ' cho em ' + stu.name + '!');
@@ -3123,12 +3205,12 @@
           'Giao bài luyện tập trực tiếp cho học sinh ', h('b',null, drillModal.name), ' theo đúng chuyên đề em đang yếu nhất.'
         ),
         h('div',{style:{marginTop:14, padding:12, background:'var(--surface-2)', borderRadius:8, fontSize:'0.84rem'}},
-          h('div',null, h('b',null,'Chuyên đề yếu nhất: '), h('span',{style:{color:'var(--critical)', fontWeight:700}}, 'Vật lí hạt nhân (42%)')),
+          h('div',null, h('b',null,'Chuyên đề yếu nhất: '), h('span',{style:{color:'var(--critical)', fontWeight:700}}, drillKpi ? drillKpi.weakTopic : 'Chưa xác định')),
           h('div',{style:{marginTop:4, color:'var(--muted)'}}, 'Khuyến nghị: Drill 5 câu M2-M3 để củng cố kiến thức nền.')
         ),
         h('div',{style:{display:'flex', gap:10, marginTop:18}},
-          h('button',{type:'button', className:'btn btn-primary', style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, 'Vật lí hạt nhân', 5); }}, 'Giao Drill 5 câu'),
-          h('button',{type:'button', className:'btn btn-secondary', style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, 'Vật lí hạt nhân', 10); }}, 'Giao Drill 10 câu')
+          h('button',{type:'button', className:'btn btn-primary', style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, drillWeakTopicName, 5); }}, 'Giao Drill 5 câu'),
+          h('button',{type:'button', className:'btn btn-secondary', style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, drillWeakTopicName, 10); }}, 'Giao Drill 10 câu')
         )
       )
     ) : null;
@@ -3152,18 +3234,19 @@
         ),
         h('div',{className:'eb-matrix-grid', style:{marginTop:16}},
           h('div',{className:'eb-matrix-cell'},
-            h('div',{className:'eb-matrix-val', style:{color:'var(--accent-strong)'}}, '7.6'),
+            h('div',{className:'eb-matrix-val', style:{color:'var(--accent-strong)'}}, classAvgPredicted != null ? classAvgPredicted : '—'),
             h('div',{className:'eb-matrix-lbl'}, 'Điểm dự đoán TB lớp')),
           h('div',{className:'eb-matrix-cell'},
-            h('div',{className:'eb-matrix-val', style:{color:'var(--good)'}}, '82%'),
-            h('div',{className:'eb-matrix-lbl'}, 'Vật lí nhiệt (Vững)')),
+            h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgNhiet)}}, avgNhiet != null ? avgNhiet + '%' : '—'),
+            h('div',{className:'eb-matrix-lbl'}, 'Vật lí nhiệt')),
           h('div',{className:'eb-matrix-cell'},
-            h('div',{className:'eb-matrix-val', style:{color:'var(--warning)'}}, '64%'),
-            h('div',{className:'eb-matrix-lbl'}, 'Khí lí tưởng (Cần luyện)')),
+            h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgKhi)}}, avgKhi != null ? avgKhi + '%' : '—'),
+            h('div',{className:'eb-matrix-lbl'}, 'Khí lí tưởng')),
           h('div',{className:'eb-matrix-cell'},
-            h('div',{className:'eb-matrix-val', style:{color:'var(--critical)'}}, '52%'),
-            h('div',{className:'eb-matrix-lbl'}, 'Hạt nhân (Điểm yếu chung)'))
-        )
+            h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgHatNhan)}}, avgHatNhan != null ? avgHatNhan + '%' : '—'),
+            h('div',{className:'eb-matrix-lbl'}, 'Vật lí hạt nhân'))
+        ),
+        (avgNhiet == null && avgKhi == null && avgTuTruong == null && avgHatNhan == null) ? h('p',{style:{marginTop:10, fontSize:'0.8rem', color:'var(--muted)'}}, 'Chưa có học sinh nào luyện tập — số liệu sẽ tự cập nhật ngay khi có bài nộp đầu tiên.') : null
       ),
 
       h('div',{className:'sm-table-wrap', style:{marginTop:20}},
@@ -3182,15 +3265,20 @@
           ),
           h('tbody',null,
             displayStudents.map(function(stu, idx){
-              var m = stu.mastery || { nhiet:75, khi:65, tutruong:60, hatnhan:50 };
-              var pScore = stu.predictedScore || (stu.averageScore ? (stu.averageScore * 0.95).toFixed(1) : 7.5);
-              var tScore = stu.targetScore || 8.5;
-              var mCount = stu.mistakeCount || (idx * 2 + 1);
+              // Số liệu THẬT theo từng em — không còn số giả lập theo idx
+              // (VD "idx * 2 + 1" câu sai) hay mastery mặc định 75/65/60/50
+              // cho mọi học sinh. Chưa có dữ liệu thì hiển thị "—".
+              var vNhiet = studentMasteryVal(stu, ['nhiet']);
+              var vKhi = studentMasteryVal(stu, ['khi']);
+              var vTuTruong = studentMasteryVal(stu, ['tu-truong', 'tutruong']);
+              var vHatNhan = studentMasteryVal(stu, ['hat-nhan', 'hatnhan']);
+              var pScore = stu.predictedScore != null ? Number(stu.predictedScore).toFixed(1) : (stu.averageScore ? (stu.averageScore * 0.95).toFixed(1) : null);
+              var tScore = stu.targetScore != null ? stu.targetScore : 9.0;
+              var mCount = stu.mistakeCount != null ? stu.mistakeCount : null;
 
               function pill(val){
-                var cls = val < 50 ? 'critical' : (val < 75 ? 'warning' : 'good');
-                var color = val < 50 ? 'var(--critical)' : (val < 75 ? 'var(--warning)' : 'var(--good)');
-                return h('span',{style:{fontFamily:'IBM Plex Mono, monospace', fontWeight:700, color:color, background:'color-mix(in srgb, ' + color + ' 12%, transparent)', padding:'2px 8px', borderRadius:5, fontSize:'0.78rem'}}, val + '%');
+                var color = masteryColor(val);
+                return h('span',{style:{fontFamily:'IBM Plex Mono, monospace', fontWeight:700, color:color, background:'color-mix(in srgb, ' + color + ' 12%, transparent)', padding:'2px 8px', borderRadius:5, fontSize:'0.78rem'}}, val != null ? val + '%' : '—');
               }
 
               return h('tr',{key:stu.id || idx},
@@ -3205,16 +3293,16 @@
                 ),
                 h('td',null,
                   h('div',{style:{fontFamily:'IBM Plex Mono, monospace', fontSize:'0.86rem'}},
-                    h('b',{style:{color:'var(--accent-strong)'}}, pScore),
+                    h('b',{style:{color:'var(--accent-strong)'}}, pScore != null ? pScore : '—'),
                     h('span',{style:{color:'var(--muted)'}}, ' / ' + tScore + '+')
                   )
                 ),
-                h('td',null, pill(m.nhiet || 75)),
-                h('td',null, pill(m.khi || 65)),
-                h('td',null, pill(m.tutruong || 60)),
-                h('td',null, pill(m.hatnhan || 50)),
+                h('td',null, pill(vNhiet)),
+                h('td',null, pill(vKhi)),
+                h('td',null, pill(vTuTruong)),
+                h('td',null, pill(vHatNhan)),
                 h('td',null,
-                  h('span',{style:{fontFamily:'IBM Plex Mono, monospace', fontSize:'0.82rem', color:'var(--ink)'}}, mCount + ' câu')
+                  h('span',{style:{fontFamily:'IBM Plex Mono, monospace', fontSize:'0.82rem', color:'var(--ink)'}}, mCount != null ? mCount + ' câu' : '—')
                 ),
                 h('td',{style:{textAlign:'right'}},
                   h('button',{
