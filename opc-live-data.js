@@ -318,6 +318,8 @@ function transformQuestion(q, examMeta){
     stem: q.stem || '',
     loiGiai: q.loigiai || '',
     images: resolveQuestionImages(q, examMeta.images),
+    groupPassage: q.groupPassage || null,
+    groupImages: resolveQuestionImages({ images: q.groupImages || [] }, examMeta.images),
     examTitle: examMeta.title,
     examId: examMeta.examId,
     baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',

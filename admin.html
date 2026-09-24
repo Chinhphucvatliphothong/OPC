@@ -269,6 +269,7 @@
   .eb-level-m2{ background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
   .eb-level-m3{ background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
   .eb-level-m4{ background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+  .eb-level-m0{ background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
 
   .eb-badges-row{ display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin-top:4px; }
   .eb-part-pill{ font-size:0.7rem; font-weight:600; padding:1px 6px; border-radius:4px; background:var(--surface-2); color:var(--ink-2); border:1px solid var(--line); }
@@ -342,6 +343,12 @@
   .eb-q-opt.correct .eb-q-opt-key{ color:var(--good); }
   .eb-q-loigiai{ margin-top:10px; padding:9px 13px; background:color-mix(in srgb, var(--accent) 8%, var(--surface)); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; font-size:0.84rem; color:var(--ink); line-height:1.55; }
   .eb-q-loigiai b{ color:var(--accent-strong); }
+  .eb-q-opt.editable{ cursor:pointer; }
+  .eb-q-opt.editable:hover{ border-color:var(--ink-2); }
+  .eb-q-opt.editable input{ margin-top:3px; flex:none; }
+  .eb-answer-edit{ margin-top:10px; }
+  .eb-group-passage{ margin-top:8px; padding:10px 13px; background:color-mix(in srgb, #6d28d9 8%, var(--surface)); border-left:3px solid #6d28d9; border-radius:0 8px 8px 0; font-size:0.86rem; color:var(--ink); line-height:1.55; }
+  .eb-group-passage-label{ font-weight:700; font-size:0.78rem; color:#6d28d9; margin-bottom:4px; }
 
   /* Generator panel */
   .gen-grid{ display:grid; grid-template-columns:320px 1fr; gap:20px; margin-top:18px; }
@@ -609,6 +616,12 @@
           }
         }catch(e){}
         return deleteDoc(doc(db, "de_thi", id));
+      },
+      // Cập nhật lại mảng câu hỏi của 1 đề (VD sau khi thầy sửa đáp án đúng của
+      // 1 câu vì phát hiện sai sót trong file gốc) — không đụng tới các trường
+      // khác của đề (tex gốc, hình ảnh, thống kê...).
+      updateQuestions: function(examId, questions){
+        return updateDoc(doc(db, "de_thi", examId), { questions: questions });
       },
       uploadFile: function(examId, file, kind, onProgress){
         return new Promise(function(resolve, reject){
@@ -1009,11 +1022,19 @@
   }
 
   var CHU_DE_LIST = ['Vật lí nhiệt', 'Khí lí tưởng', 'Từ trường', 'Vật lí hạt nhân'];
+  // Danh sách RIÊNG cho form nạp đề / bộ lọc ngân hàng đề — có thêm lựa chọn
+  // "Tổng hợp nhiều chuyên đề" cho các đề tổng hợp cuốn chiếu (VD: đề hết
+  // chương 2 gồm cả câu hỏi chương 1 lẫn chương 2). KHÔNG dùng CHU_DE_LIST
+  // gốc cho việc này vì CHU_DE_LIST còn được dùng làm danh sách chuyên đề
+  // THẬT ở bộ lọc "Tạo đề cá nhân hóa" — thêm giá trị giả vào đó sẽ khiến
+  // admin chọn nhầm một mục luôn trả về rỗng khi tạo đề cho học sinh.
+  var CHU_DE_UPLOAD_LIST = CHU_DE_LIST.concat(['Tổng hợp nhiều chuyên đề']);
   var MUC_DO_LIST = [
     {v:1, code:'M1', label:'M1 · Nhận biết', desc:'Hỏi định nghĩa, khái niệm, công thức cơ bản', color:'#0369a1'},
     {v:2, code:'M2', label:'M2 · Thông hiểu', desc:'Hiểu bản chất, tính toán 1 bước đơn giản, đọc đồ thị cơ bản', color:'#15803d'},
     {v:3, code:'M3', label:'M3 · Vận dụng', desc:'Tính toán từ 2-3 bước, kết hợp công thức, bài toán thực tế mức vừa', color:'#b45309'},
-    {v:4, code:'M4', label:'M4 · Vận dụng cao', desc:'Bài toán phức tạp, nhiều hiện tượng, số liệu thực tế khó, hàm số', color:'#b91c1c'}
+    {v:4, code:'M4', label:'M4 · Vận dụng cao', desc:'Bài toán phức tạp, nhiều hiện tượng, số liệu thực tế khó, hàm số', color:'#b91c1c'},
+    {v:0, code:'DA', label:'Đa mức · (nhiều mức độ trong 1 file)', desc:'File có câu hỏi ở nhiều mức độ khác nhau — mức độ THẬT của từng câu vẫn lấy đúng theo tag trong file, không ảnh hưởng gì tới việc giao đề cho học sinh.', color:'#6d28d9'}
   ];
   var MAX_TEX_BYTES = 8 * 1024 * 1024;
   var MAX_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -1126,6 +1147,46 @@
   }
 
   // Parser bóc tách file .tex ngân hàng đề theo chuẩn Bộ Giáo Dục & tag: % [Mức độ][Chủ đề lớn][Dạng bài/Chủ đề nhỏ]
+  // Bóc tách 1 khối "câu hỏi chùm" (\immini{đoạn văn/ngữ cảnh dùng chung}{hình
+  // minh hoạ}) — cú pháp LaTeX chuẩn cho các câu hỏi nhóm kiểu "Dùng thông tin
+  // sau cho câu X và câu Y". Trả về đoạn văn đã làm sạch cú pháp LaTeX cơ bản,
+  // danh sách tên file hình, và số câu hỏi liền sau mà đoạn này áp dụng (đọc
+  // từ chính số câu ghi trong đoạn văn — VD "câu 1 và câu 2" → 2 câu; nếu
+  // không đọc được số nào thì tạm coi là áp dụng cho đúng 1 câu ngay sau đó
+  // và đánh dấu "uncertain" để admin biết mà kiểm tra lại).
+  function extractImminiGroup(text){
+    var mIdx = text.indexOf('\\immini');
+    if(mIdx === -1) return null;
+    var blocks = extractBraceBlocks(text, mIdx + 7, 2);
+    if(!blocks.length) return null;
+    var passageRaw = blocks[0] || '';
+    var imageRaw = blocks.length > 1 ? blocks[1] : '';
+    var passageText = passageRaw
+      .replace(/\\textbf\{([^{}]*)\}/g, '$1')
+      .replace(/\\textit\{([^{}]*)\}/g, '$1')
+      .replace(/\\noindent/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if(!passageText) return null;
+    var imgs = [];
+    var imgRegex2 = /\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g;
+    var im2;
+    while((im2 = imgRegex2.exec(imageRaw)) !== null){ imgs.push(im2[1]); }
+    var nums = [];
+    var numRegex = /c[aâ]u\s*(\d+)/gi;
+    var nm;
+    while((nm = numRegex.exec(passageText)) !== null){ nums.push(Number(nm[1])); }
+    var count = 1;
+    var uncertain = true;
+    if(nums.length >= 2){
+      count = Math.max.apply(null, nums) - Math.min.apply(null, nums) + 1;
+      uncertain = false;
+    } else if(nums.length === 1){
+      uncertain = false;
+    }
+    return { passage: passageText, images: imgs, remaining: Math.max(1, count), uncertain: uncertain };
+  }
+
   function parseTexBank(content, filename){
     var lines = content.split(/\r?\n/);
     var currentPart = 'I';
@@ -1134,6 +1195,8 @@
     var exBuffer = [];
     var lastCommentTag = null;
     var titleCand = '';
+    var preambleBuffer = [];
+    var pendingGroup = null;
 
     var tagRegex = /%\s*\[(M[1-4])\]\s*\[([^\]]+)\]\s*\[([^\]]+)\]/i;
     var subsecRegex = /\\subsubsection\{([^}]+)\}/i;
@@ -1171,6 +1234,16 @@
       }
 
       if(/\\begin\{ex\}/.test(line)){
+        // Xử lý phần "mở đầu" tích luỹ được trước câu hỏi này — nếu có chứa
+        // \immini thì đó là ngữ cảnh dùng chung cho câu hỏi chùm sắp tới.
+        if(preambleBuffer.length){
+          var preambleText = preambleBuffer.join('\n');
+          if(/\\immini/.test(preambleText)){
+            var newGroup = extractImminiGroup(preambleText);
+            if(newGroup) pendingGroup = newGroup;
+          }
+          preambleBuffer = [];
+        }
         inEx = true;
         exBuffer = [line];
       } else if(inEx){
@@ -1241,6 +1314,15 @@
             imgMatches.push(im[1]);
           }
 
+          // Gắn ngữ cảnh "câu hỏi chùm" đang chờ (nếu có) vào câu này, rồi
+          // giảm dần số câu còn lại thuộc nhóm — hết thì xoá nhóm đang chờ.
+          var groupData = null;
+          if(pendingGroup && pendingGroup.remaining > 0){
+            groupData = { passage: pendingGroup.passage, images: pendingGroup.images.slice(), uncertain: pendingGroup.uncertain };
+            pendingGroup.remaining -= 1;
+            if(pendingGroup.remaining <= 0) pendingGroup = null;
+          }
+
           questions.push({
             index: questions.length + 1,
             part: currentPart,
@@ -1253,9 +1335,14 @@
             shortans: shortansVal,
             loigiai: loigiai,
             images: imgMatches,
+            groupPassage: groupData ? groupData.passage : null,
+            groupImages: groupData ? groupData.images : [],
+            groupUncertain: groupData ? !!groupData.uncertain : false,
             raw: full
           });
         }
+      } else {
+        preambleBuffer.push(line);
       }
     }
 
@@ -1268,20 +1355,40 @@
       m2: questions.filter(function(q){ return q.level === 'M2'; }).length,
       m3: questions.filter(function(q){ return q.level === 'M3'; }).length,
       m4: questions.filter(function(q){ return q.level === 'M4'; }).length,
+      grouped: questions.filter(function(q){ return !!q.groupPassage; }).length,
       topics: Array.from(new Set(questions.map(function(q){ return q.chuDeLon; }).filter(Boolean))),
       subTopics: Array.from(new Set(questions.map(function(q){ return q.dangBai; }).filter(Boolean)))
     };
 
+    // Gợi ý "Chuyên đề chính" cho form: ưu tiên dùng chính dữ liệu đã gắn thẻ
+    // trong file (stats.topics, lấy từ tag % [Mức độ][Chủ đề lớn][Dạng bài]
+    // của từng câu) thay vì chỉ đoán theo từ khoá — đáng tin hơn nhiều. Nếu
+    // file có TỪ 2 chuyên đề khác nhau trở lên (đề tổng hợp cuốn chiếu nhiều
+    // chương) thì không ép về 1 chuyên đề sai, mà gợi ý "Tổng hợp nhiều
+    // chuyên đề" luôn.
     var suggestedChuDe = CHU_DE_LIST[0];
-    var fullText = ((filename||'') + ' ' + (titleCand||'') + ' ' + stats.topics.join(' ')).toLowerCase();
-    if(/khí|boyle|charles|nhiệt động|chất khí|piston|xilanh/i.test(fullText)) suggestedChuDe = 'Khí lí tưởng';
-    else if(/nhiệt|sôi|nóng chảy|ngưng tụ|nội năng|đông đặc/i.test(fullText)) suggestedChuDe = 'Vật lí nhiệt';
-    else if(/từ trường|cảm ứng|lorentz|dòng điện|flen|từ thông/i.test(fullText)) suggestedChuDe = 'Từ trường';
-    else if(/hạt nhân|phóng xạ|năng lượng liên kết|phản ứng/i.test(fullText)) suggestedChuDe = 'Vật lí hạt nhân';
+    if(stats.topics.length > 1){
+      suggestedChuDe = 'Tổng hợp nhiều chuyên đề';
+    } else if(stats.topics.length === 1 && CHU_DE_LIST.indexOf(stats.topics[0]) > -1){
+      suggestedChuDe = stats.topics[0];
+    } else {
+      var fullText = ((filename||'') + ' ' + (titleCand||'') + ' ' + stats.topics.join(' ')).toLowerCase();
+      if(/khí|boyle|charles|nhiệt động|chất khí|piston|xilanh/i.test(fullText)) suggestedChuDe = 'Khí lí tưởng';
+      else if(/nhiệt|sôi|nóng chảy|ngưng tụ|nội năng|đông đặc/i.test(fullText)) suggestedChuDe = 'Vật lí nhiệt';
+      else if(/từ trường|cảm ứng|lorentz|dòng điện|flen|từ thông/i.test(fullText)) suggestedChuDe = 'Từ trường';
+      else if(/hạt nhân|phóng xạ|năng lượng liên kết|phản ứng/i.test(fullText)) suggestedChuDe = 'Vật lí hạt nhân';
+    }
+
+    // Gợi ý "Mức độ tổng quan" tương tự: nếu file có từ 2 mức độ khác nhau
+    // trở lên (rất thường gặp — 1 bài/1 đề luôn trộn nhiều mức) thì gợi ý
+    // "Đa mức" (v:0) thay vì ép chọn 1 mức không đúng thực tế.
+    var distinctLevelCount = (stats.m1 ? 1 : 0) + (stats.m2 ? 1 : 0) + (stats.m3 ? 1 : 0) + (stats.m4 ? 1 : 0);
+    var suggestedMucDo = distinctLevelCount > 1 ? 0 : (stats.m1 ? 1 : stats.m2 ? 2 : stats.m3 ? 3 : stats.m4 ? 4 : 2);
 
     return {
       title: titleCand || (filename ? filename.replace(/\.tex$/i, '').replace(/[_-]+/g, ' ') : ''),
       suggestedChuDe: suggestedChuDe,
+      suggestedMucDo: suggestedMucDo,
       stats: stats,
       questions: questions
     };
@@ -2925,6 +3032,77 @@
     var formErrState = React.useState(''); var formErr = formErrState[0], setFormErr = formErrState[1];
     // Gắn nano-point cho từng câu hỏi vừa bóc tách (phân rã kiến thức mức nhỏ nhất, mô hình Squirrel AI)
     var nanoRowsState = React.useState({}); var nanoRows = nanoRowsState[0], setNanoRows = nanoRowsState[1];
+    // Sửa đáp án 1 câu đã nạp — dùng khi phát hiện sai sót trong file .tex gốc
+    // mà không cần nạp lại cả đề. editingQIndex lưu q.index đang sửa (null =
+    // không sửa gì); editDraft là bản nháp options/shortans đang chỉnh.
+    var editingQIndexState = React.useState(null); var editingQIndex = editingQIndexState[0], setEditingQIndex = editingQIndexState[1];
+    var editDraftState = React.useState(null); var editDraft = editDraftState[0], setEditDraft = editDraftState[1];
+    var savingAnswerState = React.useState(false); var savingAnswer = savingAnswerState[0], setSavingAnswer = savingAnswerState[1];
+
+    function startEditAnswer(q){
+      setEditingQIndex(q.index);
+      setEditDraft({
+        options: (q.options || []).map(function(o){ return Object.assign({}, o); }),
+        shortans: q.shortans || ''
+      });
+    }
+    function cancelEditAnswer(){
+      setEditingQIndex(null);
+      setEditDraft(null);
+    }
+    function setDraftCorrectChoice(key){
+      setEditDraft(function(prev){
+        if(!prev) return prev;
+        return Object.assign({}, prev, {
+          options: prev.options.map(function(o){ return Object.assign({}, o, { isTrue: o.key === key }); })
+        });
+      });
+    }
+    function toggleDraftTF(key){
+      setEditDraft(function(prev){
+        if(!prev) return prev;
+        return Object.assign({}, prev, {
+          options: prev.options.map(function(o){ return o.key === key ? Object.assign({}, o, { isTrue: !o.isTrue }) : o; })
+        });
+      });
+    }
+    function setDraftShortans(val){
+      setEditDraft(function(prev){ return prev ? Object.assign({}, prev, { shortans: val }) : prev; });
+    }
+    async function saveAnswerEdit(q){
+      if(!editDraft || !selected) return;
+      if(q.type !== 'shortans' && !editDraft.options.some(function(o){ return o.isTrue; })){
+        props.fireToast('Cần chọn ít nhất 1 đáp án đúng trước khi lưu.', true);
+        return;
+      }
+      if(q.type === 'shortans' && !String(editDraft.shortans || '').trim()){
+        props.fireToast('Đáp án không được để trống.', true);
+        return;
+      }
+      setSavingAnswer(true);
+      try{
+        var newQuestions = (selected.questions || []).map(function(qq){
+          if(qq.index !== q.index) return qq;
+          var updated = Object.assign({}, qq);
+          if(qq.type === 'shortans'){
+            updated.shortans = editDraft.shortans.trim();
+          } else {
+            updated.options = editDraft.options;
+          }
+          return updated;
+        });
+        await OPCref.examBank.updateQuestions(selected.id, newQuestions);
+        setSelected(function(prev){ return prev ? Object.assign({}, prev, { questions: newQuestions }) : prev; });
+        setEditingQIndex(null);
+        setEditDraft(null);
+        props.fireToast('Đã cập nhật đáp án câu ' + q.index + '.');
+      }catch(err){
+        console.error('Lỗi cập nhật đáp án:', err);
+        props.fireToast('Lưu đáp án thất bại — thử lại.', true);
+      }finally{
+        setSavingAnswer(false);
+      }
+    }
 
     function toggleNano(qIdx, nanoId){
       setNanoRows(function(prev){
@@ -2977,6 +3155,12 @@
           });
         });
       }
+    }, [selected && selected.id]);
+
+    // Thoát chế độ sửa đáp án mỗi khi đổi sang đề khác (hoặc đóng modal)
+    React.useEffect(function(){
+      setEditingQIndex(null);
+      setEditDraft(null);
     }, [selected && selected.id]);
 
     React.useEffect(function(){
@@ -3037,6 +3221,9 @@
         }
         if(analysis.suggestedChuDe && form.chuDe === CHU_DE_LIST[0]){
           setField('chuDe', analysis.suggestedChuDe);
+        }
+        if(analysis.suggestedMucDo != null && Number(form.mucDo) === 2){
+          setField('mucDo', analysis.suggestedMucDo);
         }
       }catch(err){
         console.warn('Lỗi đọc và phân tích file .tex:', err);
@@ -3153,7 +3340,7 @@
         h('div',{className:'sm-search'}, h(IconSearch),
           h('input',{type:'text', value:search, placeholder:'Tìm theo tiêu đề, bài, chủ đề...', onChange:function(e){ setSearch(e.target.value); }})),
         h('select',{className:'eb-select', value:filterChuDe, onChange:function(e){ setFilterChuDe(e.target.value); }},
-          h('option',null,'Tất cả'), CHU_DE_LIST.map(function(c){ return h('option',{key:c, value:c}, c); })),
+          h('option',null,'Tất cả'), CHU_DE_UPLOAD_LIST.map(function(c){ return h('option',{key:c, value:c}, c); })),
         h('select',{className:'eb-select', value:filterMucDo, onChange:function(e){ setFilterMucDo(e.target.value); }},
           h('option',null,'Tất cả'), MUC_DO_LIST.map(function(m){ return h('option',{key:m.v, value:m.v}, m.label); }))
       ),
@@ -3193,7 +3380,7 @@
                     h('span',{className:'eb-level-badge eb-level-m3', title:'Vận dụng'}, 'M3:' + stats.m3),
                     h('span',{className:'eb-level-badge eb-level-m4', title:'Vận dụng cao'}, 'M4:' + stats.m4)
                   ) : (
-                    h('span',{className:'eb-level-badge eb-level-m'+(x.mucDo||1)}, 'Mức ' + (x.mucDo||1))
+                    h('span',{className:'eb-level-badge eb-level-m'+(x.mucDo!=null?x.mucDo:1)}, x.mucDo===0 ? 'Đa mức' : 'Mức ' + (x.mucDo!=null?x.mucDo:1))
                   )
                 ),
                 h('td',{className:'sm-num', style:{textAlign:'center'}}, (x.images||[]).length),
@@ -3323,23 +3510,59 @@
                           q.dangBai ? h('span',{className:'eb-tag-sub'}, q.dangBai) : null
                         )
                       ),
+                      // Ngữ cảnh dùng chung nếu câu này thuộc "câu hỏi chùm"
+                      q.groupPassage ? h('div',{className:'eb-group-passage'},
+                        h('div',{className:'eb-group-passage-label'}, '🔗 Ngữ cảnh dùng chung (câu hỏi chùm)' + (q.groupUncertain ? ' — chưa rõ số câu, kiểm tra lại' : '') + ':'),
+                        h('div',null, q.groupPassage),
+                        (q.groupImages && q.groupImages.length) ? h('div',{style:{fontSize:'0.76rem', color:'var(--muted)', marginTop:'4px'}}, '🖼 ' + q.groupImages.join(', ')) : null
+                      ) : null,
+
                       h('div',{className:'eb-q-stem'}, q.stem || q.raw),
 
-                      // Options for choice or choiceTF
-                      (q.options && q.options.length) ? h('div',{className:'eb-q-opts'},
-                        q.options.map(function(opt, optIdx){
-                          return h('div',{key:optIdx, className:cx('eb-q-opt', opt.isTrue && 'correct')},
-                            h('span',{className:'eb-q-opt-key'}, opt.key + '.'),
-                            h('span',{style:{flex:1}}, opt.text),
-                            opt.isTrue ? h('span',{style:{fontSize:'0.76rem', color:'var(--good)', fontWeight:700}}, '✓ Đáp án đúng') : null
-                          );
-                        })
-                      ) : null,
+                      editingQIndex === q.index ? (
+                        // ===== Chế độ sửa đáp án =====
+                        h('div',{className:'eb-answer-edit'},
+                          q.type === 'shortans' ? h('div',{className:'sm-field'},
+                            h('label',null,'Đáp án đúng (điền số ngắn):'),
+                            h('input',{type:'text', value: editDraft ? editDraft.shortans : '', onChange:function(e){ setDraftShortans(e.target.value); }})
+                          ) : h('div',{className:'eb-q-opts'},
+                            (editDraft ? editDraft.options : (q.options || [])).map(function(opt){
+                              return h('label',{key:opt.key, className:cx('eb-q-opt', 'editable', opt.isTrue && 'correct')},
+                                h('input',{
+                                  type: q.type === 'choiceTF' ? 'checkbox' : 'radio',
+                                  name: 'eb-edit-' + q.index,
+                                  checked: !!opt.isTrue,
+                                  onChange: function(){ if(q.type === 'choiceTF'){ toggleDraftTF(opt.key); } else { setDraftCorrectChoice(opt.key); } }
+                                }),
+                                h('span',{className:'eb-q-opt-key'}, opt.key + '.'),
+                                h('span',{style:{flex:1}}, opt.text)
+                              );
+                            })
+                          ),
+                          h('div',{style:{display:'flex', gap:'8px', marginTop:'10px'}},
+                            h('button',{type:'button', className:'btn btn-primary', style:{fontSize:'0.82rem'}, disabled:savingAnswer, onClick:function(){ saveAnswerEdit(q); }}, savingAnswer ? 'Đang lưu…' : '💾 Lưu đáp án'),
+                            h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.82rem'}, disabled:savingAnswer, onClick:cancelEditAnswer}, 'Huỷ')
+                          )
+                        )
+                      ) : h('div',null,
+                        // Options for choice or choiceTF
+                        (q.options && q.options.length) ? h('div',{className:'eb-q-opts'},
+                          q.options.map(function(opt, optIdx){
+                            return h('div',{key:optIdx, className:cx('eb-q-opt', opt.isTrue && 'correct')},
+                              h('span',{className:'eb-q-opt-key'}, opt.key + '.'),
+                              h('span',{style:{flex:1}}, opt.text),
+                              opt.isTrue ? h('span',{style:{fontSize:'0.76rem', color:'var(--good)', fontWeight:700}}, '✓ Đáp án đúng') : null
+                            );
+                          })
+                        ) : null,
 
-                      // Shortans if Part III
-                      q.shortans ? h('div',{style:{marginTop:'8px', padding:'6px 10px', background:'var(--surface-2)', borderRadius:'6px', fontSize:'0.84rem'}},
-                        h('b',null,'Điền số ngắn: '), h('span',{className:'sm-mono-pill'}, q.shortans)
-                      ) : null,
+                        // Shortans if Part III
+                        q.shortans ? h('div',{style:{marginTop:'8px', padding:'6px 10px', background:'var(--surface-2)', borderRadius:'6px', fontSize:'0.84rem'}},
+                          h('b',null,'Điền số ngắn: '), h('span',{className:'sm-mono-pill'}, q.shortans)
+                        ) : null,
+
+                        (q.type === 'choice' || q.type === 'choiceTF' || q.type === 'shortans') ? h('button',{type:'button', className:'sm-link-btn', style:{marginTop:'8px', fontSize:'0.8rem'}, onClick:function(){ startEditAnswer(q); }}, '✏️ Sửa đáp án') : null
+                      ),
 
                       // Solution block
                       q.loigiai ? h('div',{className:'eb-q-loigiai'},
@@ -3371,12 +3594,13 @@
           h('div',{className:'sm-form-grid', style:{marginTop:12}},
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-chude'},'Chuyên đề chính *'),
               h('select',{id:'eb-chude', value:form.chuDe, onChange:function(e){ setField('chuDe', e.target.value); }},
-                CHU_DE_LIST.map(function(c){ return h('option',{key:c, value:c}, c); }))),
+                CHU_DE_UPLOAD_LIST.map(function(c){ return h('option',{key:c, value:c}, c); }))),
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-mucdo'},'Mức độ tổng quan *'),
               h('select',{id:'eb-mucdo', value:form.mucDo, onChange:function(e){ setField('mucDo', Number(e.target.value)); }},
                 MUC_DO_LIST.map(function(m){ return h('option',{key:m.v, value:m.v}, m.label); })))),
           h('div',{className:'sm-field', style:{marginTop:12}}, h('label',{htmlFor:'eb-bai'},'Bài (tuỳ chọn)'),
-            h('input',{id:'eb-bai', type:'text', value:form.bai, placeholder:'Bài 2: Định luật Boyle', onChange:function(e){ setField('bai', e.target.value); }})),
+            h('input',{id:'eb-bai', type:'text', value:form.bai, placeholder:'Bài 2: Định luật Boyle (hoặc để trống / ghi "Tổng hợp Chương 1-2" nếu là đề tổng hợp nhiều bài)', onChange:function(e){ setField('bai', e.target.value); }})),
+          h('div',{className:'eb-hint', style:{marginTop:-6}}, '"Chuyên đề chính", "Mức độ tổng quan" và "Bài" chỉ là nhãn để thầy dễ tìm/lọc lại đề trong danh sách — không ảnh hưởng đến việc phân loại từng câu hỏi cho học sinh (phần đó luôn lấy đúng theo tag trong file). Nếu đề có nhiều chuyên đề/mức độ trộn lẫn, cứ chọn "Tổng hợp nhiều chuyên đề" / "Đa mức" — hệ thống đã tự động chọn sẵn gợi ý phù hợp khi thầy chọn file ở dưới.'),
 
           h('div',{className:'sm-form-section'},
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-tex'},'File đề (.tex chuẩn cấu trúc Bộ GD) *'),
@@ -3405,6 +3629,10 @@
               ),
               (parsedAnalysis.stats.topics && parsedAnalysis.stats.topics.length) ? h('div',{style:{marginTop:'10px', display:'flex', gap:'5px', flexWrap:'wrap'}},
                 parsedAnalysis.stats.topics.map(function(t){ return h('span',{key:t, className:'eb-tag-topic'}, '📌 ' + t); })
+              ) : null,
+
+              parsedAnalysis.stats.grouped ? h('div',{style:{marginTop:'8px', fontSize:'0.8rem', color:'#6d28d9', fontWeight:600}},
+                '🔗 Phát hiện ' + parsedAnalysis.stats.grouped + ' câu thuộc dạng "câu hỏi chùm" (dùng chung ngữ cảnh/hình ảnh, VD "Dùng thông tin sau cho câu X và câu Y") — sẽ tự động hiển thị đúng ngữ cảnh khi giao đề cho học sinh.'
               ) : null,
 
               // ===== Gắn nano-point cho từng câu (phân rã kiến thức mức nhỏ nhất) =====
@@ -3808,6 +4036,8 @@
         stem: q.stem || '',
         loiGiai: q.loigiai || '',
         images: resolveQuestionImagesLocal(q, resolvedImages),
+        groupPassage: q.groupPassage || null,
+        groupImages: resolveQuestionImagesLocal({ images: q.groupImages || [] }, resolvedImages),
         examTitle: examTitle,
         examId: examId,
         baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
@@ -4030,6 +4260,10 @@
                           q.dangBai ? h('span',{className:'eb-tag-sub'}, q.dangBai) : null
                         )
                       ),
+                      q.groupPassage ? h('div',{className:'eb-group-passage'},
+                        h('div',{className:'eb-group-passage-label'}, '🔗 Ngữ cảnh dùng chung (câu hỏi chùm):'),
+                        h('div',null, q.groupPassage)
+                      ) : null,
                       h('div',{className:'eb-q-stem'}, q.stem || q.raw),
                       (q.options && q.options.length) ? h('div',{className:'eb-q-opts'},
                         q.options.map(function(opt, oIdx){

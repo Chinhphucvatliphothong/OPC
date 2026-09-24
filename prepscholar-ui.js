@@ -190,6 +190,30 @@
     );
   }
 
+  // Hiển thị đoạn ngữ cảnh dùng chung cho "câu hỏi chùm" — khi câu hỏi này
+  // thuộc 1 nhóm câu dùng chung 1 đoạn văn/hình (gốc từ \immini trong file
+  // .tex, xem groupPassage/groupImages do resolveQuestionImages gán trong
+  // opc-live-data.js). Hiển thị riêng cho TỪNG câu (kể cả khi 2 câu cùng
+  // nhóm không đứng cạnh nhau sau khi cá nhân hoá/xáo trộn đề) để học sinh
+  // luôn thấy đủ ngữ cảnh cần thiết.
+  function renderGroupPassage(q){
+    if(!q || !q.groupPassage) return null;
+    return h('div', { className: 'ps-group-passage', style: { background: 'var(--surface-2, #f5f3ff)', border: '1px solid var(--border, #e2e8f0)', borderLeft: '3px solid #6d28d9', borderRadius: '8px', padding: '12px 14px', margin: '10px 0' } },
+      h('div', { style: { fontSize: '0.78rem', fontWeight: 700, color: '#6d28d9', marginBottom: '6px' } }, '📎 Dùng chung ngữ cảnh sau:'),
+      h('div', { style: { fontSize: '0.9rem', lineHeight: 1.6 } }, renderLatexText(q.groupPassage)),
+      (q.groupImages && q.groupImages.length) ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' } },
+        q.groupImages.map(function(im, idx){
+          return h('img', {
+            key: idx,
+            src: im.url,
+            alt: im.name || ('Hình ' + (idx + 1)),
+            style: { maxWidth: '100%', maxHeight: '260px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }
+          });
+        })
+      ) : null
+    );
+  }
+
   // ===== Radar năng lực 5 chiều (SVG thuần, không thư viện ngoài) =====
   // 5 chiều SUY RA TỰ ĐỘNG từ dữ liệu làm bài thật (computeRadar5 trong
   // prepscholar.js) — KHÔNG phải nhãn giáo viên gắn thủ công. "Mặt bằng
@@ -1521,6 +1545,7 @@
                   )
                 ),
 
+                renderGroupPassage(q),
                 h('div', { style: { marginTop: '10px', fontSize: '0.92rem', lineHeight: 1.6 } },
                   renderLatexText(q.stem)
                 ),
@@ -1577,6 +1602,7 @@
                   )
                 ),
 
+                renderGroupPassage(curQ),
                 h('div', { className: 'ps-q-stem' }, renderLatexText(curQ.stem)),
                 renderQuestionImages(curQ),
 
@@ -1712,6 +1738,7 @@
                   }, flagged[curQ.id] ? '🚩 Đã cắm cờ' : '🏳️ Đánh dấu xem lại')
                 ),
 
+                renderGroupPassage(curQ),
                 h('div', { className: 'ps-q-stem' },
                   renderLatexText(curQ.stem)
                 ),
