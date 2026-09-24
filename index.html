@@ -964,7 +964,7 @@
     <div class="kicker">Gói dịch vụ</div>
     <h2 class="section-title">Ba mức đồng hành, cùng một lộ trình gốc</h2>
     <p class="section-sub">Áp dụng trước cho nhóm 20–30 học sinh thử nghiệm đầu tiên. Cả ba gói đều dùng chung một bản đồ năng lực và lộ trình tự động — khác nhau ở mức hỗ trợ đi kèm.</p>
-    <div class="pricing-grid">
+    <div class="pricing-grid" id="pricingGrid">
       <div class="price-card">
         <h3>Luyện đề</h3>
         <div class="price-value">300.000đ<span class="price-unit">/tháng</span></div>
@@ -1007,7 +1007,7 @@
     <div class="card">
       <div id="dkFormWrap">
         <h3 style="font-family:'Be Vietnam Pro',sans-serif; font-size:1.05rem; margin-bottom:8px;">Đăng ký lớp thử nghiệm</h3>
-        <p style="font-size:0.92rem; line-height:1.6; margin-bottom:18px;">Điền thông tin bên dưới để tạo tài khoản học sinh và đăng ký lớp thử nghiệm. Thông tin sẽ được gửi thẳng đến giáo viên qua email — chưa có hệ thống đăng nhập tự động, thầy sẽ liên hệ lại để xác nhận và cấp quyền truy cập.</p>
+        <p style="font-size:0.92rem; line-height:1.6; margin-bottom:18px;">Điền thông tin bên dưới để đăng ký lớp thử nghiệm — chưa cần tự đặt mật khẩu. Thầy sẽ xem đăng ký, xác nhận lớp thử nghiệm rồi tự tạo tài khoản và gửi tên đăng nhập/mật khẩu qua Zalo phụ huynh.</p>
         <form class="signup-form" id="dkForm" novalidate>
           <div class="signup-grid">
             <div class="signup-field full">
@@ -1022,16 +1022,6 @@
               <div class="signup-error" id="dk-gmail-err"></div>
             </div>
             <div class="signup-field">
-              <label for="dk-pass">Tạo mật khẩu</label>
-              <input type="password" id="dk-pass" name="dk-pass" placeholder="Ít nhất 6 ký tự" autocomplete="new-password">
-              <div class="signup-error" id="dk-pass-err"></div>
-            </div>
-            <div class="signup-field">
-              <label for="dk-pass2">Nhập lại mật khẩu</label>
-              <input type="password" id="dk-pass2" name="dk-pass2" placeholder="Nhập lại mật khẩu" autocomplete="new-password">
-              <div class="signup-error" id="dk-pass2-err"></div>
-            </div>
-            <div class="signup-field">
               <label for="dk-phone">Số điện thoại học sinh</label>
               <input type="tel" id="dk-phone" name="dk-phone" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
               <div class="signup-error" id="dk-phone-err"></div>
@@ -1039,11 +1029,16 @@
             <div class="signup-field">
               <label for="dk-parent-zalo">SĐT Zalo phụ huynh</label>
               <input type="tel" id="dk-parent-zalo" name="dk-parent-zalo" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
-              <div class="signup-hint">Để gửi báo cáo tiến độ hằng tuần.</div>
+              <div class="signup-hint">Để gửi báo cáo tiến độ hằng tuần và thông tin đăng nhập.</div>
               <div class="signup-error" id="dk-parent-zalo-err"></div>
             </div>
+            <div class="signup-field full">
+              <label for="dk-referral">Mã giới thiệu (nếu có)</label>
+              <input type="text" id="dk-referral" name="dk-referral" placeholder="Vd. CHAU815VLY — bỏ trống nếu không có" autocomplete="off" style="text-transform:uppercase;">
+              <div class="signup-hint">Người giới thiệu (nếu có mã) sẽ được cộng hoa hồng khi lớp thử nghiệm được xác nhận.</div>
+            </div>
           </div>
-          <div class="signup-privacy">Thông tin đăng ký (bao gồm mật khẩu bạn tạo) sẽ được gửi trực tiếp vào email của giáo viên để xử lý thủ công, chưa được lưu trữ tự động trên hệ thống. Vui lòng không dùng mật khẩu bạn đang dùng cho tài khoản quan trọng khác.</div>
+          <div class="signup-privacy">Thông tin đăng ký được gửi thẳng vào hệ thống của giáo viên để xét duyệt — chưa tạo tài khoản ngay. Thầy sẽ liên hệ qua Zalo phụ huynh trong ít ngày để xác nhận và cấp tài khoản.</div>
           <div class="signup-actions">
             <button type="submit" class="btn btn-primary" id="dkSubmitBtn">Gửi đăng ký</button>
             <span class="signup-form-error" id="dkFormErr" role="alert"></span>
@@ -1053,8 +1048,8 @@
       <div class="signup-success" id="dkSuccess" style="display:none;" role="status">
         <div class="ss-icon">✓</div>
         <div>
-          <h3>Đã mở email đăng ký</h3>
-          <p>Trình gửi email của bạn vừa mở với thông tin đăng ký đã điền sẵn — bấm gửi để hoàn tất. Thầy sẽ liên hệ lại qua Gmail hoặc Zalo phụ huynh để xác nhận lớp thử nghiệm.</p>
+          <h3>Đã gửi đăng ký thành công</h3>
+          <p>Thầy sẽ xem và liên hệ lại qua Zalo phụ huynh trong ít ngày để xác nhận lớp thử nghiệm và cấp tài khoản.</p>
         </div>
       </div>
     </div>
@@ -1265,10 +1260,9 @@
       var ok = true;
       var name = document.getElementById('dk-name').value.trim();
       var gmail = document.getElementById('dk-gmail').value.trim();
-      var pass = document.getElementById('dk-pass').value;
-      var pass2 = document.getElementById('dk-pass2').value;
       var phone = document.getElementById('dk-phone').value.trim();
       var zalo = document.getElementById('dk-parent-zalo').value.trim();
+      var referral = document.getElementById('dk-referral').value.trim().toUpperCase();
 
       if(!name){ setError('dk-name', 'Vui lòng nhập họ tên.'); ok = false; }
       else setError('dk-name', '');
@@ -1276,14 +1270,6 @@
       if(!gmail){ setError('dk-gmail', 'Vui lòng nhập địa chỉ Gmail.'); ok = false; }
       else if(!gmailRe.test(gmail)){ setError('dk-gmail', 'Chỉ nhận địa chỉ @gmail.com.'); ok = false; }
       else setError('dk-gmail', '');
-
-      if(!pass){ setError('dk-pass', 'Vui lòng tạo mật khẩu.'); ok = false; }
-      else if(pass.length < 6){ setError('dk-pass', 'Mật khẩu cần ít nhất 6 ký tự.'); ok = false; }
-      else setError('dk-pass', '');
-
-      if(!pass2){ setError('dk-pass2', 'Vui lòng nhập lại mật khẩu.'); ok = false; }
-      else if(pass2 !== pass){ setError('dk-pass2', 'Mật khẩu nhập lại không khớp.'); ok = false; }
-      else setError('dk-pass2', '');
 
       if(!phone){ setError('dk-phone', 'Vui lòng nhập số điện thoại.'); ok = false; }
       else if(!isValidVNPhone(phone)){ setError('dk-phone', 'Số điện thoại không hợp lệ.'); ok = false; }
@@ -1293,7 +1279,48 @@
       else if(!isValidVNPhone(zalo)){ setError('dk-parent-zalo', 'Số điện thoại không hợp lệ.'); ok = false; }
       else setError('dk-parent-zalo', '');
 
-      return ok ? { name: name, gmail: gmail, pass: pass, phone: phone, zalo: zalo } : null;
+      return ok ? { name: name, gmail: gmail, phone: phone, zalo: zalo, referral: referral } : null;
+    }
+
+    // Gửi mail dự phòng — CHỈ dùng khi không ghi được thẳng vào Firestore
+    // (mất mạng, OPC_LIVE chưa kịp nạp, bị chặn…) để không bao giờ mất lead.
+    function fallbackMailto(data){
+      var subject = 'Đăng ký lớp thử nghiệm OPC — ' + data.name;
+      var body = [
+        'Họ tên học sinh: ' + data.name,
+        'Gmail: ' + data.gmail,
+        'SĐT học sinh: ' + data.phone,
+        'SĐT Zalo phụ huynh: ' + data.zalo,
+        'Mã giới thiệu: ' + (data.referral || '(không có)'),
+        '',
+        '(Gửi dự phòng từ trang giới thiệu OPC — hệ thống đăng ký trực tuyến không phản hồi kịp)'
+      ].join('\n');
+      var mailLink = document.createElement('a');
+      mailLink.href = 'mailto:vovanthai2018tv@gmail.com?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+      mailLink.style.display = 'none';
+      document.body.appendChild(mailLink);
+      mailLink.click();
+      document.body.removeChild(mailLink);
+    }
+
+    function showSuccess(){
+      var wrap = document.getElementById('dkFormWrap');
+      var success = document.getElementById('dkSuccess');
+      if(wrap) wrap.style.display = 'none';
+      if(success) success.style.display = 'flex';
+    }
+
+    // Chờ tối đa ~4s cho module opc-live-data.js nạp xong (đang defer) rồi
+    // mới coi là "không dùng được" — tránh rơi vào mailto oan chỉ vì trang
+    // vừa tải xong, module chưa kịp chạy.
+    function waitForLive(timeoutMs){
+      if(window.OPC_LIVE && window.OPC_LIVE.submitRegistration) return Promise.resolve(window.OPC_LIVE);
+      return new Promise(function(resolve){
+        var done = false;
+        function onReady(){ if(done) return; done = true; window.removeEventListener('opc-live-ready', onReady); resolve(window.OPC_LIVE || null); }
+        window.addEventListener('opc-live-ready', onReady);
+        setTimeout(function(){ if(!done){ done = true; window.removeEventListener('opc-live-ready', onReady); resolve(window.OPC_LIVE || null); } }, timeoutMs || 4000);
+      });
     }
 
     form.addEventListener('submit', function(e){
@@ -1305,28 +1332,86 @@
         if(errBox) errBox.textContent = 'Vui lòng kiểm tra lại các mục còn thiếu hoặc chưa hợp lệ ở trên.';
         return;
       }
-      var subject = 'Đăng ký lớp thử nghiệm OPC — ' + data.name;
-      var body = [
-        'Họ tên học sinh: ' + data.name,
-        'Gmail: ' + data.gmail,
-        'Mật khẩu đăng ký: ' + data.pass,
-        'SĐT học sinh: ' + data.phone,
-        'SĐT Zalo phụ huynh: ' + data.zalo,
-        '',
-        '(Gửi tự động từ trang giới thiệu OPC Luyện Thi Vật Lí)'
-      ].join('\n');
-      var mailLink = document.createElement('a');
-      mailLink.href = 'mailto:vovanthai2018tv@gmail.com?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-      mailLink.style.display = 'none';
-      document.body.appendChild(mailLink);
-      mailLink.click();
-      document.body.removeChild(mailLink);
+      var btn = document.getElementById('dkSubmitBtn');
+      if(btn){ btn.disabled = true; btn.textContent = 'Đang gửi…'; }
 
-      var wrap = document.getElementById('dkFormWrap');
-      var success = document.getElementById('dkSuccess');
-      if(wrap) wrap.style.display = 'none';
-      if(success) success.style.display = 'flex';
+      waitForLive().then(function(live){
+        if(live && live.submitRegistration){
+          return live.submitRegistration({ name: data.name, gmail: data.gmail, phone: data.phone, parentZalo: data.zalo, referralCode: data.referral });
+        }
+        return { ok: false, error: 'opc-live-unavailable' };
+      }).then(function(res){
+        if(res && res.ok){
+          showSuccess();
+        } else {
+          fallbackMailto(data);
+          showSuccess();
+        }
+      }).catch(function(){
+        fallbackMailto(data);
+        showSuccess();
+      }).finally(function(){
+        if(btn){ btn.disabled = false; btn.textContent = 'Gửi đăng ký'; }
+      });
     });
+  })();
+
+  // ---- Gói dịch vụ: nạp giá/tính năng do admin cấu hình (nếu có) ----
+  // Markup tĩnh trong HTML (3 gói: Luyện đề/Luyện đề+Giảng dạy/Kèm sát 1-1)
+  // luôn là giá trị MẶC ĐỊNH — hiển thị ngay khi trang vừa tải, trước cả khi
+  // Firestore kịp phản hồi. Nếu admin đã lưu cấu hình riêng (panel "💰 Gói
+  // dịch vụ" trong admin.html) thì thay thế bằng dữ liệu thật; nếu chưa
+  // từng lưu, mất mạng, hay module opc-live-data.js chưa kịp nạp thì GIỮ
+  // NGUYÊN giá mặc định — không bao giờ để trống hay vỡ giao diện.
+  (function(){
+    function escHtml(s){
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+      });
+    }
+    function fmtVNDPrice(n){ return (Number(n) || 0).toLocaleString('vi-VN') + 'đ'; }
+
+    function renderPricingTiers(tiers){
+      var grid = document.getElementById('pricingGrid');
+      if(!grid) return;
+      var visible = (tiers || []).filter(function(t){ return t && t.visible !== false; });
+      if(!visible.length) return; // không có gói nào để hiện -> giữ nguyên giá mặc định đã in sẵn
+      grid.innerHTML = visible.map(function(t){
+        var badge = t.badge ? '<div class="price-badge">' + escHtml(t.badge) + '</div>' : '';
+        var features = (t.features || []).map(function(f){ return '<li>' + escHtml(f) + '</li>'; }).join('');
+        return '<div class="price-card' + (t.featured ? ' featured' : '') + '">' + badge +
+          '<h3>' + escHtml(t.name) + '</h3>' +
+          '<div class="price-value">' + fmtVNDPrice(t.price) + '<span class="price-unit">' + escHtml(t.unit || '/tháng') + '</span></div>' +
+          '<ul class="price-list">' + features + '</ul></div>';
+      }).join('');
+    }
+
+    // Chờ tối đa ~4s cho module opc-live-data.js nạp xong (đang defer),
+    // giống hệt cơ chế chờ của form đăng ký ở trên (nhưng viết riêng vì 2
+    // IIFE này độc lập, không chia sẻ biến với nhau).
+    function waitForLivePricing(timeoutMs){
+      if(window.OPC_LIVE && window.OPC_LIVE.loadPricingPlans) return Promise.resolve(window.OPC_LIVE);
+      return new Promise(function(resolve){
+        var done = false;
+        function onReady(){ if(done) return; done = true; window.removeEventListener('opc-live-ready', onReady); resolve(window.OPC_LIVE || null); }
+        window.addEventListener('opc-live-ready', onReady);
+        setTimeout(function(){ if(!done){ done = true; window.removeEventListener('opc-live-ready', onReady); resolve(window.OPC_LIVE || null); } }, timeoutMs || 4000);
+      });
+    }
+
+    waitForLivePricing().then(function(live){
+      if(!live || !live.loadPricingPlans) return null;
+      return live.loadPricingPlans();
+    }).then(function(res){
+      if(!res || !res.ok || !res.data) return; // chưa cấu hình / lỗi -> giữ giá mặc định
+      var data = res.data;
+      if(data.sectionEnabled === false){
+        var section = document.getElementById('goi-dich-vu');
+        if(section) section.style.display = 'none';
+        return;
+      }
+      if(Array.isArray(data.tiers) && data.tiers.length){ renderPricingTiers(data.tiers); }
+    }).catch(function(){ /* mất mạng/lỗi -> giữ nguyên giá mặc định tĩnh */ });
   })();
 })();
 </script>

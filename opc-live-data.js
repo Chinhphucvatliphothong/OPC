@@ -160,6 +160,35 @@ async function loadAssignedExams(studentId, max){
   }
 }
 
+// ================= Đăng ký lớp thử nghiệm (trang giới thiệu) =================
+// THÊM 24/9/2026 — thay cho luồng mailto cũ trong index.html (gửi thẳng mật
+// khẩu tự đặt qua email, không lưu gì lại nên lỡ sót email là mất luôn
+// lead). Ghi thẳng vào collection "registrations" — công khai (create) vì
+// học sinh đăng ký chưa có tài khoản gì, nhưng bị firestore.rules giới hạn
+// chặt (chỉ đúng các trường liệt kê, đúng kiểu, status luôn 'pending') để
+// tránh bị spam ghi rác. Thầy cô duyệt trong admin.html (panel "Danh sách
+// học sinh" — banner "Đăng ký chờ duyệt") rồi mới tạo tài khoản thật, tự
+// sinh username/mật khẩu — KHÔNG còn thu mật khẩu tự đặt của học sinh nữa.
+async function submitRegistration(data){
+  try{
+    var ref = doc(collection(db, 'registrations'));
+    await setDoc(ref, {
+      name: String((data && data.name) || '').slice(0, 99),
+      gmail: String((data && data.gmail) || '').slice(0, 119),
+      phone: String((data && data.phone) || '').slice(0, 19),
+      parentZalo: String((data && data.parentZalo) || '').slice(0, 19),
+      referralCode: String((data && data.referralCode) || '').slice(0, 29),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      source: 'landing_page'
+    });
+    return { ok: true, id: ref.id };
+  }catch(e){
+    console.error('Lỗi gửi đăng ký lớp thử nghiệm:', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+
 // ================= Số liệu học tập thật (cho trang Giám sát của thầy cô) ====
 // Ghi vào collection RIÊNG ở cấp cao nhất "student_stats/{studentId}" (KHÔNG
 // phải subcollection của students/{studentId}) vì phiên học của học sinh
@@ -331,6 +360,24 @@ async function loadRealQuestionBank(){
   }
 }
 
+// ================= Cấu hình Gói dịch vụ (giá/tính năng/ẩn-hiện) =============
+// Đọc doc đơn "settings/pricing" do admin quản lý (panel "💰 Gói dịch vụ"
+// trong admin.html) để trang chủ hiển thị đúng giá/tính năng hiện hành, và
+// admin có thể ẩn/hiện từng gói hoặc cả mục mà không cần sửa code / deploy
+// lại. Nếu doc chưa từng được lưu (admin chưa mở panel lần nào) hoặc lỗi
+// mạng -> trả { ok:false } để trang chủ GIỮ NGUYÊN giá mặc định đã in sẵn
+// trong HTML — không bao giờ vỡ giao diện chỉ vì chưa cấu hình.
+async function loadPricingPlans(){
+  try{
+    var snap = await getDoc(doc(db, 'settings', 'pricing'));
+    if(!snap.exists()) return { ok: false };
+    return { ok: true, data: snap.data() };
+  }catch(e){
+    console.error('Lỗi tải cấu hình Gói dịch vụ:', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+
 window.OPC_LIVE = {
   loginStudent: loginStudent,
   logoutStudent: logoutStudent,
@@ -339,7 +386,9 @@ window.OPC_LIVE = {
   saveAttempt: saveAttempt,
   loadAttempts: loadAttempts,
   loadAssignedExams: loadAssignedExams,
+  submitRegistration: submitRegistration,
   saveStudentStats: saveStudentStats,
-  loadPeerRadar5: loadPeerRadar5
+  loadPeerRadar5: loadPeerRadar5,
+  loadPricingPlans: loadPricingPlans
 };
 try{ window.dispatchEvent(new CustomEvent('opc-live-ready')); }catch(e){}

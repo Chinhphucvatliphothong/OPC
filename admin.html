@@ -192,6 +192,15 @@
   .sm-alert-row-name{ font-size:0.86rem; font-weight:700; color:var(--ink); }
   .sm-alert-row-reasons{ font-size:0.78rem; color:var(--ink-2); margin-top:1px; }
 
+  /* Banner "Đăng ký chờ duyệt" — biến thể màu accent (thay vì critical/đỏ)
+     của .sm-alert-banner, vì đây là tin tốt (lead mới) chứ không phải cảnh
+     báo. THÊM 24/9/2026. */
+  .sm-alert-banner.leads{ border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
+  .sm-alert-banner.leads .sm-alert-banner-title{ color: var(--accent-strong); }
+  .sm-alert-banner.leads .sm-alert-banner-list{ border-top-color: color-mix(in srgb, var(--accent) 25%, var(--line)); }
+  .sm-reg-row{ display:flex; align-items:center; gap:10px; padding:10px 8px; border-radius:8px; flex-wrap:wrap; }
+  .sm-reg-row + .sm-reg-row{ border-top:1px solid color-mix(in srgb, var(--accent) 15%, var(--line)); }
+
   .sm-overlay{ position:fixed; inset:0; background: color-mix(in srgb, var(--navy) 55%, transparent); backdrop-filter: blur(3px); display:flex; align-items:center; justify-content:center; padding:20px; z-index:70; }
   .sm-modal{ background:var(--surface); border-radius:18px; max-width:440px; width:100%; max-height:88vh; overflow-y:auto; box-shadow:var(--shadow); padding:26px; }
   .sm-modal.sm-modal-wide{ max-width:560px; }
@@ -373,6 +382,22 @@
   .sm-row-valid{ background:transparent; }
   .sm-row-warning{ background:color-mix(in srgb, var(--warning) 9%, transparent); }
   .sm-row-error{ background:color-mix(in srgb, var(--critical) 9%, transparent); }
+
+  /* pricing plans panel */
+  .pp-tier-card{ border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:14px; background:var(--surface); }
+  .pp-tier-card.disabled{ opacity:0.55; }
+  .pp-tier-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .pp-tier-head-left{ display:flex; align-items:center; gap:8px; }
+  .pp-tier-num{ width:26px; height:26px; border-radius:50%; background:var(--surface-2); color:var(--ink-2); font-size:0.78rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; }
+  .pp-tier-order-btns{ display:flex; gap:4px; }
+  .pp-tier-order-btns button{ width:26px; height:26px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink-2); cursor:pointer; font-size:0.85rem; line-height:1; }
+  .pp-tier-order-btns button:disabled{ opacity:0.35; cursor:not-allowed; }
+  .pp-tier-grid{ display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; }
+  @media (max-width: 760px){ .pp-tier-grid{ grid-template-columns: 1fr; } }
+  .pp-tier-toggles{ display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; }
+  .pp-tier-toggles label{ display:flex; align-items:center; gap:7px; font-size:0.82rem; color:var(--ink-2); cursor:pointer; }
+  .pp-preview-price{ font-family:"Be Vietnam Pro",sans-serif; font-size:0.78rem; font-weight:600; color:var(--accent-strong); margin-top:4px; }
+  .pp-remove-btn{ background:none; border:none; color:var(--critical); font-size:0.8rem; font-weight:700; cursor:pointer; padding:4px 0; }
 </style>
 
 <header class="admin-top">
@@ -669,6 +694,56 @@
         ), onNext, onErr);
       }
     };
+
+    // ================= Đăng ký lớp thử nghiệm — hàng chờ duyệt =============
+    // THÊM 24/9/2026 — xem submitRegistration trong opc-live-data.js (nơi
+    // học sinh ghi) và firestore.rules (collection "registrations": create
+    // công khai giới hạn trường, read/update chỉ admin). StudentsPanel đọc
+    // toàn bộ 1 lần (không nhiều, chỉ vài chục bản ghi đang chờ) rồi lọc
+    // status ngay trên client, giống cách studentStats/assignedExams đang làm.
+    OPC.registrations = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(query(collection(db, 'registrations'), orderBy('createdAt', 'desc')), onNext, onErr);
+      },
+      setStatus: function(id, patch){
+        return updateDoc(doc(db, 'registrations', id), patch);
+      }
+    };
+
+    // ================= Báo cáo phụ huynh (draft AI + đã gửi) =================
+    // THÊM 24/9/2026 — subcollection students/{id}/parentReports, admin-only
+    // (xem firestore.rules). save() dùng cho cả tạo mới (draft) lẫn cập nhật
+    // (sửa tay/đánh dấu đã gửi) — luôn truyền đủ object, đơn giản hơn phân
+    // biệt create/update vì panel chỉ có 1 bản nháp "đang mở" tại 1 thời điểm.
+    OPC.parentReports = {
+      subscribeForStudent: function(studentId, onNext, onErr){
+        return onSnapshot(query(
+          collection(db, 'students', studentId, 'parentReports'),
+          orderBy('createdAt', 'desc'),
+          limit(20)
+        ), onNext, onErr);
+      },
+      save: function(studentId, reportId, data){
+        var ref = reportId ? doc(db, 'students', studentId, 'parentReports', reportId) : doc(collection(db, 'students', studentId, 'parentReports'));
+        return setDoc(ref, data, { merge: true }).then(function(){ return ref; });
+      }
+    };
+
+    // ================= Gói dịch vụ (giá/tính năng/ẩn-hiện trang chủ) =======
+    // THÊM 24/9/2026 — doc đơn "settings/pricing" (đọc công khai, ghi chỉ
+    // admin, xem firestore.rules). Trang chủ (index.html) đọc qua
+    // OPC_LIVE.loadPricingPlans trong opc-live-data.js. Dùng onSnapshot (như
+    // các OPC.* khác) để panel luôn thấy giá đang thật sự áp dụng.
+    OPC.pricing = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(doc(db, 'settings', 'pricing'), function(snap){
+          onNext(snap.exists() ? snap.data() : null);
+        }, onErr);
+      },
+      save: function(data){
+        return setDoc(doc(db, 'settings', 'pricing'), Object.assign({}, data, { updatedAt: serverTimestamp() }));
+      }
+    };
    }catch(err){
     OPC.configReady = false;
     OPC.sdkError = (err && err.message) ? err.message : String(err);
@@ -694,6 +769,27 @@
     return (parts[parts.length-1] || '?').charAt(0).toUpperCase();
   }
   function fmtVND(n){ return (n||0).toLocaleString('vi-VN') + ' đ'; }
+  // Mở thẳng khung chat Zalo của 1 số điện thoại VN — zalo.me nhận cả dạng
+  // 0xxxxxxxxx lẫn 84xxxxxxxxx, ở đây chuẩn hoá về 84xxxxxxxxx cho chắc.
+  function zaloLink(phone){
+    var n = String(phone || '').replace(/[\s.\-()]/g, '');
+    if(n.indexOf('+84') === 0) n = '84' + n.slice(3);
+    else if(n.indexOf('0') === 0) n = '84' + n.slice(1);
+    return 'https://zalo.me/' + n;
+  }
+  function copyToClipboard(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(text);
+    }
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      return Promise.resolve();
+    }catch(e){ return Promise.reject(e); }
+  }
   function fmtBytes(n){
     if(!n) return '0 B';
     var units = ['B','KB','MB','GB']; var i = 0; var v = n;
@@ -1551,6 +1647,85 @@
       });
     });
 
+    // ================= Đăng ký lớp thử nghiệm — hàng chờ duyệt =============
+    // THÊM 24/9/2026 — xem OPC.registrations ở đầu file. Đọc TOÀN BỘ 1 lần
+    // (số lượng nhỏ) rồi lọc status ngay trên client — status 'rejected' bị
+    // ẩn khỏi banner (vẫn còn trong Firestore để tra cứu sau nếu cần, không
+    // xoá hẳn).
+    var pendingRegState = React.useState([]); var pendingRegistrations = pendingRegState[0], setPendingRegistrations = pendingRegState[1];
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.registrations) return;
+      var unsub = OPCref.registrations.subscribe(function(snap){
+        setPendingRegistrations(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); }));
+      }, function(err){ console.error('Lỗi tải danh sách đăng ký chờ duyệt:', err); });
+      return function(){ unsub(); };
+    }, []);
+    var pendingOnly = pendingRegistrations.filter(function(r){ return r.status === 'pending'; });
+
+    // Hoa hồng giới thiệu — số tiền CỐ ĐỊNH mỗi lượt giới thiệu thành công,
+    // cộng thẳng vào commissionBalance của học sinh có referralCode trùng
+    // khớp lúc duyệt đăng ký. Đây là giá trị mặc định hợp lý, thầy có thể
+    // nhờ sửa lại con số này bất cứ lúc nào.
+    var REFERRAL_COMMISSION_VND = 100000;
+
+    var approvingIdState = React.useState(null); var approvingId = approvingIdState[0], setApprovingId = approvingIdState[1];
+    var justApprovedState = React.useState(null); var justApproved = justApprovedState[0], setJustApproved = justApprovedState[1]; // {name, username, password, parentPhone}
+
+    function genPassword(){
+      var chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // bỏ ký tự dễ nhầm (i,l,o,0,1)
+      var out = '';
+      for(var i=0;i<7;i++) out += chars[Math.floor(Math.random()*chars.length)];
+      return out;
+    }
+
+    function handleApproveRegistration(reg){
+      if(approvingId) return;
+      var emailLower = (reg.gmail || '').trim().toLowerCase();
+      var dup = students.some(function(s){ return (s.email||'').toLowerCase() === emailLower; });
+      if(dup){
+        props.fireToast('Gmail này đã có tài khoản học sinh trong hệ thống — kiểm tra lại trước khi duyệt.', true);
+        return;
+      }
+      setApprovingId(reg.id);
+      var lastName = (reg.name || 'HS').trim().split(/\s+/).pop().toUpperCase();
+      var code = lastName + Math.floor(100 + Math.random() * 900) + 'VLY';
+      var username = emailLower.split('@')[0];
+      var password = genPassword();
+      var newStu = {
+        name: (reg.name || '').trim(), username: username, password: password,
+        email: reg.gmail || '', phone: reg.phone || '',
+        school: 'Chưa cập nhật', completedExamsCount: 0, averageScore: 0, highestScore: 0,
+        targetScore: 9.0, status: 'active',
+        parentName: 'Chưa cập nhật', parentPhone: reg.parentZalo || '', parentEmail: '',
+        referralCode: code, commissionBalance: 0
+      };
+      OPCref.students.add(newStu).then(function(newRef){
+        var jobs = [OPCref.registrations.setStatus(reg.id, { status: 'converted', convertedStudentId: newRef.id, convertedAt: new Date().toISOString() })];
+        // Cộng hoa hồng cho người giới thiệu, nếu mã trùng khớp 1 học sinh có sẵn.
+        var refCodeTyped = (reg.referralCode || '').trim().toUpperCase();
+        if(refCodeTyped){
+          var referrer = students.filter(function(s){ return (s.referralCode || '').toUpperCase() === refCodeTyped; })[0];
+          if(referrer){
+            jobs.push(OPCref.students.update(referrer.id, { commissionBalance: (Number(referrer.commissionBalance) || 0) + REFERRAL_COMMISSION_VND }));
+          }
+        }
+        return Promise.all(jobs);
+      }).then(function(){
+        props.fireToast('Đã tạo tài khoản cho ' + newStu.name + '.');
+        setJustApproved({ name: newStu.name, username: username, password: password, parentPhone: reg.parentZalo || '' });
+      }).catch(function(err){
+        console.error('Lỗi duyệt đăng ký:', err);
+        props.fireToast('Không duyệt được đăng ký này — thử lại.', true);
+      }).finally(function(){ setApprovingId(null); });
+    }
+
+    function handleRejectRegistration(reg){
+      if(approvingId) return;
+      if(!confirm('Từ chối đăng ký của "' + reg.name + '"? Có thể xem lại trong lịch sử, không tạo tài khoản.')) return;
+      OPCref.registrations.setStatus(reg.id, { status: 'rejected', rejectedAt: new Date().toISOString() })
+        .catch(function(err){ console.error('Lỗi từ chối đăng ký:', err); props.fireToast('Không cập nhật được — thử lại.', true); });
+    }
+
     // Cảnh báo tự động cho giáo viên (rule-based, KHÔNG gọi AI — nhanh,
     // không tốn phí) — thay cho việc phải tự rà từng dòng trong bảng:
     //   (1) Điểm tụt gần đây: recentTrend === 'down' (so 3 lượt gần nhất
@@ -1894,6 +2069,70 @@
         h('button',{type:'button', className:'btn btn-primary', onClick:function(){ setAddOpen(true); }}, '+ Thêm học sinh')
       )
     );
+    // Banner "Đăng ký chờ duyệt" — ưu tiên hiện TRÊN cảnh báo học sinh yếu
+    // (đây là lead mới, việc kinh doanh) — reuse đúng khung .sm-alert-banner
+    // nhưng đổi màu accent để phân biệt (xem CSS .sm-alert-banner.leads).
+    var pendingRegBanner = !pendingOnly.length ? null : h('div', { className: 'sm-alert-banner leads' },
+      h('div', { className: 'sm-alert-banner-head' },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+          h('span', { style: { fontSize: '1.2rem' } }, '📝'),
+          h('div', null,
+            h('div', { className: 'sm-alert-banner-title' }, pendingOnly.length + ' đăng ký lớp thử nghiệm chờ duyệt'),
+            h('div', { className: 'sm-alert-banner-sub' }, 'Từ trang giới thiệu OPC — duyệt để tự tạo tài khoản, hoặc từ chối nếu không phù hợp.')
+          )
+        )
+      ),
+      h('div', { className: 'sm-alert-banner-list' },
+        pendingOnly.map(function(reg){
+          var createdLabel = '';
+          try{ var d = new Date(reg.createdAt); if(!isNaN(d.getTime())) createdLabel = d.toLocaleDateString('vi-VN'); }catch(e){}
+          return h('div', { key: reg.id, className: 'sm-reg-row' },
+            h('div', { className: 'sm-avatar' }, initials(reg.name)),
+            h('div', { style: { flex: 1, minWidth: 0 } },
+              h('div', { className: 'sm-alert-row-name' }, reg.name),
+              h('div', { className: 'sm-alert-row-reasons' },
+                reg.gmail + ' · SĐT ' + reg.phone + ' · Zalo PH ' + reg.parentZalo +
+                (reg.referralCode ? ' · Mã GT: ' + reg.referralCode : '') +
+                (createdLabel ? ' · Gửi ' + createdLabel : '')
+              )
+            ),
+            h('div', { style: { display: 'flex', gap: '8px', flexShrink: 0 } },
+              h('button', { type: 'button', className: 'btn btn-primary', disabled: approvingId === reg.id, onClick: function(){ handleApproveRegistration(reg); } }, approvingId === reg.id ? 'Đang tạo…' : '✅ Duyệt'),
+              h('button', { type: 'button', className: 'btn btn-secondary', disabled: approvingId === reg.id, onClick: function(){ handleRejectRegistration(reg); } }, '✕ Từ chối')
+            )
+          );
+        })
+      )
+    );
+
+    // Modal nhỏ hiện SAU khi duyệt xong — tài khoản vừa tạo cần gửi ngay
+    // cho phụ huynh qua Zalo, nên đưa Sao chép + mở thẳng Zalo vào đây luôn
+    // thay vì bắt thầy tự đi tìm lại trong "Xem hồ sơ".
+    var justApprovedModal = !justApproved ? null : h('div', { className: 'sm-overlay', onClick: function(e){ if(e.target === e.currentTarget) setJustApproved(null); } },
+      h('div', { className: 'sm-modal', style: { maxWidth: '420px' }, role: 'dialog', 'aria-modal': 'true' },
+        h('div', { className: 'sm-modal-head' }, h('h3', null, '✅ Đã tạo tài khoản cho ' + justApproved.name),
+          h('button', { type: 'button', className: 'sm-modal-close', onClick: function(){ setJustApproved(null); } }, h(IconClose))),
+        h('p', { style: { fontSize: '0.85rem', color: 'var(--ink-2)', marginBottom: '10px' } }, 'Gửi thông tin đăng nhập này cho phụ huynh qua Zalo:'),
+        h('div', { className: 'sm-info-block', style: { marginTop: 0 } },
+          h('p', null, h('b', null, 'Tên đăng nhập: '), h('span', { className: 'sm-mono-pill' }, justApproved.username)),
+          h('p', null, h('b', null, 'Mật khẩu: '), h('span', { className: 'sm-mono-pill' }, justApproved.password))
+        ),
+        h('div', { style: { display: 'flex', gap: '10px', marginTop: '14px' } },
+          h('button', {
+            type: 'button', className: 'btn btn-secondary', style: { flex: 1, justifyContent: 'center' },
+            onClick: function(){
+              copyToClipboard('Tài khoản luyện tập OPC của ' + justApproved.name + '\nTên đăng nhập: ' + justApproved.username + '\nMật khẩu: ' + justApproved.password + '\nVào luyện tại: https://opc-weld.vercel.app')
+                .then(function(){ props.fireToast('Đã sao chép — dán vào Zalo để gửi.'); });
+            }
+          }, '📋 Sao chép'),
+          h('button', {
+            type: 'button', className: 'btn btn-primary', style: { flex: 1, justifyContent: 'center' },
+            onClick: function(){ window.open(zaloLink(justApproved.parentPhone), '_blank'); }
+          }, '💬 Mở Zalo phụ huynh')
+        )
+      )
+    );
+
     var alertBanner = !studentAlerts.length ? null : h('div', { className: 'sm-alert-banner' },
       h('div', { className: 'sm-alert-banner-head', onClick: function(){ setAlertsOpen(!alertsOpen); }, role: 'button', tabIndex: 0 },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
@@ -2281,7 +2520,383 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, alertBanner, summaryCard, searchRow, tableOrEmpty), detailModal, addModal, importModal);
+    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, summaryCard, searchRow, tableOrEmpty), detailModal, addModal, importModal, justApprovedModal);
+  }
+
+  // ================= Báo cáo Phụ huynh (AI co-pilot) =================
+  // THÊM 24/9/2026 — xem api/ai-parent-report.js cho phần soạn AI. Panel
+  // này là nơi thầy cô: (1) thấy ngay còn bao nhiêu học sinh chưa có báo
+  // cáo trong 7 ngày qua (nhắc tự động, rule-based — tính lại mỗi lần mở
+  // trang, KHÔNG cần cron/server riêng vì admin.html là trang thầy tự mở
+  // định kỳ), (2) bấm tạo nháp AI cho từng em hoặc tất cả cùng lúc, (3)
+  // xem/sửa rồi Sao chép + mở Zalo phụ huynh để gửi tay — ĐÚNG mô hình co-
+  // pilot đã chốt (AI không tự gửi gì cả).
+  var CHU_DE_LABEL = { 'nhiet': 'Vật lí nhiệt', 'khi': 'Khí lí tưởng', 'tu-truong': 'Từ trường & Cảm ứng điện từ', 'hat-nhan': 'Vật lí hạt nhân' };
+  var REPORT_STALE_DAYS = 7;
+
+  function ParentReportsPanel(props){
+    var OPCref = window.OPC;
+    var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
+    var statsByIdState = React.useState({}); var statsById = statsByIdState[0], setStatsById = statsByIdState[1];
+
+    React.useEffect(function(){
+      var unsub = OPCref.students.subscribe(function(snap){
+        setStudents(snap.docs.map(function(d){ return Object.assign({}, d.data(), { id: d.id }); }));
+        setLoading(false);
+      }, function(){ setLoading(false); });
+      return function(){ unsub(); };
+    }, []);
+    React.useEffect(function(){
+      if(!OPCref.studentStats) return;
+      var unsub = OPCref.studentStats.subscribe(function(snap){
+        var map = {};
+        snap.docs.forEach(function(d){ map[d.id] = d.data() || {}; });
+        setStatsById(map);
+      }, function(){});
+      return function(){ unsub(); };
+    }, []);
+
+    var activeStudents = students.filter(function(s){ return s.status === 'active'; }).map(function(s){
+      var st = statsById[s.id] || {};
+      return Object.assign({}, s, {
+        mastery: st.mastery || s.mastery || {},
+        predicted: st.predicted != null ? st.predicted : s.predictedScore,
+        averageScore: st.averageScore != null ? st.averageScore : s.averageScore,
+        recentTrend: st.recentTrend, recentAvgScore: st.recentAvgScore, priorAvgScore: st.priorAvgScore,
+        assignedExamsCount: st.assignedExamsCount, assignedExamsCompletedCount: st.assignedExamsCompletedCount,
+        mistakeCount: st.mistakeCount
+      });
+    });
+
+    function isStale(s){
+      if(!s.lastParentReportSentAt) return true;
+      var d = new Date(s.lastParentReportSentAt);
+      if(isNaN(d.getTime())) return true;
+      return (Date.now() - d.getTime()) > REPORT_STALE_DAYS * 86400000;
+    }
+    var staleStudents = activeStudents.filter(isStale);
+
+    // Bản nháp AI đang mở (chưa lưu Firestore cho tới khi bấm "Đánh dấu đã
+    // gửi") — key theo studentId. bulkBusy: đang chạy vòng tạo hàng loạt.
+    var draftsState = React.useState({}); var drafts = draftsState[0], setDrafts = draftsState[1]; // {id: {text, loading, error}}
+    var bulkBusyState = React.useState(false); var bulkBusy = bulkBusyState[0], setBulkBusy = bulkBusyState[1];
+    var reviewIdState = React.useState(null); var reviewId = reviewIdState[0], setReviewId = reviewIdState[1];
+    var sendingState = React.useState(false); var sending = sendingState[0], setSending = sendingState[1];
+
+    function buildPromptData(s){
+      var mastery = s.mastery || {};
+      var topics = Object.keys(CHU_DE_LABEL).filter(function(k){ return mastery[k] != null; })
+        .map(function(k){ return { name: CHU_DE_LABEL[k], pct: Math.round(mastery[k]) }; })
+        .sort(function(a, b){ return b.pct - a.pct; });
+      var strong = topics.slice(0, 1).filter(function(t){ return t.pct >= 65; });
+      var weak = topics.slice(-2).filter(function(t){ return t.pct < 65; });
+      return {
+        studentName: s.name,
+        periodLabel: '7 ngày qua',
+        averageScore: s.averageScore != null ? Number(s.averageScore.toFixed ? s.averageScore.toFixed(2) : s.averageScore) : null,
+        recentAvgScore: s.recentAvgScore != null ? Number(s.recentAvgScore.toFixed(2)) : null,
+        priorAvgScore: s.priorAvgScore != null ? Number(s.priorAvgScore.toFixed(2)) : null,
+        recentTrend: s.recentTrend || null,
+        predicted: s.predicted != null ? Number(s.predicted) : null,
+        target: s.targetScore != null ? Number(s.targetScore) : null,
+        strongTopics: strong,
+        weakTopics: weak,
+        assignedTotal: s.assignedExamsCount || null,
+        assignedCompleted: s.assignedExamsCompletedCount || null,
+        mistakeCount: s.mistakeCount != null ? s.mistakeCount : null
+      };
+    }
+
+    function generateFor(s){
+      setDrafts(function(prev){ var next = Object.assign({}, prev); next[s.id] = { text: (prev[s.id] && prev[s.id].text) || null, loading: true, error: null }; return next; });
+      return fetch('/api/ai-parent-report', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPromptData(s))
+      }).then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
+        .then(function(result){
+          setDrafts(function(prev){
+            var next = Object.assign({}, prev);
+            if(result.ok && result.data && result.data.report){
+              next[s.id] = { text: result.data.report, loading: false, error: null };
+            } else {
+              next[s.id] = { text: null, loading: false, error: (result.data && result.data.error) || 'OPC Learning AI đang bận, thử lại sau.' };
+            }
+            return next;
+          });
+          return result;
+        }).catch(function(){
+          setDrafts(function(prev){ var next = Object.assign({}, prev); next[s.id] = { text: null, loading: false, error: 'Không kết nối được tới OPC Learning AI.' }; return next; });
+        });
+    }
+
+    function handleGenerateOne(s){
+      generateFor(s).then(function(){ setReviewId(s.id); });
+    }
+
+    function handleGenerateAllMissing(){
+      if(bulkBusy || !staleStudents.length) return;
+      setBulkBusy(true);
+      var p = Promise.resolve();
+      staleStudents.forEach(function(s){
+        p = p.then(function(){ return generateFor(s); });
+      });
+      p.finally(function(){ setBulkBusy(false); props.fireToast('Đã tạo xong báo cáo nháp cho ' + staleStudents.length + ' học sinh — xem & gửi từng em bên dưới.'); });
+    }
+
+    function handleMarkSent(s){
+      var d = drafts[s.id];
+      if(!d || !d.text) return;
+      setSending(true);
+      var nowIso = new Date().toISOString();
+      OPCref.parentReports.save(s.id, null, { text: d.text, createdAt: nowIso, sentAt: nowIso, channel: 'zalo' })
+        .then(function(){ return OPCref.students.update(s.id, { lastParentReportSentAt: nowIso }); })
+        .then(function(){
+          props.fireToast('Đã đánh dấu đã gửi báo cáo cho ' + s.name + '.');
+          setDrafts(function(prev){ var next = Object.assign({}, prev); delete next[s.id]; return next; });
+          setReviewId(null);
+        }).catch(function(err){
+          console.error('Lỗi lưu báo cáo phụ huynh:', err);
+          props.fireToast('Không lưu được — thử lại.', true);
+        }).finally(function(){ setSending(false); });
+    }
+
+    var reviewStudent = reviewId ? activeStudents.filter(function(s){ return s.id === reviewId; })[0] : null;
+    var reviewDraft = reviewId ? drafts[reviewId] : null;
+
+    var reviewModal = !reviewStudent ? null : h('div', { className: 'sm-overlay', onClick: function(e){ if(e.target === e.currentTarget) setReviewId(null); } },
+      h('div', { className: 'sm-modal', style: { maxWidth: '540px' }, role: 'dialog', 'aria-modal': 'true' },
+        h('div', { className: 'sm-modal-head' }, h('h3', null, '🦉 Báo cáo cho ' + reviewStudent.name),
+          h('button', { type: 'button', className: 'sm-modal-close', onClick: function(){ setReviewId(null); } }, h(IconClose))),
+        reviewDraft && reviewDraft.loading ? h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem' } }, 'OPC Learning AI đang soạn báo cáo…') :
+        reviewDraft && reviewDraft.error ? h('div', { className: 'banner warn' }, h('span', null, '⚠️'), h('div', null, reviewDraft.error)) :
+        h('textarea', {
+          value: (reviewDraft && reviewDraft.text) || '',
+          onChange: function(e){ setDrafts(function(prev){ var next = Object.assign({}, prev); next[reviewStudent.id] = Object.assign({}, next[reviewStudent.id], { text: e.target.value }); return next; }); },
+          rows: 10,
+          style: { width: '100%', boxSizing: 'border-box', fontFamily: '"Be Vietnam Pro",sans-serif', fontSize: '0.88rem', lineHeight: 1.6, padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--line)', resize: 'vertical' }
+        }),
+        h('div', { style: { display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', disabled: reviewDraft && reviewDraft.loading, onClick: function(){ generateFor(reviewStudent); } }, '🔄 Tạo lại'),
+          h('button', {
+            type: 'button', className: 'btn btn-secondary',
+            disabled: !reviewDraft || !reviewDraft.text,
+            onClick: function(){ copyToClipboard(reviewDraft.text).then(function(){ props.fireToast('Đã sao chép — dán vào Zalo để gửi.'); }); }
+          }, '📋 Sao chép'),
+          h('button', {
+            type: 'button', className: 'btn btn-secondary',
+            disabled: !reviewStudent.parentPhone,
+            onClick: function(){ window.open(zaloLink(reviewStudent.parentPhone), '_blank'); }
+          }, '💬 Mở Zalo phụ huynh'),
+          h('button', {
+            type: 'button', className: 'btn btn-primary', style: { marginLeft: 'auto' },
+            disabled: !reviewDraft || !reviewDraft.text || sending,
+            onClick: function(){ handleMarkSent(reviewStudent); }
+          }, sending ? 'Đang lưu…' : '✅ Đánh dấu đã gửi')
+        )
+      )
+    );
+
+    if(loading){ return h('div',{className:'card'}, h('p',{style:{color:'var(--ink-2)', fontSize:'0.9rem'}}, 'Đang tải dữ liệu học sinh…')); }
+
+    return h('div', null,
+      h('div', { className: 'card' },
+        h('div', { className: 'sm-toolbar' },
+          h('div', null, h('h3', null, '🦉 Báo cáo Phụ huynh — OPC Learning AI'),
+            h('p', { className: 'sm-sub' }, 'AI soạn nháp từ dữ liệu luyện tập thật — thầy xem/sửa rồi Sao chép + gửi qua Zalo cá nhân.')),
+          h('div', { className: 'sm-actions' },
+            h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !staleStudents.length, onClick: handleGenerateAllMissing },
+              bulkBusy ? 'Đang tạo…' : '🪄 Tạo báo cáo cho ' + staleStudents.length + ' học sinh còn thiếu')
+          )
+        ),
+        staleStudents.length ? h('div', { className: 'sm-alert-banner leads' },
+          h('div', { className: 'sm-alert-banner-head' },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+              h('span', { style: { fontSize: '1.2rem' } }, '📅'),
+              h('div', null,
+                h('div', { className: 'sm-alert-banner-title' }, staleStudents.length + '/' + activeStudents.length + ' học sinh chưa có báo cáo trong ' + REPORT_STALE_DAYS + ' ngày qua'),
+                h('div', { className: 'sm-alert-banner-sub' }, 'Tự động nhắc mỗi lần mở trang này — bấm "Tạo báo cáo" ở trên hoặc từng dòng bên dưới.')
+              )
+            )
+          )
+        ) : h('div', { className: 'banner info', style: { marginTop: '16px' } }, h('span', null, '✅'), h('div', null, 'Cả lớp đều đã có báo cáo trong ' + REPORT_STALE_DAYS + ' ngày qua.')),
+
+        h('div', { className: 'sm-table-wrap', style: { marginTop: '16px' } },
+          h('table', { className: 'sm-table' },
+            h('thead', null, h('tr', null, h('th', null, 'Học sinh'), h('th', null, 'Lần gửi gần nhất'), h('th', null, 'Trạng thái'), h('th', { style: { textAlign: 'right' } }, 'Hành động'))),
+            h('tbody', null, activeStudents.map(function(s){
+              var stale = isStale(s);
+              var d = drafts[s.id];
+              return h('tr', { key: s.id },
+                h('td', null, h('div', { className: 'sm-student-cell' }, h('div', { className: 'sm-avatar' }, initials(s.name)), h('div', null, h('div', { className: 'sm-student-name' }, s.name)))),
+                h('td', null, s.lastParentReportSentAt ? fmtDate(s.lastParentReportSentAt) : 'Chưa từng gửi'),
+                h('td', null, stale ? h('span', { className: 'sm-assigned-pill pending' }, '🟠 Cần gửi') : h('span', { className: 'sm-assigned-pill done' }, '🟢 Mới gửi')),
+                h('td', { style: { textAlign: 'right' } },
+                  d && d.text ? h('button', { type: 'button', className: 'sm-link-btn', onClick: function(){ setReviewId(s.id); } }, '📝 Xem & Gửi') :
+                  h('button', { type: 'button', className: 'sm-link-btn', disabled: d && d.loading, onClick: function(){ handleGenerateOne(s); } }, (d && d.loading) ? 'Đang tạo…' : '🪄 Tạo báo cáo AI')
+                )
+              );
+            }))
+          )
+        )
+      ),
+      reviewModal
+    );
+  }
+
+  // ================= Gói dịch vụ (giá/tính năng/ẩn-hiện trang chủ) =========
+  // THÊM 24/9/2026 — panel để thầy tự điều chỉnh giá/tính năng/ẩn-hiện mục
+  // "Gói dịch vụ" trên trang chủ (index.html, #goi-dich-vu) mà không cần
+  // sửa code/deploy lại. 3 gói mặc định dưới đây khớp ĐÚNG nội dung đang in
+  // cứng sẵn trong index.html — dùng để "mồi" panel lần đầu mở (khi
+  // "settings/pricing" chưa từng được lưu) và cho nút "Khôi phục mặc định".
+  function defaultPricingTiers(){
+    return [
+      {
+        name: 'Luyện đề', price: 300000, unit: '/tháng', badge: '', featured: false, visible: true,
+        features: ['Đề chẩn đoán đầu vào theo 4 chuyên đề', 'Bản đồ năng lực cập nhật hàng tuần', 'Lộ trình luyện tập tự động theo kết quả', 'Báo cáo phụ huynh qua Zalo mỗi tuần']
+      },
+      {
+        name: 'Luyện đề + Giảng dạy', price: 450000, unit: '/tháng', badge: 'Phổ biến nhất', featured: true, visible: true,
+        features: ['Toàn bộ tính năng gói Luyện đề', 'Module giảng dạy: bài giảng ngắn đúng lỗ hổng', 'Tự động luyện lại sau mỗi bài giảng', 'Ưu tiên chuyên đề yếu nhất mỗi tuần']
+      },
+      {
+        name: 'Kèm sát 1-1', price: 900000, unit: '/tháng', badge: '', featured: false, visible: true,
+        features: ['Toàn bộ tính năng gói Luyện đề + Giảng dạy', '15 phút trao đổi trực tiếp với giáo viên mỗi tuần', 'Điều chỉnh lộ trình thủ công theo tình hình thực tế']
+      }
+    ];
+  }
+  function pricingFmtVND(n){ return (Number(n) || 0).toLocaleString('vi-VN') + 'đ'; }
+
+  function PricingPanel(props){
+    var OPCref = window.OPC;
+    var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
+    var hasSavedDocState = React.useState(false); var hasSavedDoc = hasSavedDocState[0], setHasSavedDoc = hasSavedDocState[1];
+    var sectionEnabledState = React.useState(true); var sectionEnabled = sectionEnabledState[0], setSectionEnabled = sectionEnabledState[1];
+    var tiersState = React.useState(defaultPricingTiers()); var tiers = tiersState[0], setTiers = tiersState[1];
+    var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
+    var initedRef = React.useRef(false);
+
+    React.useEffect(function(){
+      if(!OPCref.pricing) return;
+      var unsub = OPCref.pricing.subscribe(function(data){
+        setLoading(false);
+        // Chỉ "mồi" state chỉnh sửa MỘT LẦN lúc mở panel — tránh dữ liệu
+        // Firestore ghi đè lên những gì thầy đang gõ dở giữa chừng.
+        if(initedRef.current) return;
+        initedRef.current = true;
+        if(data){
+          setHasSavedDoc(true);
+          setSectionEnabled(data.sectionEnabled !== false);
+          setTiers(Array.isArray(data.tiers) && data.tiers.length ? data.tiers.map(function(t){
+            return Object.assign({ name:'', price:0, unit:'/tháng', badge:'', featured:false, visible:true, features:[] }, t);
+          }) : defaultPricingTiers());
+        } else {
+          setHasSavedDoc(false);
+          setTiers(defaultPricingTiers());
+        }
+      }, function(){ setLoading(false); });
+      return function(){ unsub(); };
+    }, []);
+
+    function updateTier(idx, patch){
+      setTiers(function(prev){ var next = prev.slice(); next[idx] = Object.assign({}, next[idx], patch); return next; });
+    }
+    function moveTier(idx, dir){
+      setTiers(function(prev){
+        var next = prev.slice();
+        var j = idx + dir;
+        if(j < 0 || j >= next.length) return prev;
+        var tmp = next[idx]; next[idx] = next[j]; next[j] = tmp;
+        return next;
+      });
+    }
+    function removeTier(idx){
+      if(!window.confirm('Xoá gói "' + (tiers[idx].name || '(chưa đặt tên)') + '"? Thao tác chỉ có hiệu lực sau khi bấm Lưu.')) return;
+      setTiers(function(prev){ return prev.filter(function(_, i){ return i !== idx; }); });
+    }
+    function addTier(){
+      setTiers(function(prev){ return prev.concat([{ name:'Gói mới', price:0, unit:'/tháng', badge:'', featured:false, visible:true, features:[] }]); });
+    }
+    function resetToDefault(){
+      if(!window.confirm('Khôi phục về 3 gói mặc định? Thao tác chỉ có hiệu lực sau khi bấm Lưu.')) return;
+      setSectionEnabled(true);
+      setTiers(defaultPricingTiers());
+    }
+
+    function handleSave(){
+      for(var i = 0; i < tiers.length; i++){
+        var t = tiers[i];
+        if(!t.name || !t.name.trim()){ props.fireToast('Gói #' + (i + 1) + ' chưa có tên.', true); return; }
+        if(t.price == null || isNaN(Number(t.price)) || Number(t.price) < 0){ props.fireToast('Giá của gói "' + t.name + '" không hợp lệ.', true); return; }
+      }
+      setSaving(true);
+      OPCref.pricing.save({ sectionEnabled: sectionEnabled, tiers: tiers })
+        .then(function(){ setHasSavedDoc(true); props.fireToast('Đã lưu Gói dịch vụ — trang chủ sẽ cập nhật ngay.'); })
+        .catch(function(err){ console.error('Lỗi lưu Gói dịch vụ:', err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setSaving(false); });
+    }
+
+    if(loading){ return h('div', { className: 'card' }, h('p', { style: { color: 'var(--ink-2)', fontSize: '0.9rem' } }, 'Đang tải cấu hình Gói dịch vụ…')); }
+
+    return h('div', { className: 'card' },
+      h('div', { className: 'sm-toolbar' },
+        h('div', null, h('h3', null, '💰 Gói dịch vụ'),
+          h('p', { className: 'sm-sub' }, 'Giá/tính năng hiển thị ở mục "Gói dịch vụ" trên trang chủ — sửa xong bấm Lưu là trang chủ cập nhật ngay, không cần deploy lại.')),
+        h('div', { className: 'sm-actions' },
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: resetToDefault }, '↩️ Khôi phục mặc định'),
+          h('button', { type: 'button', className: 'btn btn-primary', disabled: saving, onClick: handleSave }, saving ? 'Đang lưu…' : '💾 Lưu thay đổi')
+        )
+      ),
+
+      !hasSavedDoc ? h('div', { className: 'banner info', style: { marginTop: '16px' } }, h('span', null, 'ℹ️'),
+        h('div', null, 'Chưa từng lưu cấu hình — đang hiển thị đúng 3 gói mặc định trang chủ đang áp dụng. Bấm "Lưu thay đổi" để bắt đầu quản lý giá từ đây.')) : null,
+
+      h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', marginTop: '16px', cursor: 'pointer', fontWeight: 700 } },
+        h('input', { type: 'checkbox', checked: sectionEnabled, onChange: function(e){ setSectionEnabled(e.target.checked); } }),
+        'Hiện mục "Gói dịch vụ" trên trang chủ'
+      ),
+      !sectionEnabled ? h('p', { style: { fontSize: '0.8rem', color: 'var(--warning)', marginTop: '4px' } }, '⚠️ Cả mục Gói dịch vụ sẽ bị ẩn khỏi trang chủ (dùng khi chưa sẵn sàng mở bán).') : null,
+
+      tiers.map(function(t, idx){
+        return h('div', { key: idx, className: cx('pp-tier-card', (!t.visible || !sectionEnabled) && 'disabled') },
+          h('div', { className: 'pp-tier-head' },
+            h('div', { className: 'pp-tier-head-left' },
+              h('div', { className: 'pp-tier-num' }, idx + 1),
+              h('div', { className: 'pp-tier-order-btns' },
+                h('button', { type: 'button', disabled: idx === 0, onClick: function(){ moveTier(idx, -1); } }, '▲'),
+                h('button', { type: 'button', disabled: idx === tiers.length - 1, onClick: function(){ moveTier(idx, 1); } }, '▼')
+              )
+            ),
+            h('button', { type: 'button', className: 'pp-remove-btn', onClick: function(){ removeTier(idx); } }, '🗑 Xoá gói')
+          ),
+          h('div', { className: 'pp-tier-grid' },
+            h('div', { className: 'sm-field' }, h('label', null, 'Tên gói'),
+              h('input', { type: 'text', value: t.name, onChange: function(e){ updateTier(idx, { name: e.target.value }); } })),
+            h('div', { className: 'sm-field' }, h('label', null, 'Giá (VNĐ)'),
+              h('input', { type: 'number', min: 0, step: 10000, value: t.price, onChange: function(e){ updateTier(idx, { price: Number(e.target.value) }); } }),
+              h('div', { className: 'pp-preview-price' }, pricingFmtVND(t.price) + (t.unit || ''))),
+            h('div', { className: 'sm-field' }, h('label', null, 'Đơn vị'),
+              h('input', { type: 'text', value: t.unit || '', placeholder: '/tháng', onChange: function(e){ updateTier(idx, { unit: e.target.value }); } }))
+          ),
+          h('div', { className: 'sm-field', style: { marginTop: '12px' } }, h('label', null, 'Nhãn nổi bật (để trống nếu không có, vd. "Phổ biến nhất")'),
+            h('input', { type: 'text', value: t.badge || '', onChange: function(e){ updateTier(idx, { badge: e.target.value }); } })),
+          h('div', { className: 'sm-field', style: { marginTop: '12px' } }, h('label', null, 'Tính năng (mỗi dòng 1 tính năng)'),
+            h('textarea', {
+              rows: 4, value: (t.features || []).join('\n'),
+              style: { width: '100%', boxSizing: 'border-box', fontFamily: '"Be Vietnam Pro",sans-serif', fontSize: '0.86rem', lineHeight: 1.6, padding: '8px 11px', borderRadius: '8px', border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', resize: 'vertical' },
+              onChange: function(e){ updateTier(idx, { features: e.target.value.split('\n') }); },
+              onBlur: function(e){ updateTier(idx, { features: e.target.value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean) }); }
+            })),
+          h('div', { className: 'pp-tier-toggles' },
+            h('label', null, h('input', { type: 'checkbox', checked: !!t.featured, onChange: function(e){ updateTier(idx, { featured: e.target.checked }); } }), 'Làm nổi bật (khung viền vàng)'),
+            h('label', null, h('input', { type: 'checkbox', checked: t.visible !== false, onChange: function(e){ updateTier(idx, { visible: e.target.checked }); } }), 'Hiển thị gói này trên trang chủ')
+          )
+        );
+      }),
+
+      h('button', { type: 'button', className: 'btn btn-secondary', style: { marginTop: '14px' }, onClick: addTier }, '➕ Thêm gói mới')
+    );
   }
 
   // ================= Exam bank panel =================
@@ -3848,11 +4463,17 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='students' && 'active'), onClick:function(){ setTab('students'); }}, 'Học sinh'),
         h('button',{type:'button', className:cx('tab-btn', tab==='prepscholar' && 'active'), onClick:function(){ setTab('prepscholar'); }}, '⚡ Giám sát thích ứng PrepScholar'),
         h('button',{type:'button', className:cx('tab-btn', tab==='exambank' && 'active'), onClick:function(){ setTab('exambank'); }}, 'Ngân hàng đề & câu hỏi'),
-        h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa')
+        h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ')
       ),
       tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
         tab === 'prepscholar' ? h(PrepScholarMonitoringPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
-          tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast})
+          tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
+            tab === 'reports' ? h(ParentReportsPanel, {fireToast:fireToast}) : (
+              tab === 'pricing' ? h(PricingPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast})
+            )
+          )
         )
       ),
       toast ? h('div',{className: cx('rq-toast', 'show', toast.err && 'err')}, h('span',{className:'tk'}, toast.err ? '⚠' : '✓'), toast.msg) : null

@@ -64,6 +64,46 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isOpcAdmin();
       }
+
+      // Báo cáo phụ huynh do OPC Learning AI soạn (draft) rồi thầy cô duyệt/
+      // sửa/đánh dấu đã gửi qua Zalo cá nhân — THÊM 24/9/2026, xem
+      // api/ai-parent-report.js + panel "Báo cáo Phụ huynh" trong admin.html.
+      // Phụ huynh KHÔNG có tài khoản đăng nhập (quyết định đã chốt) nên
+      // không cần đọc công khai — chỉ admin đọc/ghi, khác hẳn attempts/
+      // assignedExams ở trên.
+      match /parentReports/{reportId} {
+        allow read, write: if isOpcAdmin();
+      }
+    }
+
+    // Đăng ký lớp thử nghiệm từ trang giới thiệu công khai (index.html) —
+    // THÊM 24/9/2026, thay cho luồng mailto cũ (gửi thẳng mật khẩu qua
+    // email, không lưu gì lại). "create" công khai (học sinh chưa có tài
+    // khoản/Auth gì để xác thực) nhưng bị giới hạn CHẶT hơn "attempts" ở
+    // trên: chỉ được set đúng các trường liệt kê dưới, đúng kiểu dữ liệu,
+    // và status phải là 'pending' (không tự ý tạo bản ghi đã 'converted').
+    // Đọc/sửa/xoá (duyệt, từ chối) CHỈ admin — đây là hàng chờ nội bộ, học
+    // sinh gửi xong không đọc lại được của mình hay của người khác.
+    match /registrations/{regId} {
+      allow create: if request.resource.data.keys().hasOnly(['name','gmail','phone','parentZalo','referralCode','status','createdAt','source'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() < 100
+        && request.resource.data.gmail is string && request.resource.data.gmail.size() < 120
+        && request.resource.data.phone is string && request.resource.data.phone.size() < 20
+        && request.resource.data.parentZalo is string && request.resource.data.parentZalo.size() < 20
+        && request.resource.data.referralCode is string && request.resource.data.referralCode.size() < 30
+        && request.resource.data.status == 'pending';
+      allow read, update, delete: if isOpcAdmin();
+    }
+
+    // Cấu hình chung do admin quản lý qua panel trong admin.html — hiện có
+    // "settings/pricing" (giá/tính năng/ẩn-hiện của mục "Gói dịch vụ" trên
+    // trang chủ, xem panel "💰 Gói dịch vụ" + hàm loadPricingPlans trong
+    // opc-live-data.js). Đọc công khai vì trang chủ chưa đăng nhập ai cũng
+    // xem được; ghi chỉ admin. Dùng {settingId} chung để sau này thêm cấu
+    // hình khác (vd. thông báo trang chủ) không cần sửa rules nữa.
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isOpcAdmin();
     }
 
     // Số liệu học tập THẬT (mastery/điểm dự đoán/sổ câu sai) — snapshot mới
