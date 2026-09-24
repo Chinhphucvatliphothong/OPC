@@ -1021,7 +1021,7 @@
     };
   }
 
-  var CHU_DE_LIST = ['Vật lí nhiệt', 'Khí lí tưởng', 'Từ trường', 'Vật lí hạt nhân'];
+  var CHU_DE_LIST = ['Vật lí nhiệt', 'Khí lí tưởng', 'Từ trường', 'Vật lí hạt nhân', 'Dòng điện xoay chiều (Chuyên đề)', 'Vật lí trong y học (Chuyên đề)', 'Vật lí lượng tử (Chuyên đề)'];
   // Danh sách RIÊNG cho form nạp đề / bộ lọc ngân hàng đề — có thêm lựa chọn
   // "Tổng hợp nhiều chuyên đề" cho các đề tổng hợp cuốn chiếu (VD: đề hết
   // chương 2 gồm cả câu hỏi chương 1 lẫn chương 2). KHÔNG dùng CHU_DE_LIST
@@ -1375,8 +1375,11 @@
       var fullText = ((filename||'') + ' ' + (titleCand||'') + ' ' + stats.topics.join(' ')).toLowerCase();
       if(/khí|boyle|charles|nhiệt động|chất khí|piston|xilanh/i.test(fullText)) suggestedChuDe = 'Khí lí tưởng';
       else if(/nhiệt|sôi|nóng chảy|ngưng tụ|nội năng|đông đặc/i.test(fullText)) suggestedChuDe = 'Vật lí nhiệt';
-      else if(/từ trường|cảm ứng|lorentz|dòng điện|flen|từ thông/i.test(fullText)) suggestedChuDe = 'Từ trường';
-      else if(/hạt nhân|phóng xạ|năng lượng liên kết|phản ứng/i.test(fullText)) suggestedChuDe = 'Vật lí hạt nhân';
+      else if(/từ trường|cảm ứng|lorentz|dòng điện cảm ứng|flen|từ thông|máy phát điện/i.test(fullText)) suggestedChuDe = 'Từ trường';
+      else if(/hạt nhân|phóng xạ|năng lượng liên kết|phản ứng hạt nhân/i.test(fullText)) suggestedChuDe = 'Vật lí hạt nhân';
+      else if(/mạch rlc|dung kháng|cảm kháng|máy biến áp|chỉnh lưu|dòng điện xoay chiều/i.test(fullText)) suggestedChuDe = 'Dòng điện xoay chiều (Chuyên đề)';
+      else if(/tia x|x-quang|xquang|siêu âm|cộng hưởng từ|mri|chẩn đoán/i.test(fullText)) suggestedChuDe = 'Vật lí trong y học (Chuyên đề)';
+      else if(/quang điện|lượng tử|photon|bohr|quang phổ vạch|lưỡng tính sóng hạt|vùng năng lượng/i.test(fullText)) suggestedChuDe = 'Vật lí lượng tử (Chuyên đề)';
     }
 
     // Gợi ý "Mức độ tổng quan" tương tự: nếu file có từ 2 mức độ khác nhau
