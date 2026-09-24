@@ -1058,6 +1058,44 @@
   50% { transform: scale(1.15); }
 }
 
+/* OPC Learning AI — thẻ "Gợi ý hôm nay" ở Trang chủ (xem askAiSuggest
+   trong prepscholar-ui.js, gọi api/ai-suggest.js). Dùng chung avatar/khung
+   chat-bubble với Gia sư AI trong Sổ tay câu sai để đồng bộ thương hiệu. */
+.ps-ai-suggest-card {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.ps-ai-suggest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ps-ai-suggest-refresh {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--surface);
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ps-ai-suggest-refresh:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.ps-ai-suggest-refresh:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
 /* Banner cảnh báo / thông tin — dùng cho màn đăng nhập & trạng thái ngân
    hàng đề thật trong PrepScholarApp (đồng bộ style với admin.html). */
 .banner{ display:flex; align-items:flex-start; gap:10px; padding:13px 16px; border-radius:12px; font-size:0.85rem; line-height:1.55; }

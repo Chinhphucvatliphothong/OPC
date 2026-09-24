@@ -289,7 +289,11 @@
       // trang admin (Danh sách học sinh) hiển thị đúng số đề đã làm/điểm TB/
       // điểm cao nhất THẬT thay vì luôn = 0 — xem syncStudentStats trong
       // prepscholar-ui.js và calculateStudentKPIs trong admin.html.
-      completedExamsCount: 0, averageScore: 0, highestScore: 0
+      completedExamsCount: 0, averageScore: 0, highestScore: 0,
+      // recentTrend: 'down'/'stable'/'up' — cảnh báo tự động cho giáo viên
+      // (xem StudentsPanel trong admin.html) khi điểm học sinh tụt gần đây,
+      // để giáo viên không phải tự rà bảng bằng mắt. THÊM 24/9/2026.
+      recentTrend: null, recentAvgScore: null, priorAvgScore: null
     };
     attempts = attempts || [];
     if(!attempts.length) return result;
@@ -373,6 +377,26 @@
     if(scoreVals.length){
       result.averageScore = Math.round((scoreVals.reduce(function(s, n){ return s + n; }, 0) / scoreVals.length) * 10) / 10;
       result.highestScore = Math.max.apply(null, scoreVals);
+    }
+
+    // Xu hướng gần đây (recentTrend) — so sánh điểm TB của (tối đa) 3 lượt
+    // gần nhất với 3 lượt trước đó (scoreVals đã theo đúng thứ tự thời gian
+    // thật, cũ → mới, nhờ "sorted" ở trên). Cần ít nhất 4 lượt nộp bài có
+    // điểm mới đủ dữ liệu để so sánh — tránh báo "tụt" chỉ vì 1-2 lượt đầu
+    // chưa ổn định. Ngưỡng ±0.75 điểm/10 để tránh báo động giả vì dao động
+    // nhỏ bình thường.
+    if(scoreVals.length >= 4){
+      var half = Math.min(3, Math.floor(scoreVals.length / 2));
+      var recentHalf = scoreVals.slice(-half);
+      var priorHalf = scoreVals.slice(-(half * 2), -half);
+      if(priorHalf.length){
+        var recentAvg = recentHalf.reduce(function(s, n){ return s + n; }, 0) / recentHalf.length;
+        var priorAvg = priorHalf.reduce(function(s, n){ return s + n; }, 0) / priorHalf.length;
+        result.recentAvgScore = Math.round(recentAvg * 10) / 10;
+        result.priorAvgScore = Math.round(priorAvg * 10) / 10;
+        var diff = recentAvg - priorAvg;
+        result.recentTrend = diff <= -0.75 ? 'down' : (diff >= 0.75 ? 'up' : 'stable');
+      }
     }
 
     return result;

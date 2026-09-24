@@ -179,6 +179,19 @@
   .sm-empty{ padding:36px 20px; text-align:center; color:var(--ink-2); }
   .sm-empty p{ font-size:0.9rem; line-height:1.6; max-width:44ch; margin:0 auto 16px; }
 
+  /* Banner "Cảnh báo tự động" — StudentsPanel, học sinh tụt điểm gần đây
+     hoặc có Tag kiến thức yếu kéo dài (rule-based, không gọi AI). */
+  .sm-alert-banner{ margin:16px 0; border:1px solid color-mix(in srgb, var(--critical) 30%, var(--line)); background:color-mix(in srgb, var(--critical) 6%, var(--surface-2)); border-radius:12px; overflow:hidden; }
+  .sm-alert-banner-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; cursor:pointer; flex-wrap:wrap; }
+  .sm-alert-banner-title{ font-size:0.92rem; font-weight:700; color:var(--critical); }
+  .sm-alert-banner-sub{ font-size:0.78rem; color:var(--ink-2); margin-top:2px; }
+  .sm-alert-banner-toggle{ font-size:0.78rem; font-weight:700; color:var(--critical); white-space:nowrap; }
+  .sm-alert-banner-list{ border-top:1px solid color-mix(in srgb, var(--critical) 22%, var(--line)); padding:6px 10px; display:flex; flex-direction:column; }
+  .sm-alert-row{ display:flex; align-items:center; gap:10px; padding:10px 8px; border-radius:8px; cursor:pointer; transition:background .12s ease; }
+  .sm-alert-row:hover{ background:color-mix(in srgb, var(--critical) 8%, transparent); }
+  .sm-alert-row-name{ font-size:0.86rem; font-weight:700; color:var(--ink); }
+  .sm-alert-row-reasons{ font-size:0.78rem; color:var(--ink-2); margin-top:1px; }
+
   .sm-overlay{ position:fixed; inset:0; background: color-mix(in srgb, var(--navy) 55%, transparent); backdrop-filter: blur(3px); display:flex; align-items:center; justify-content:center; padding:20px; z-index:70; }
   .sm-modal{ background:var(--surface); border-radius:18px; max-width:440px; width:100%; max-height:88vh; overflow-y:auto; box-shadow:var(--shadow); padding:26px; }
   .sm-modal.sm-modal-wide{ max-width:560px; }
@@ -1409,9 +1422,42 @@
         assignedExamsCompletedCount: st.assignedExamsCompletedCount != null ? st.assignedExamsCompletedCount : s.assignedExamsCompletedCount,
         predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
         mastery: st.mastery || s.mastery,
-        mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount
+        mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount,
+        // nanoMastery/recentTrend/recentAvgScore/priorAvgScore: THÊM
+        // 24/9/2026 — nguồn dữ liệu cho banner "Cảnh báo tự động" bên dưới
+        // (xem computeStudentStatsFromAttempts trong prepscholar.js).
+        nanoMastery: st.nanoMastery || s.nanoMastery,
+        recentTrend: st.recentTrend != null ? st.recentTrend : s.recentTrend,
+        recentAvgScore: st.recentAvgScore != null ? st.recentAvgScore : s.recentAvgScore,
+        priorAvgScore: st.priorAvgScore != null ? st.priorAvgScore : s.priorAvgScore
       });
     });
+
+    // Cảnh báo tự động cho giáo viên (rule-based, KHÔNG gọi AI — nhanh,
+    // không tốn phí) — thay cho việc phải tự rà từng dòng trong bảng:
+    //   (1) Điểm tụt gần đây: recentTrend === 'down' (so 3 lượt gần nhất
+    //       với 3 lượt trước đó, xem prepscholar.js).
+    //   (2) Nano-point yếu (Đỏ, <50%) kéo dài ≥ 3 Tag — vì mastery là điểm
+    //       CỘNG DỒN qua nhiều lượt (bumpNanoMastery), một Tag vẫn còn Đỏ
+    //       nghĩa là đã yếu qua nhiều lần luyện chứ không phải mới 1 lần.
+    var WEAK_NANO_THRESHOLD = 50;
+    var WEAK_NANO_COUNT_ALERT = 3;
+    var studentAlerts = displayStudents.map(function(s){
+      var reasons = [];
+      if(s.recentTrend === 'down'){
+        var prior = (s.priorAvgScore != null) ? s.priorAvgScore.toFixed(1) : '—';
+        var recent = (s.recentAvgScore != null) ? s.recentAvgScore.toFixed(1) : '—';
+        reasons.push('Điểm tụt gần đây (TB ' + prior + ' → ' + recent + ')');
+      }
+      var nm = s.nanoMastery || {};
+      var weakCount = Object.keys(nm).filter(function(k){ return nm[k] < WEAK_NANO_THRESHOLD; }).length;
+      if(weakCount >= WEAK_NANO_COUNT_ALERT){
+        reasons.push(weakCount + ' Tag kiến thức đang ở mức yếu (Đỏ) kéo dài');
+      }
+      return reasons.length ? { student: s, reasons: reasons } : null;
+    }).filter(Boolean);
+
+    var alertsOpenState = React.useState(false); var alertsOpen = alertsOpenState[0], setAlertsOpen = alertsOpenState[1];
 
     React.useEffect(function(){
       if(!selected && !addOpen && !importOpen) return;
@@ -1730,6 +1776,29 @@
         h('button',{type:'button', className:'btn btn-primary', onClick:function(){ setAddOpen(true); }}, '+ Thêm học sinh')
       )
     );
+    var alertBanner = !studentAlerts.length ? null : h('div', { className: 'sm-alert-banner' },
+      h('div', { className: 'sm-alert-banner-head', onClick: function(){ setAlertsOpen(!alertsOpen); }, role: 'button', tabIndex: 0 },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+          h('span', { style: { fontSize: '1.2rem' } }, '⚠️'),
+          h('div', null,
+            h('div', { className: 'sm-alert-banner-title' }, studentAlerts.length + ' học sinh cần chú ý'),
+            h('div', { className: 'sm-alert-banner-sub' }, 'Điểm tụt gần đây hoặc có Tag kiến thức yếu kéo dài — tự động phát hiện, không cần rà tay.')
+          )
+        ),
+        h('span', { className: 'sm-alert-banner-toggle' }, alertsOpen ? '▲ Thu gọn' : '▼ Xem chi tiết')
+      ),
+      alertsOpen ? h('div', { className: 'sm-alert-banner-list' },
+        studentAlerts.map(function(a){
+          return h('div', { key: a.student.id, className: 'sm-alert-row', onClick: function(){ setSelected(a.student); } },
+            h('div', { className: 'sm-avatar' }, initials(a.student.name)),
+            h('div', { style: { flex: 1, minWidth: 0 } },
+              h('div', { className: 'sm-alert-row-name' }, a.student.name),
+              h('div', { className: 'sm-alert-row-reasons' }, a.reasons.join(' · '))
+            )
+          );
+        })
+      ) : null
+    );
     var summaryCard = renderClassSummaryCard(displayStudents);
     var searchRow = h('div',{className:'sm-search-row'},
       h('div',{className:'sm-search'}, h(IconSearch),
@@ -2039,7 +2108,7 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, summaryCard, searchRow, tableOrEmpty), detailModal, addModal, importModal);
+    return h('div',null, h('div',{className:'card'}, toolbar, alertBanner, summaryCard, searchRow, tableOrEmpty), detailModal, addModal, importModal);
   }
 
   // ================= Exam bank panel =================

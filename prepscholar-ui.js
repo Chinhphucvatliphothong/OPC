@@ -352,6 +352,13 @@
       // GIAO (qua tính năng "Giao đề cá nhân hóa"), không phải mục tiêu bịa.
       if(stats.assignedExamsTotal != null) payload.assignedExamsCount = stats.assignedExamsTotal;
       if(stats.assignedExamsCompleted != null) payload.assignedExamsCompletedCount = stats.assignedExamsCompleted;
+      // recentTrend/recentAvgScore/priorAvgScore: THÊM 24/9/2026 — nguồn dữ
+      // liệu cho banner "Cảnh báo tự động" trên trang admin (StudentsPanel),
+      // để giáo viên biết ngay học sinh nào đang tụt điểm gần đây mà không
+      // cần tự rà từng dòng.
+      if(stats.recentTrend != null) payload.recentTrend = stats.recentTrend;
+      if(stats.recentAvgScore != null) payload.recentAvgScore = stats.recentAvgScore;
+      if(stats.priorAvgScore != null) payload.priorAvgScore = stats.priorAvgScore;
       window.OPC_LIVE.saveStudentStats(studentId, payload).catch(function(err){
         console.error('Lỗi lưu số liệu học tập (student_stats):', err);
       });
@@ -606,6 +613,56 @@
           });
         });
     }
+
+    // OPC Learning AI — Gợi ý học tập hôm nay (Trang chủ). Khác với
+    // askAiTutor (giải thích 1 CÂU sai cụ thể), hàm này gửi TOÀN CẢNH mức
+    // thành thạo hiện tại (5 nano-point yếu nhất + mastery theo chuyên đề +
+    // vài câu sai gần nhất + điểm dự báo/mục tiêu) để AI "suy luận" ra nên
+    // ưu tiên ôn phần nào hôm nay — thay cho việc phải có mô hình học máy
+    // được huấn luyện riêng (xem trao đổi với thầy về độ tinh vi kỹ thuật
+    // so với Squirrel AI). Gọi /api/ai-suggest (Vercel Serverless Function
+    // riêng, giữ API key ở server giống api/ai-tutor.js).
+    var aiSuggestState = React.useState({ loading: false, text: null, error: null, fetchedOnce: false });
+    var aiSuggest = aiSuggestState[0];
+    var setAiSuggest = aiSuggestState[1];
+
+    function askAiSuggest(){
+      if(!student) return;
+      setAiSuggest(function(prev){ return Object.assign({}, prev, { loading: true, error: null, fetchedOnce: true }); });
+      var weakest = (window.PrepScholarEngine && window.PrepScholarEngine.getWeakestNanoPoints)
+        ? window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5, student.nanoMastery)
+        : [];
+      fetch('/api/ai-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weakestNano: weakest.map(function(n){ return { name: n.name, topicName: n.topicName, baiName: n.baiName, mastery: n.mastery }; }),
+          chuDeMastery: student.mastery || {},
+          recentMistakes: mistakeLog.slice(0, 5).map(function(m){ return { topicName: m.topicName, title: m.title }; }),
+          predicted: (student.predicted != null) ? student.predicted : null,
+          target: (student.target != null) ? student.target : null,
+          mistakeCount: mistakeLog.length
+        })
+      }).then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
+        .then(function(result){
+          if(result.ok && result.data && result.data.suggestion){
+            setAiSuggest({ loading: false, text: result.data.suggestion, error: null, fetchedOnce: true });
+          } else {
+            setAiSuggest({ loading: false, text: null, error: (result.data && result.data.error) || 'OPC Learning AI đang bận, thử lại sau.', fetchedOnce: true });
+          }
+        }).catch(function(){
+          setAiSuggest({ loading: false, text: null, error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng và thử lại.', fetchedOnce: true });
+        });
+    }
+
+    // Tự động xin gợi ý MỘT LẦN khi học sinh vào Trang chủ và đã có dữ liệu
+    // Tag (tránh gọi AI liên tục mỗi lần re-render/đổi tab qua lại — học
+    // sinh có thể bấm "🔄 Gợi ý mới" trong thẻ để xin lại bất cứ lúc nào).
+    React.useEffect(function(){
+      if(tab === 'home' && student && Object.keys(student.nanoMastery || {}).length > 0 && !aiSuggest.fetchedOnce && !aiSuggest.loading){
+        askAiSuggest();
+      }
+    }, [tab, student && student.id]);
 
     // Đếm ngược thời gian khi đang làm bài
     React.useEffect(function(){
@@ -2025,6 +2082,37 @@
                 ),
                 renderRadarChart(student.radar5, peerRadar5)
               ),
+
+              h('div', { className: 'ps-ai-suggest-card' },
+                h('div', { className: 'ps-ai-suggest-head' },
+                  h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+                    h('span', { className: 'ps-ai-tutor-avatar' }, '🦉'),
+                    h('div', null,
+                      h('div', { className: 'ps-ai-tutor-name' }, 'OPC Learning AI gợi ý hôm nay'),
+                      h('div', { className: 'ps-ai-tutor-tag' }, 'Dựa trên lịch sử làm bài gần đây của em')
+                    )
+                  ),
+                  h('button', {
+                    type: 'button',
+                    className: 'ps-ai-suggest-refresh',
+                    disabled: aiSuggest.loading,
+                    onClick: askAiSuggest
+                  }, aiSuggest.loading ? '⏳' : '🔄 Gợi ý mới')
+                ),
+                aiSuggest.loading ? h('div', { className: 'ps-ai-tutor-card typing', style: { marginTop: '12px' } },
+                  h('span', { className: 'ps-ai-tutor-avatar sm' }, '🦉'),
+                  h('span', { className: 'ps-ai-tutor-dots' }, h('span'), h('span'), h('span')),
+                  h('span', { className: 'ps-ai-tutor-typing-text' }, 'OPC Learning AI đang phân tích lịch sử làm bài…')
+                ) : null,
+                !aiSuggest.loading && aiSuggest.error ? h('div', { className: 'ps-ai-tutor-card error', style: { marginTop: '12px' } },
+                  h('span', { className: 'ps-ai-tutor-card-icon' }, '⚠️'),
+                  h('span', null, aiSuggest.error)
+                ) : null,
+                !aiSuggest.loading && aiSuggest.text ? h('p', { className: 'ps-ai-tutor-text', style: { marginTop: '12px' } }, aiSuggest.text) : null,
+                !aiSuggest.loading && aiSuggest.text ? h('div', { className: 'ps-ai-tutor-disclaimer' }, '✦ Gợi ý do AI tạo ra dựa trên dữ liệu làm bài — không thay thế hướng dẫn của thầy cô.') : null,
+                !aiSuggest.loading && !aiSuggest.error && !aiSuggest.text ? h('p', { className: 'ps-ai-tutor-text', style: { marginTop: '12px', color: 'var(--muted)' } }, 'Bấm "Gợi ý mới" để OPC Learning AI phân tích và đề xuất phần nên ôn hôm nay.') : null
+              ),
+
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between' } },
                   h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
