@@ -1,8 +1,8 @@
-// ================= Gia sư AI (OPC Learning AI) =================
+// ================= OPC Learning AI (Gia sư ảo cá nhân hoá) =================
 // Vercel Serverless Function — đây là NƠI DUY NHẤT trong dự án giữ một API
 // key bí mật ở phía SERVER (mọi thứ khác trong OPC đều chạy thuần
 // frontend + Firestore, xem ghi chú bảo mật trong firestore.rules). Học
-// sinh bấm "🤖 Hỏi Gia sư AI" trong Sổ tay câu sai (xem askAiTutor trong
+// sinh bấm "Hỏi OPC Learning AI" trong Sổ tay câu sai (xem askAiTutor trong
 // prepscholar-ui.js) sẽ gọi POST /api/ai-tutor kèm nội dung câu vừa làm
 // sai; hàm này gọi Gemini rồi trả về đoạn giải thích, trình duyệt KHÔNG
 // bao giờ thấy API key thật.
@@ -11,7 +11,7 @@
 // GitHub):
 //   Vercel Dashboard → chọn project → Settings → Environment Variables
 //     GEMINI_API_KEY = <key lấy miễn phí tại aistudio.google.com/app/apikey>
-//     GEMINI_MODEL   = gemini-2.0-flash   (tuỳ chọn — bỏ trống dùng mặc định)
+//     GEMINI_MODEL   = gemini-3.6-flash   (tuỳ chọn — bỏ trống dùng mặc định)
 //   Rồi bấm Redeploy (biến môi trường mới chỉ có hiệu lực từ lần deploy sau).
 //
 // ⚠️ Giới hạn hiện tại: endpoint này không có xác thực/giới hạn tần suất
@@ -20,8 +20,8 @@
 // thường. Phù hợp quy mô 1 lớp/1 trường; cần nâng cấp nếu mở rộng công khai.
 
 var SYSTEM_INSTRUCTION = [
-  'Bạn là "Gia sư AI" của OPC Luyện Thi Vật Lí — gia sư Vật Lí lớp 12',
-  '(chương trình GDPT 2018, thi Tốt nghiệp THPT) thân thiện, kiên nhẫn,',
+  'Bạn là "OPC Learning AI" — gia sư ảo cá nhân hoá của OPC Luyện Thi Vật Lí,',
+  'chuyên Vật Lí lớp 12 (chương trình GDPT 2018, thi Tốt nghiệp THPT), thân thiện, kiên nhẫn,',
   'nói tiếng Việt tự nhiên, đúng thuật ngữ Vật Lí phổ thông Việt Nam.',
   '',
   'Khi được đưa một câu hỏi học sinh vừa làm SAI, hãy trả lời theo đúng',
@@ -123,7 +123,7 @@ export default async function handler(req, res){
     loiGiai: body.loiGiai ? clampStr(body.loiGiai, 3000) : ''
   };
 
-  var model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  var model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
 
   var payload = {
@@ -142,7 +142,7 @@ export default async function handler(req, res){
 
     if(!upstream.ok){
       console.error('Lỗi gọi Gemini:', data);
-      res.status(502).json({ error: (data && data.error && data.error.message) || 'Gia sư AI đang bận, thử lại sau.' });
+      res.status(502).json({ error: (data && data.error && data.error.message) || 'OPC Learning AI đang bận, thử lại sau.' });
       return;
     }
 
@@ -154,13 +154,13 @@ export default async function handler(req, res){
     }catch(e){ text = ''; }
 
     if(!text){
-      res.status(502).json({ error: 'Gia sư AI không trả lời được câu này — thử lại sau.' });
+      res.status(502).json({ error: 'OPC Learning AI không trả lời được câu này — thử lại sau.' });
       return;
     }
 
     res.status(200).json({ explanation: text });
   }catch(err){
     console.error('Lỗi kết nối Gemini:', err);
-    res.status(502).json({ error: 'Không kết nối được tới Gia sư AI — kiểm tra mạng hoặc thử lại sau.' });
+    res.status(502).json({ error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng hoặc thử lại sau.' });
   }
 }
