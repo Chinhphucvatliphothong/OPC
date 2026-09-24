@@ -549,6 +549,64 @@
     var assignedExams = assignedExamsState[0];
     var setAssignedExams = assignedExamsState[1];
 
+    // Gia sư AI (OPC Learning AI) — trạng thái giải thích AI theo TỪNG câu
+    // sai trong Sổ tay câu sai, key theo item.id: {loading, text, error}.
+    // Gọi Vercel Serverless Function /api/ai-tutor (giữ API key Gemini ở
+    // server, xem api/ai-tutor.js) — KHÔNG gọi thẳng Gemini từ trình duyệt.
+    var aiTutorState = React.useState({});
+    var aiTutor = aiTutorState[0];
+    var setAiTutor = aiTutorState[1];
+
+    function askAiTutor(item){
+      var q = item.question;
+      if(!q || !q.stem){
+        setAiTutor(function(prev){
+          var next = Object.assign({}, prev);
+          next[item.id] = { loading: false, text: null, error: 'Không tìm thấy đủ nội dung câu hỏi để hỏi Gia sư AI.' };
+          return next;
+        });
+        return;
+      }
+      setAiTutor(function(prev){
+        var next = Object.assign({}, prev);
+        next[item.id] = { loading: true, text: (prev[item.id] && prev[item.id].text) || null, error: null };
+        return next;
+      });
+      fetch('/api/ai-tutor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stem: q.stem,
+          topicName: q.topicName,
+          subtopic: q.subtopic,
+          level: q.level,
+          options: q.options || null,
+          correctKey: q.correctKey || null,
+          statements: q.statements || null,
+          correctAnswer: (q.correctAnswer != null) ? q.correctAnswer : null,
+          unit: q.unit || '',
+          loiGiai: q.loiGiai || ''
+        })
+      }).then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
+        .then(function(result){
+          setAiTutor(function(prev){
+            var next = Object.assign({}, prev);
+            if(result.ok && result.data && result.data.explanation){
+              next[item.id] = { loading: false, text: result.data.explanation, error: null };
+            } else {
+              next[item.id] = { loading: false, text: null, error: (result.data && result.data.error) || 'Gia sư AI đang bận, thử lại sau.' };
+            }
+            return next;
+          });
+        }).catch(function(){
+          setAiTutor(function(prev){
+            var next = Object.assign({}, prev);
+            next[item.id] = { loading: false, text: null, error: 'Không kết nối được tới Gia sư AI — kiểm tra mạng và thử lại.' };
+            return next;
+          });
+        });
+    }
+
     // Đếm ngược thời gian khi đang làm bài
     React.useEffect(function(){
       if(!examSession || examSession.isSubmitted) return;
@@ -1811,6 +1869,7 @@
                 )
               ) : (
                 mistakeLog.map(function(item, idx){
+                  var ai = aiTutor[item.id];
                   return h('div', { key: idx, className: 'ps-solution-card wrong' },
                     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' } },
                       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
@@ -1824,9 +1883,21 @@
                     h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', margin: '8px 0 4px' } },
                       h('b', null, 'Nguyên nhân sai lầm: '), item.reason
                     ),
-                    h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace' } },
+                    h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace', marginBottom: '10px' } },
                       'Chu kỳ giãn cách: ' + item.intervalDays + ' ngày'
-                    )
+                    ),
+                    h('button', {
+                      type: 'button',
+                      className: 'btn btn-secondary ps-ai-tutor-btn',
+                      disabled: !!(ai && ai.loading),
+                      onClick: function(){ askAiTutor(item); }
+                    }, (ai && ai.loading) ? '🤖 Gia sư AI đang soạn giải thích…' : '🤖 Hỏi Gia sư AI giải thích lại'),
+                    ai && ai.error ? h('div', { className: 'ps-ai-tutor-box error' }, ai.error) : null,
+                    ai && ai.text ? h('div', { className: 'ps-ai-tutor-box' },
+                      h('div', { className: 'ps-ai-tutor-label' }, '🤖 Gia sư AI (OPC Learning) giải thích'),
+                      h('p', { className: 'ps-ai-tutor-text' }, ai.text),
+                      h('div', { className: 'ps-ai-tutor-disclaimer' }, 'Nội dung do AI tạo ra, có thể có sai sót — nên đối chiếu lại với lời giải hoặc hỏi thêm thầy cô.')
+                    ) : null
                   );
                 })
               )
