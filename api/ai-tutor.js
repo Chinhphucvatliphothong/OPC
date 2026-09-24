@@ -129,7 +129,18 @@ export default async function handler(req, res){
   var payload = {
     systemInstruction: { role: 'system', parts: [{ text: SYSTEM_INSTRUCTION }] },
     contents: [{ role: 'user', parts: [{ text: buildUserPrompt(q) }] }],
-    generationConfig: { temperature: 0.4, maxOutputTokens: 600 }
+    // maxOutputTokens: các model Gemini 3.x (như gemini-3.6-flash) mặc định
+    // bật "suy nghĩ ngầm" (thinking) và phần suy nghĩ đó CŨNG tính vào
+    // maxOutputTokens — nếu để budget thấp (như 600 cũ) sẽ bị ngốn hết vào
+    // suy nghĩ, khiến câu trả lời thật bị cắt cụt giữa chừng. Hạ
+    // thinkingLevel xuống 'low' (đủ dùng cho việc giải thích, không cần suy
+    // luận phức tạp) + nâng maxOutputTokens lên để chừa đủ chỗ cho câu trả
+    // lời đầy đủ.
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 1536,
+      thinkingConfig: { thinkingLevel: 'low' }
+    }
   };
 
   try{
