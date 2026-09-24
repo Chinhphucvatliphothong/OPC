@@ -664,6 +664,42 @@
       }
     }, [tab, student && student.id]);
 
+    // Nâng cấp CAT-lite (Luyện tập thích ứng) bằng AI — xem giải thích đầy
+    // đủ trong api/ai-adaptive-priority.js. Chỉ gọi AI 1 LẦN lúc BẮT ĐẦU 1
+    // lượt luyện (không gọi lại sau mỗi câu, để không làm chậm trải nghiệm
+    // làm bài thời gian thực). Trong lúc chờ AI trả lời, lượt luyện vẫn bắt
+    // đầu ngay bằng thuật toán rule-based cũ (pickAdaptiveQuestion không
+    // truyền priorityOrder) — khi AI trả lời xong, các câu TIẾP THEO sẽ tự
+    // dùng thứ tự ưu tiên mới. Nếu AI lỗi/không phản hồi, mọi thứ vẫn hoạt
+    // động y như trước (fallback an toàn, xem pickAdaptiveQuestion).
+    var aiAdaptiveState = React.useState({ priority: null, reason: null, loading: false });
+    var aiAdaptive = aiAdaptiveState[0];
+    var setAiAdaptive = aiAdaptiveState[1];
+
+    function fetchAiAdaptivePriority(seedMastery){
+      if(!window.PrepScholarEngine || !window.PrepScholarEngine.getWeakestNanoPoints || !student) return;
+      var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 15, seedMastery)
+        .filter(function(n){ return n.mastery < window.PrepScholarEngine.MASTERY_GREEN_MIN; });
+      if(weakest.length < 2) return; // quá ít Tag để việc sắp xếp lại có ý nghĩa
+      setAiAdaptive({ priority: null, reason: null, loading: true });
+      fetch('/api/ai-adaptive-priority', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidates: weakest.map(function(n){ return { id: n.id, name: n.name, topicName: n.topicName, baiName: n.baiName, mastery: n.mastery }; })
+        })
+      }).then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
+        .then(function(result){
+          if(result.ok && result.data && Array.isArray(result.data.priority) && result.data.priority.length){
+            setAiAdaptive({ priority: result.data.priority, reason: result.data.reason || null, loading: false });
+          } else {
+            setAiAdaptive({ priority: null, reason: null, loading: false });
+          }
+        }).catch(function(){
+          setAiAdaptive({ priority: null, reason: null, loading: false });
+        });
+    }
+
     // Đếm ngược thời gian khi đang làm bài
     React.useEffect(function(){
       if(!examSession || examSession.isSubmitted) return;
@@ -949,6 +985,9 @@
       setAdaptiveNanoMastery(seedMastery);
       setAdaptiveChecked(false);
       setAdaptiveLastResult(null);
+      // Xin AI sắp xếp ưu tiên Tag cho các câu TIẾP THEO (không chặn câu đầu
+      // tiên — câu đầu luôn dùng ngay thuật toán rule-based ở trên).
+      fetchAiAdaptivePriority(seedMastery);
     }
 
     // Chấm NGAY câu hỏi thích ứng hiện tại (câu cuối cùng trong
@@ -984,7 +1023,7 @@
       }
       var askedIds = {};
       examSession.questions.forEach(function(q){ askedIds[q.id] = true; });
-      var nextQ = window.PrepScholarEngine.pickAdaptiveQuestion(adaptiveNanoMastery, askedIds);
+      var nextQ = window.PrepScholarEngine.pickAdaptiveQuestion(adaptiveNanoMastery, askedIds, aiAdaptive.priority);
       if(!nextQ){
         handleSubmitExam(); // Hết câu hỏi khả dụng — vẫn chấm/lưu bình thường với số câu đã làm
         return;
@@ -1451,7 +1490,9 @@
                 h('div', { className: 'ps-exam-header' },
                   h('div', { className: 'ps-exam-title-group' },
                     h('h3', null, '⚡ ' + examSession.title),
-                    h('p', null, 'Câu ' + qNo + ' / ' + ADAPTIVE_TARGET_COUNT + ' · Hệ thống tự chọn câu tiếp theo ngay sau khi bạn trả lời')
+                    h('p', null, 'Câu ' + qNo + ' / ' + ADAPTIVE_TARGET_COUNT + ' · Hệ thống tự chọn câu tiếp theo ngay sau khi bạn trả lời'),
+                    aiAdaptive.loading ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 OPC Learning AI đang phân tích để định hướng lộ trình…') : null,
+                    !aiAdaptive.loading && aiAdaptive.reason ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 OPC Learning AI: ' + aiAdaptive.reason) : null
                   ),
                   h('button', {
                     type: 'button',

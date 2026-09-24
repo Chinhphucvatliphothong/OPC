@@ -441,8 +441,15 @@
   // nanoMastery: mastery hiện tại từng Tag (được truyền vào + cập nhật dần
   // ở phía UI qua bumpNanoMastery sau mỗi câu, không đợi vòng lưu Firestore).
   // askedIds: {qId: true} các câu ĐÃ hỏi trong lượt này — không lặp câu.
+  // priorityOrder: (TUỲ CHỌN, thêm 24/9/2026) mảng nanoId theo thứ tự AI đã
+  // suy luận nên ưu tiên (xem api/ai-adaptive-priority.js + startAdaptiveDrill
+  // trong prepscholar-ui.js) — gọi 1 LẦN lúc bắt đầu lượt luyện, KHÔNG gọi
+  // lại sau mỗi câu (để không làm chậm trải nghiệm làm bài thời gian thực).
+  // Nếu không truyền, hoặc AI chưa kịp trả lời, hoặc không còn Tag nào
+  // trong priorityOrder còn câu khả dụng, hàm TỰ ĐỘNG rơi về đúng thuật
+  // toán cũ (sắp theo % thấp nhất) — không bao giờ chặn luồng làm bài.
   // ============================================================
-  function pickAdaptiveQuestion(nanoMastery, askedIds){
+  function pickAdaptiveQuestion(nanoMastery, askedIds, priorityOrder){
     if(!QUESTION_BANK.length) return null;
     nanoMastery = nanoMastery || {};
     askedIds = askedIds || {};
@@ -462,7 +469,20 @@
       var vb = nanoMastery[b] != null ? nanoMastery[b] : MASTERY_NEUTRAL_START;
       return va - vb;
     });
-    var targetNanoId = availableNanoIds[0];
+
+    // Nếu có priorityOrder từ AI: ưu tiên Tag đầu tiên trong đó mà vẫn còn
+    // câu khả dụng (chưa hỏi hết) — thay cho việc chỉ chọn theo số % thấp
+    // nhất. Các Tag không nằm trong priorityOrder (ví dụ AI không được gửi
+    // hết danh sách) vẫn dùng đúng thứ tự cũ làm phương án dự phòng.
+    var targetNanoId = null;
+    if(Array.isArray(priorityOrder) && priorityOrder.length){
+      var availableSet = {};
+      availableNanoIds.forEach(function(id){ availableSet[id] = true; });
+      for(var i = 0; i < priorityOrder.length; i++){
+        if(availableSet[priorityOrder[i]]){ targetNanoId = priorityOrder[i]; break; }
+      }
+    }
+    if(!targetNanoId) targetNanoId = availableNanoIds[0];
     var targetMastery = nanoMastery[targetNanoId] != null ? nanoMastery[targetNanoId] : MASTERY_NEUTRAL_START;
 
     var preferredLevels = targetMastery < MASTERY_YELLOW_MIN ? ['M1', 'M2'] :

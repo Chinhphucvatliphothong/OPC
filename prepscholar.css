@@ -1096,6 +1096,16 @@
   opacity: 0.75;
 }
 
+/* Dòng ghi chú nhỏ trong màn làm bài Luyện tập thích ứng, báo khi AI đã
+   xong việc sắp xếp lại thứ tự ưu tiên Tag (xem fetchAiAdaptivePriority
+   trong prepscholar-ui.js, gọi api/ai-adaptive-priority.js). */
+.ps-ai-adaptive-note {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: var(--accent-strong);
+  font-style: italic;
+}
+
 /* Banner cảnh báo / thông tin — dùng cho màn đăng nhập & trạng thái ngân
    hàng đề thật trong PrepScholarApp (đồng bộ style với admin.html). */
 .banner{ display:flex; align-items:flex-start; gap:10px; padding:13px 16px; border-radius:12px; font-size:0.85rem; line-height:1.55; }
