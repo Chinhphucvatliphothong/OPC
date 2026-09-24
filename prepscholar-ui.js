@@ -381,6 +381,7 @@
         var attempts = results[0] || [];
         var assigned = results[1] || [];
         setAssignedExams(assigned);
+        setAttempts(attempts);
         if(!attempts.length) return;
         var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
         setStudent(function(prev){
@@ -555,6 +556,15 @@
     var assignedExamsState = React.useState([]);
     var assignedExams = assignedExamsState[0];
     var setAssignedExams = assignedExamsState[1];
+
+    // Lịch sử làm bài thật (attempts) — GIỮ LẠI trong state (không chỉ dùng
+    // tạm trong Promise ở hydrateAndEnter/handleSubmitExam như trước) để tab
+    // "Đề được giao" so khớp assignedExamId ➔ đề nào đã hoàn thành, điểm bao
+    // nhiêu, và dựng lại màn hình "Xem lại bài làm" (xem
+    // startAssignedExamReview). Đã sắp xếp mới nhất trước (OPC_LIVE.loadAttempts).
+    var attemptsState = React.useState([]);
+    var attempts = attemptsState[0];
+    var setAttempts = attemptsState[1];
 
     // OPC Learning AI (gia sư ảo cá nhân hoá) — trạng thái giải thích AI theo TỪNG câu
     // sai trong Sổ tay câu sai, key theo item.id: {loading, text, error}.
@@ -779,6 +789,30 @@
       setCurQIdx(0);
       setTimeLeft(questions.length * 120);
       setScoreResult(null);
+      setMasteryImpact(null);
+    }
+
+    // "Xem lại bài làm" của MỘT đề được giao đã hoàn thành — KHÔNG tạo lượt
+    // làm bài mới, chỉ dựng lại đúng màn hình KẾT QUẢ (đã dùng chung với lúc
+    // vừa nộp bài) từ dữ liệu đã lưu: chấm lại bằng scoreExam(questions,
+    // attempt.answers) — attempt.answers là object userAnswers gốc lúc nộp
+    // bài (xem handleSubmitExam), nên kết quả tính ra giống hệt lúc đó, không
+    // cần lưu lại câu hỏi. reviewOnly:true để màn hình KẾT QUẢ hiện đúng ngữ
+    // cảnh "xem lại" (có thêm nút Làm lại) thay vì như vừa nộp bài xong.
+    function startAssignedExamReview(ae, attempt){
+      var questions = ae.questions || [];
+      if(!questions.length || !attempt || !attempt.answers) return;
+      var scored = window.PrepScholarEngine.scoreExam(questions, attempt.answers || {});
+      setExamSession({
+        type: 'assigned',
+        title: ae.title || 'Đề cá nhân hóa được giao',
+        questions: questions,
+        isSubmitted: true,
+        reviewOnly: true,
+        assignedExamId: ae.id
+      });
+      setUserAnswers(attempt.answers || {});
+      setScoreResult(scored);
       setMasteryImpact(null);
     }
 
@@ -1156,6 +1190,15 @@
           topicStats: scored.topicStats,
           wrongQuestions: wrongQuestions,
           rightQuestions: rightQuestions,
+          // answers: THÊM 24/9/2026 — lưu ĐÚNG object userAnswers (câu I: key
+          // đã chọn, câu II: {stmtKey:true/false}, câu III: chuỗi số đã điền)
+          // dùng nguyên để chấm lại. KHÔNG lưu lại câu hỏi (đã có sẵn trong
+          // ngân hàng đề/ae.questions) — chỉ cần object này + danh sách câu
+          // hỏi gốc là scoreExam() tính lại được y hệt lúc nộp bài, phục vụ
+          // màn hình "Xem lại bài làm" của đề được giao (xem
+          // startAssignedExamReview bên dưới). Lượt làm bài TRƯỚC 24/9/2026
+          // không có trường này — UI tự ẩn nút "Xem lại", chỉ hiện điểm số.
+          answers: userAnswers,
           timeAllocatedSec: (examSession.initialTimeSec != null) ? examSession.initialTimeSec : null,
           timeUsedSec: (examSession.initialTimeSec != null) ? Math.max(0, examSession.initialTimeSec - timeLeft) : null
         };
@@ -1164,6 +1207,7 @@
           return window.OPC_LIVE.loadAttempts(studentId);
         }).then(function(attempts){
           if(!attempts) return;
+          setAttempts(attempts);
           var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
           setStudent(function(prev){
             if(!prev || prev.id !== studentId) return prev;
@@ -1275,6 +1319,13 @@
 
     // Tính overall mastery
     var avgMastery = Math.round((student.mastery['nhiet'] + student.mastery['khi'] + student.mastery['tu-truong'] + student.mastery['hat-nhan']) / 4);
+
+    // Số đề được giao CHƯA làm — dùng để "làm nổi bật" tab Đề được giao (tab
+    // đổi màu/nhấp nháy nhẹ) + hiện banner nhắc trên Trang chủ, để học sinh
+    // không bỏ sót đề thầy cô vừa giao riêng cho mình.
+    var pendingAssignedCount = assignedExams.filter(function(ae){
+      return !attempts.some(function(a){ return a.assignedExamId === ae.id; });
+    }).length;
 
     // Đang ở trong quy trình Vá lỗi khép kín (bước 1/2 chưa có examSession,
     // hoặc bước 3 đang làm bài chưa nộp) → khoá Hồ sơ + Chỉ số + Điều hướng,
@@ -1390,12 +1441,13 @@
         ),
         h('button', {
           type: 'button',
-          className: 'ps-tab-btn ' + (tab === 'assigned' ? 'active' : ''),
+          className: 'ps-tab-btn ' + (tab === 'assigned' ? 'active' : '') + (pendingAssignedCount ? ' has-pending' : ''),
           title: 'Các đề thầy cô đã giao riêng cho em, dựa trên lộ trình cá nhân hóa.',
           onClick: function(){ setTab('assigned'); setExamSession(null); }
         },
           '📋 Đề được giao',
-          assignedExams.length ? h('span', { className: 'ps-tab-badge' }, assignedExams.length) : null
+          pendingAssignedCount ? h('span', { className: 'ps-tab-badge pending-pulse' }, pendingAssignedCount) :
+            (assignedExams.length ? h('span', { className: 'ps-tab-badge' }, assignedExams.length) : null)
         )
       )
       ), // đóng div "chrome" (Hồ sơ + Chỉ số + Điều hướng, ẩn khi lockedMode)
@@ -1411,7 +1463,8 @@
           // KẾT QUẢ VÀ LỜI GIẢI CHI TIẾT
           h('div', { className: 'ps-exam-screen' },
             h('div', { className: 'ps-result-banner' },
-              h('div', { style: { fontSize: '1rem', color: 'var(--muted)', fontWeight: 700, marginBottom: '6px' } }, 'BÁO CÁO KẾT QUẢ THÍCH ỨNG PREPSCHOLAR'),
+              h('div', { style: { fontSize: '1rem', color: 'var(--muted)', fontWeight: 700, marginBottom: '6px' } },
+                examSession.reviewOnly ? '👁 XEM LẠI BÀI LÀM ĐÃ NỘP' : 'BÁO CÁO KẾT QUẢ THÍCH ỨNG PREPSCHOLAR'),
               h('div', { className: 'ps-result-score-val' }, scoreResult.scaledScore10.toFixed(2) + ' / 10'),
               h('div', { className: 'ps-result-sub' },
                 'Đúng ' + scoreResult.correctCount + ' / ' + scoreResult.totalQuestions + ' câu · ' +
@@ -1419,6 +1472,16 @@
               ),
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
               h('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' } },
+                examSession.reviewOnly ? h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  onClick: function(){
+                    if(confirm('Làm lại đề này? Lượt làm mới sẽ được tính là 1 lượt luyện tập riêng, không thay lượt cũ.')){
+                      var ae = assignedExams.filter(function(x){ return x.id === examSession.assignedExamId; })[0];
+                      if(ae) startAssignedExam(ae);
+                    }
+                  }
+                }, '🔁 Làm lại đề này') :
                 (examSession && (examSession.type === 'diagnostic' || examSession.type === 'adaptive' || examSession.fromRemediation)) ? h('button', {
                   type: 'button',
                   className: 'btn btn-primary',
@@ -1435,8 +1498,8 @@
                 h('button', {
                   type: 'button',
                   className: 'btn btn-secondary',
-                  onClick: function(){ setExamSession(null); setTab('mistakes'); }
-                }, 'Xem Sổ tay câu sai (' + mistakeLog.length + ')')
+                  onClick: function(){ setExamSession(null); setTab(examSession.reviewOnly ? 'assigned' : 'mistakes'); }
+                }, examSession.reviewOnly ? '📋 Quay lại Đề được giao' : 'Xem Sổ tay câu sai (' + mistakeLog.length + ')')
               )
             ),
 
@@ -2033,7 +2096,13 @@
                   h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem', marginTop: '4px' } }, 'Khi thầy cô tạo đề theo lộ trình cá nhân hóa cho em, đề sẽ xuất hiện ở đây.')
                 )
               ) : (
-                assignedExams.map(function(ae){
+                // Đề CHƯA làm lên trước, đề ĐÃ làm xuống dưới — để đề cần làm
+                // luôn dễ thấy nhất thay vì lẫn giữa các đề đã xong.
+                assignedExams.slice().sort(function(a, b){
+                  var aDone = attempts.some(function(x){ return x.assignedExamId === a.id; }) ? 1 : 0;
+                  var bDone = attempts.some(function(x){ return x.assignedExamId === b.id; }) ? 1 : 0;
+                  return aDone - bDone;
+                }).map(function(ae){
                   var GOAL_LABEL = {
                     foundation: 'Củng cố nền tảng',
                     breakthrough: 'Bứt phá điểm số',
@@ -2045,21 +2114,46 @@
                     var d = ae.createdAt && ae.createdAt.toDate ? ae.createdAt.toDate() : (ae.createdAt ? new Date(ae.createdAt) : null);
                     if(d && !isNaN(d.getTime())) createdLabel = d.toLocaleDateString('vi-VN');
                   }catch(e){}
-                  return h('div', { key: ae.id, className: 'ps-solution-card', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' } },
+                  // aeAttempts đã sắp mới nhất trước (OPC_LIVE.loadAttempts) —
+                  // aeAttempts[0] là lượt làm gần nhất của đúng đề này.
+                  var aeAttempts = attempts.filter(function(a){ return a.assignedExamId === ae.id; });
+                  var latest = aeAttempts[0] || null;
+                  var hasReviewDetail = !!(latest && latest.answers && Object.keys(latest.answers).length);
+                  return h('div', { key: ae.id, className: 'ps-solution-card ps-assigned-card ' + (latest ? 'done' : 'pending'), style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' } },
                     h('div', null,
-                      h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' } },
+                      h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' } },
                         h('span', { className: 'ps-q-badge' }, GOAL_LABEL[ae.goalProfile] || 'Cá nhân hóa'),
-                        h('b', { style: { fontSize: '0.95rem' } }, ae.title || 'Đề cá nhân hóa')
+                        h('b', { style: { fontSize: '0.95rem' } }, ae.title || 'Đề cá nhân hóa'),
+                        latest ? h('span', { className: 'ps-assigned-status done' }, '✅ Đã hoàn thành · ' + latest.scaledScore10.toFixed(2) + '/10') : h('span', { className: 'ps-assigned-status pending' }, '⏳ Chưa làm')
                       ),
                       h('div', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } },
                         (ae.totalQuestions || (ae.questions || []).length) + ' câu' + (createdLabel ? ' · Giao ngày ' + createdLabel : '')
                       )
                     ),
-                    h('button', {
-                      type: 'button',
-                      className: 'btn btn-primary',
-                      onClick: function(){ setTab('assigned'); startAssignedExam(ae); }
-                    }, 'Bắt đầu làm đề ➔')
+                    h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+                      !latest ? h('button', {
+                        type: 'button',
+                        className: 'btn btn-primary',
+                        onClick: function(){ setTab('assigned'); startAssignedExam(ae); }
+                      }, 'Bắt đầu làm đề ➔') : [
+                        hasReviewDetail ? h('button', {
+                          key: 'review',
+                          type: 'button',
+                          className: 'btn btn-primary',
+                          onClick: function(){ setTab('assigned'); startAssignedExamReview(ae, latest); }
+                        }, '👁 Xem lại bài làm') : null,
+                        h('button', {
+                          key: 'redo',
+                          type: 'button',
+                          className: hasReviewDetail ? 'btn btn-secondary' : 'btn btn-primary',
+                          onClick: function(){
+                            if(confirm('Làm lại đề "' + (ae.title || 'Đề cá nhân hóa') + '"? Lượt làm mới sẽ được tính là 1 lượt luyện tập riêng, không thay lượt cũ.')){
+                              setTab('assigned'); startAssignedExam(ae);
+                            }
+                          }
+                        }, '🔁 Làm lại')
+                      ]
+                    )
                   );
                 })
               )
@@ -2099,6 +2193,18 @@
             var greenCount = baiStatus.filter(function(b){ return b.status === 'green'; }).length;
 
             return h('div', null,
+              // Banner nhắc "Đề được giao" chưa làm — làm nổi bật ngay trên
+              // Trang chủ (thầy phản ánh mục này trước đây dễ bị bỏ sót vì
+              // chỉ có 1 số nhỏ trên tab). Chỉ hiện khi có ít nhất 1 đề CHƯA
+              // làm; bấm vào chuyển thẳng sang tab "Đề được giao".
+              pendingAssignedCount > 0 ? h('div', { className: 'ps-assigned-banner', onClick: function(){ setTab('assigned'); } },
+                h('span', { className: 'ps-assigned-banner-icon' }, '📋'),
+                h('div', { className: 'ps-assigned-banner-text' },
+                  h('b', null, pendingAssignedCount === 1 ? 'Thầy cô vừa giao cho em 1 đề luyện tập cá nhân hóa' : 'Thầy cô vừa giao cho em ' + pendingAssignedCount + ' đề luyện tập cá nhân hóa'),
+                  h('span', null, 'Bấm để xem và làm ngay ➔')
+                )
+              ) : null,
+
               // Thẻ Cấp độ/XP + Dự báo điểm THPT + Radar năng lực 5 chiều —
               // theo đúng thiết kế thầy gửi. 5 chiều Radar SUY RA TỰ ĐỘNG từ
               // dữ liệu làm bài thật (xem computeRadar5 trong prepscholar.js),

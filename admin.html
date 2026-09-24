@@ -305,6 +305,20 @@
   .sm-nano-preview-fill{ height:100%; border-radius:4px; }
   .sm-nano-preview-pct{ font-family:"IBM Plex Mono",monospace; font-size:0.74rem; font-weight:700; color:var(--ink-2); width:34px; text-align:right; flex:none; }
 
+  /* Đề cá nhân hóa đã giao + Lịch sử làm bài trong hồ sơ học sinh — THÊM 24/9/2026 */
+  .sm-assigned-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .sm-assigned-row:last-child{ border-bottom:none; }
+  .sm-assigned-row-main{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .sm-assigned-row-main b{ font-size:0.83rem; color:var(--ink); font-weight:600; }
+  .sm-assigned-row-meta{ font-size:0.74rem; color:var(--muted); }
+  .sm-assigned-pill{ font-size:0.72rem; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; flex:none; }
+  .sm-assigned-pill.done{ background:color-mix(in srgb, var(--good) 15%, transparent); color:var(--good); }
+  .sm-assigned-pill.pending{ background:color-mix(in srgb, var(--warning) 16%, transparent); color:var(--warning); }
+  .sm-history-table{ width:100%; border-collapse:collapse; font-size:0.78rem; margin-top:4px; }
+  .sm-history-table th{ text-align:left; color:var(--muted); font-weight:600; padding:5px 6px; border-bottom:1px solid var(--line); }
+  .sm-history-table td{ padding:6px 6px; border-bottom:1px solid var(--line); color:var(--ink-2); }
+  .sm-history-table tr:last-child td{ border-bottom:none; }
+
   /* Question list in modal */
   .eb-q-card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px; margin-top:12px; transition:border-color 150ms; }
   .eb-q-card:hover{ border-color:var(--ink-2); }
@@ -437,7 +451,8 @@
     var getFirestore = fsMod.getFirestore, collection = fsMod.collection, doc = fsMod.doc,
         addDoc = fsMod.addDoc, setDoc = fsMod.setDoc, updateDoc = fsMod.updateDoc,
         deleteDoc = fsMod.deleteDoc, onSnapshot = fsMod.onSnapshot, query = fsMod.query,
-        orderBy = fsMod.orderBy, serverTimestamp = fsMod.serverTimestamp, getDocs = fsMod.getDocs;
+        orderBy = fsMod.orderBy, serverTimestamp = fsMod.serverTimestamp, getDocs = fsMod.getDocs,
+        limit = fsMod.limit;
     var getStorage = stMod.getStorage, ref = stMod.ref, uploadBytesResumable = stMod.uploadBytesResumable,
         getDownloadURL = stMod.getDownloadURL, deleteObject = stMod.deleteObject;
 
@@ -633,6 +648,25 @@
         var refDoc = doc(collection(db, 'students', studentId, 'assignedExams'));
         await setDoc(refDoc, Object.assign({}, examData, { createdAt: serverTimestamp() }));
         return refDoc;
+      }
+    };
+
+    // ================= Lịch sử làm bài (attempts) — ĐỌC cho trang admin =====
+    // THÊM 24/9/2026: trước đây admin.html chỉ đọc số liệu TỔNG HỢP qua
+    // "student_stats" (xem OPC.studentStats bên dưới), không đọc trực tiếp
+    // subcollection "attempts" của từng học sinh. Nay cần thêm để hiển thị
+    // "Lịch sử làm bài" + biểu đồ điểm số + trạng thái từng đề được giao
+    // trong hồ sơ 1 học sinh cụ thể (StudentsPanel) — chỉ đọc khi mở hồ sơ
+    // học sinh đó (subscribeForStudent), KHÔNG đọc toàn lớp cùng lúc để
+    // tránh tốn đọc Firestore không cần thiết. Đọc công khai, giống
+    // "attempts" bên students/{id}/attempts trong firestore.rules.
+    OPC.attempts = {
+      subscribeForStudent: function(studentId, onNext, onErr){
+        return onSnapshot(query(
+          collection(db, 'students', studentId, 'attempts'),
+          orderBy('createdAt', 'desc'),
+          limit(50)
+        ), onNext, onErr);
       }
     };
    }catch(err){
@@ -1367,6 +1401,73 @@
     );
   }
 
+  // ============= Biểu đồ điểm số (lịch sử làm bài) =============
+  // THÊM 24/9/2026: biểu đồ đường đơn giản (1 chuỗi số liệu — không cần chú
+  // giải màu, chỉ cần tiêu đề) vẽ điểm scaledScore10 theo thời gian, dùng
+  // trong hồ sơ học sinh (StudentsPanel). SVG viewBox cố định, scale tuyến
+  // tính 0-10 theo trục Y; điểm dữ liệu có hover để xem chính xác điểm/ngày
+  // (đúng tinh thần "luôn có lớp hover" của biểu đồ HTML/SVG). Nếu < 2 điểm
+  // dữ liệu thì không đủ để vẽ đường — hiện thông báo thay vì 1 chấm lẻ loi.
+  function ScoreHistoryChart(props){
+    var points = props.points || []; // [{label, score, date}], đã sắp CŨ -> MỚI
+    var hoverState = React.useState(null); var hoverIdx = hoverState[0], setHoverIdx = hoverState[1];
+    if(points.length < 2){
+      return h('p', { style: { color: 'var(--muted)', fontSize: '0.8rem', textAlign: 'center', padding: '18px 0' } },
+        'Cần ít nhất 2 lượt làm bài đã chấm điểm để vẽ biểu đồ xu hướng.');
+    }
+    var W = 560, H = 170, padL = 30, padR = 14, padT = 14, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = points.length;
+    function xAt(i){ return padL + (n === 1 ? plotW / 2 : (plotW * i) / (n - 1)); }
+    function yAt(score){ return padT + plotH - (Math.max(0, Math.min(10, score)) / 10) * plotH; }
+    var pathD = points.map(function(p, i){ return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.score).toFixed(1); }).join(' ');
+    var gridYs = [0, 2.5, 5, 7.5, 10];
+    var hovered = hoverIdx != null ? points[hoverIdx] : null;
+    return h('div', { style: { position: 'relative' } },
+      h('svg', { viewBox: '0 0 ' + W + ' ' + H, style: { width: '100%', height: 'auto', display: 'block', overflow: 'visible' } },
+        // Lưới ngang mờ (recessive grid) + nhãn trục Y
+        gridYs.map(function(gy){
+          var y = yAt(gy);
+          return h('g', { key: gy },
+            h('line', { x1: padL, x2: W - padR, y1: y, y2: y, stroke: 'var(--line)', strokeWidth: 1, opacity: 0.6 }),
+            h('text', { x: padL - 6, y: y + 3, fontSize: 8, textAnchor: 'end', fill: 'var(--muted)' }, gy.toFixed(gy % 1 ? 1 : 0))
+          );
+        }),
+        // Đường điểm số — nét mảnh 2px, đầu bo tròn theo mark spec
+        h('path', { d: pathD, fill: 'none', stroke: 'var(--accent-strong)', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+        // Vùng tô nhạt dưới đường để dễ đọc xu hướng
+        h('path', {
+          d: pathD + ' L' + xAt(n - 1).toFixed(1) + ',' + (padT + plotH) + ' L' + xAt(0).toFixed(1) + ',' + (padT + plotH) + ' Z',
+          fill: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+          stroke: 'none'
+        }),
+        // Điểm dữ liệu + vùng bắt hover (hit target lớn hơn chấm thật)
+        points.map(function(p, i){
+          var cx = xAt(i), cy = yAt(p.score);
+          return h('g', { key: i },
+            h('circle', { cx: cx, cy: cy, r: hoverIdx === i ? 4.5 : 3, fill: 'var(--accent-strong)', stroke: 'var(--surface)', strokeWidth: 1.5 }),
+            h('rect', {
+              x: cx - (plotW / n) / 2, y: padT, width: Math.max(6, plotW / n), height: plotH,
+              fill: 'transparent',
+              onMouseEnter: function(){ setHoverIdx(i); },
+              onMouseLeave: function(){ setHoverIdx(function(cur){ return cur === i ? null : cur; }); }
+            })
+          );
+        }),
+        // Nhãn trực tiếp cho điểm đầu/cuối (selective direct labels)
+        h('text', { x: xAt(0), y: yAt(points[0].score) - 8, fontSize: 8, textAnchor: 'start', fill: 'var(--ink-2)' }, points[0].score.toFixed(1)),
+        h('text', { x: xAt(n - 1), y: yAt(points[n - 1].score) - 8, fontSize: 8, textAnchor: 'end', fill: 'var(--accent-strong)', fontWeight: 700 }, points[n - 1].score.toFixed(1))
+      ),
+      hovered ? h('div', {
+        style: {
+          position: 'absolute', left: (xAt(hoverIdx) / W * 100) + '%', top: 0, transform: 'translate(-50%, -100%)',
+          background: 'var(--ink)', color: 'var(--surface)', fontSize: '0.72rem', padding: '4px 8px', borderRadius: '6px',
+          whiteSpace: 'nowrap', pointerEvents: 'none', marginTop: '-6px', zIndex: 2
+        }
+      }, hovered.label + ' · ' + hovered.score.toFixed(2) + '/10') : null
+    );
+  }
+
   function StudentsPanel(props){
     var OPCref = window.OPC;
     var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
@@ -1377,6 +1478,23 @@
     var selectedState = React.useState(null); var selected = selectedState[0], setSelected = selectedState[1];
     var addOpenState = React.useState(false); var addOpen = addOpenState[0], setAddOpen = addOpenState[1];
     var formState = React.useState(blankStudentForm); var form = formState[0], setForm = formState[1];
+
+    // Đề cá nhân hóa đã giao + Lịch sử làm bài của ĐÚNG học sinh đang mở hồ
+    // sơ (selected) — THÊM 24/9/2026. Chỉ subscribe khi modal "Xem hồ sơ" mở
+    // (selected.id đổi), huỷ subscribe khi đóng modal/đổi học sinh khác, để
+    // không giữ listener không cần thiết cho cả lớp cùng lúc.
+    var selectedAssignedState = React.useState([]); var selectedAssigned = selectedAssignedState[0], setSelectedAssigned = selectedAssignedState[1];
+    var selectedAttemptsState = React.useState([]); var selectedAttempts = selectedAttemptsState[0], setSelectedAttempts = selectedAttemptsState[1];
+    React.useEffect(function(){
+      if(!selected || !selected.id || !OPCref){ setSelectedAssigned([]); setSelectedAttempts([]); return; }
+      var unsub1 = OPCref.assignedExams ? OPCref.assignedExams.subscribeForStudent(selected.id, function(snap){
+        setSelectedAssigned(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); }));
+      }, function(err){ console.error('Lỗi tải đề được giao của học sinh:', err); }) : null;
+      var unsub2 = OPCref.attempts ? OPCref.attempts.subscribeForStudent(selected.id, function(snap){
+        setSelectedAttempts(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); }));
+      }, function(err){ console.error('Lỗi tải lịch sử làm bài của học sinh:', err); }) : null;
+      return function(){ if(unsub1) unsub1(); if(unsub2) unsub2(); };
+    }, [selected && selected.id]);
 
     // CSV Bulk Import State
     var importOpenState = React.useState(false); var importOpen = importOpenState[0], setImportOpen = importOpenState[1];
@@ -1873,6 +1991,61 @@
           h('p',null, h('b',null,'Tiến độ đạt mục tiêu điểm: '), h('span',{className:'sm-mono-pill'}, selKpi.targetProgressPct)),
           h('p',null, h('b',null,'Chuyên đề trọng tâm cần ôn: '), h('span',{style:{color:'var(--warning)', fontWeight:600}}, selKpi.weakTopic)),
           h('p',null, h('b',null,'Số câu sai trong sổ tay: '), h('span',{className:'sm-mono-pill'}, selKpi.mistakes + ' câu'))),
+
+        // ============= Biểu đồ điểm số =============
+        // THÊM 24/9/2026 — vẽ từ selectedAttempts (subscribe khi mở hồ sơ,
+        // xem useEffect ở đầu StudentsPanel), CHỈ tính các lượt có điểm số
+        // (scaledScore10 là số) để tránh vẽ nhầm lượt lỗi/chưa chấm.
+        h('div',{className:'sm-info-block'},
+          h('div',{className:'sm-info-title'}, '📈 Biểu đồ điểm số theo thời gian'),
+          h(ScoreHistoryChart, { points: selectedAttempts
+            .filter(function(a){ return typeof a.scaledScore10 === 'number'; })
+            .slice() // tránh đảo ngược mảng gốc (đang sắp mới->cũ từ Firestore)
+            .reverse() // CŨ -> MỚI để vẽ theo đúng chiều thời gian
+            .slice(-20) // chỉ 20 lượt gần nhất cho biểu đồ dễ đọc
+            .map(function(a){ return { label: fmtDate(a.createdAt), score: a.scaledScore10 }; })
+          })
+        ),
+
+        // ============= Đề cá nhân hóa đã giao =============
+        // THÊM 24/9/2026 — trạng thái làm/chưa làm + điểm từng đề, để thầy cô
+        // biết ngay không cần hỏi học sinh. Nguồn: selectedAssigned (đề đã
+        // giao) so khớp assignedExamId với selectedAttempts (lượt đã nộp).
+        h('div',{className:'sm-info-block'},
+          h('div',{className:'sm-info-title'}, '📋 Đề cá nhân hóa đã giao (' + selectedAssigned.length + ')'),
+          !selectedAssigned.length ? h('p',{style:{color:'var(--muted)', fontSize:'0.8rem'}}, 'Chưa giao đề cá nhân hóa nào cho học sinh này — xem panel "Tạo đề theo lộ trình cá nhân hóa".') :
+            selectedAssigned.map(function(ae){
+              var latest = selectedAttempts.filter(function(a){ return a.assignedExamId === ae.id; })[0] || null;
+              return h('div',{key:ae.id, className:'sm-assigned-row'},
+                h('div',{className:'sm-assigned-row-main'},
+                  h('b',null, ae.title || 'Đề cá nhân hóa'),
+                  h('span',{className:'sm-assigned-row-meta'}, (ae.totalQuestions || (ae.questions||[]).length) + ' câu · Giao ' + fmtDate(ae.createdAt))
+                ),
+                latest ? h('span',{className:'sm-assigned-pill done'}, '✅ ' + latest.scaledScore10.toFixed(2) + '/10') : h('span',{className:'sm-assigned-pill pending'}, '⏳ Chưa làm')
+              );
+            })
+        ),
+
+        // ============= Lịch sử làm bài =============
+        // THÊM 24/9/2026 — bảng các lượt luyện tập gần nhất (mọi loại: đầu
+        // vào/thích ứng/drill/đề giao/sửa câu sai), không chỉ riêng đề giao.
+        h('div',{className:'sm-info-block'},
+          h('div',{className:'sm-info-title'}, '🕓 Lịch sử làm bài gần đây'),
+          !selectedAttempts.length ? h('p',{style:{color:'var(--muted)', fontSize:'0.8rem'}}, 'Chưa có lượt luyện tập nào.') :
+            h('table',{className:'sm-history-table'},
+              h('thead',null, h('tr',null, h('th',null,'Ngày'), h('th',null,'Loại'), h('th',null,'Điểm'), h('th',null,'Đúng/Tổng'))),
+              h('tbody',null, selectedAttempts.slice(0, 15).map(function(a){
+                var TYPE_LABEL = { diagnostic:'Kiểm tra đầu vào', adaptive:'Luyện tập thích ứng', drill:'Luyện trọng tâm', assigned:'Đề được giao', mistakes:'Sửa câu sai' };
+                return h('tr',{key:a.id},
+                  h('td',null, fmtDate(a.createdAt)),
+                  h('td',null, TYPE_LABEL[a.type] || a.type || '—'),
+                  h('td',null, typeof a.scaledScore10 === 'number' ? a.scaledScore10.toFixed(2) : '—'),
+                  h('td',null, (a.correctCount != null ? a.correctCount : '—') + '/' + (a.totalQuestions != null ? a.totalQuestions : '—'))
+                );
+              }))
+            )
+        ),
+
         h('div',{className:'sm-info-block'},
           h('div',{className:'sm-info-title'}, '🔐 Thông tin đăng nhập (chưa dùng để đăng nhập thật)'),
           h('p',null, h('b',null,'Tên đăng nhập: '), h('span',{className:'sm-mono-pill'}, selected.username)),
