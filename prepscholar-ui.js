@@ -549,7 +549,7 @@
     var assignedExams = assignedExamsState[0];
     var setAssignedExams = assignedExamsState[1];
 
-    // Gia sư AI (OPC Learning AI) — trạng thái giải thích AI theo TỪNG câu
+    // OPC Learning AI (gia sư ảo cá nhân hoá) — trạng thái giải thích AI theo TỪNG câu
     // sai trong Sổ tay câu sai, key theo item.id: {loading, text, error}.
     // Gọi Vercel Serverless Function /api/ai-tutor (giữ API key Gemini ở
     // server, xem api/ai-tutor.js) — KHÔNG gọi thẳng Gemini từ trình duyệt.
@@ -562,7 +562,7 @@
       if(!q || !q.stem){
         setAiTutor(function(prev){
           var next = Object.assign({}, prev);
-          next[item.id] = { loading: false, text: null, error: 'Không tìm thấy đủ nội dung câu hỏi để hỏi Gia sư AI.' };
+          next[item.id] = { loading: false, text: null, error: 'Không tìm thấy đủ nội dung câu hỏi để hỏi OPC Learning AI.' };
           return next;
         });
         return;
@@ -594,14 +594,14 @@
             if(result.ok && result.data && result.data.explanation){
               next[item.id] = { loading: false, text: result.data.explanation, error: null };
             } else {
-              next[item.id] = { loading: false, text: null, error: (result.data && result.data.error) || 'Gia sư AI đang bận, thử lại sau.' };
+              next[item.id] = { loading: false, text: null, error: (result.data && result.data.error) || 'OPC Learning AI đang bận, thử lại sau.' };
             }
             return next;
           });
         }).catch(function(){
           setAiTutor(function(prev){
             var next = Object.assign({}, prev);
-            next[item.id] = { loading: false, text: null, error: 'Không kết nối được tới Gia sư AI — kiểm tra mạng và thử lại.' };
+            next[item.id] = { loading: false, text: null, error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng và thử lại.' };
             return next;
           });
         });
@@ -1888,15 +1888,35 @@
                     ),
                     h('button', {
                       type: 'button',
-                      className: 'btn btn-secondary ps-ai-tutor-btn',
+                      className: 'ps-ai-tutor-trigger' + ((ai && ai.loading) ? ' loading' : ''),
                       disabled: !!(ai && ai.loading),
                       onClick: function(){ askAiTutor(item); }
-                    }, (ai && ai.loading) ? '🤖 Gia sư AI đang soạn giải thích…' : '🤖 Hỏi Gia sư AI giải thích lại'),
-                    ai && ai.error ? h('div', { className: 'ps-ai-tutor-box error' }, ai.error) : null,
-                    ai && ai.text ? h('div', { className: 'ps-ai-tutor-box' },
-                      h('div', { className: 'ps-ai-tutor-label' }, '🤖 Gia sư AI (OPC Learning) giải thích'),
+                    },
+                      h('span', { className: 'ps-ai-tutor-trigger-avatar' }, '🦉'),
+                      h('span', { className: 'ps-ai-tutor-trigger-text' },
+                        h('b', null, (ai && ai.loading) ? 'OPC Learning AI đang soạn câu trả lời…' : 'Hỏi OPC Learning AI'),
+                        !(ai && ai.loading) ? h('span', { className: 'ps-ai-tutor-trigger-sub' }, 'Giải thích lại vì sao bạn làm sai') : null
+                      )
+                    ),
+                    ai && ai.loading ? h('div', { className: 'ps-ai-tutor-card typing' },
+                      h('span', { className: 'ps-ai-tutor-avatar sm' }, '🦉'),
+                      h('span', { className: 'ps-ai-tutor-dots' }, h('span'), h('span'), h('span')),
+                      h('span', { className: 'ps-ai-tutor-typing-text' }, 'OPC Learning AI đang soạn câu trả lời…')
+                    ) : null,
+                    ai && !ai.loading && ai.error ? h('div', { className: 'ps-ai-tutor-card error' },
+                      h('span', { className: 'ps-ai-tutor-card-icon' }, '⚠️'),
+                      h('span', null, ai.error)
+                    ) : null,
+                    ai && !ai.loading && ai.text ? h('div', { className: 'ps-ai-tutor-card' },
+                      h('div', { className: 'ps-ai-tutor-card-head' },
+                        h('span', { className: 'ps-ai-tutor-avatar' }, '🦉'),
+                        h('div', null,
+                          h('div', { className: 'ps-ai-tutor-name' }, 'OPC Learning AI'),
+                          h('div', { className: 'ps-ai-tutor-tag' }, 'Gia sư ảo cá nhân hoá')
+                        )
+                      ),
                       h('p', { className: 'ps-ai-tutor-text' }, ai.text),
-                      h('div', { className: 'ps-ai-tutor-disclaimer' }, 'Nội dung do AI tạo ra, có thể có sai sót — nên đối chiếu lại với lời giải hoặc hỏi thêm thầy cô.')
+                      h('div', { className: 'ps-ai-tutor-disclaimer' }, '✦ Nội dung do AI tạo ra, có thể có sai sót — nên đối chiếu lại với lời giải hoặc hỏi thêm thầy cô.')
                     ) : null
                   );
                 })
