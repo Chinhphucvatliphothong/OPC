@@ -9,24 +9,28 @@
  *      thêm học sinh trong admin (nút "🔄 Đồng bộ đăng nhập").
  *   2) Nạp ngân hàng đề thật (collection "de_thi") thay cho câu hỏi minh hoạ.
  *
- * GHI CHÚ BẢO MẬT (đọc kỹ trước khi mở rộng):
- * Đây là cách đăng nhập ĐƠN GIẢN — so khớp username/mật khẩu (dạng chữ
- * thường, không mã hoá) ngay trên trình duyệt — KHÔNG phải Firebase
- * Authentication thật. Để làm được điều này, firestore.rules phải cho
- * phép đọc công khai (get — tức là biết đúng ID/username mới đọc được,
- * KHÔNG cho liệt kê "list" toàn bộ danh sách) 2 collection "usernames" và
- * "students", và đọc công khai toàn bộ "de_thi" (vì chưa có Auth thật để
- * giới hạn theo từng học sinh). Nghĩa là ai có đúng tên đăng nhập của một
- * em học sinh vẫn có thể dò mật khẩu (không giới hạn số lần thử). Đây là
- * đánh đổi CHỦ ĐỘNG chọn để triển khai nhanh — khi cần an toàn hơn, nên
- * chuyển "loginStudent" sang gọi Firebase Authentication thật (email/mật
- * khẩu, có giới hạn số lần thử phía server) — chỉ cần sửa trong file này,
- * không cần sửa giao diện prepscholar-ui.js.
+ * SỬA 25/9/2026 — chuyển sang Firebase Authentication THẬT (trước khi mở
+ * công khai ra thị trường): "loginStudent" giờ gọi api/student-login.js
+ * (server, dùng Firebase Admin SDK kiểm tra username/mật khẩu — không lộ
+ * qua firestore.rules nữa) để lấy 1 Custom Token, rồi ký vào phiên Firebase
+ * Auth thật bằng signInWithCustomToken. Từ đây firestore.rules mới biết
+ * chắc chắn request.auth.uid == đúng studentId, nên khoá được: ngân hàng đề
+ * + hồ sơ học sinh không còn đọc công khai (không cần đăng nhập) được nữa,
+ * mỗi em chỉ đọc/ghi đúng dữ liệu của chính mình (xem firestore.rules).
+ * Phiên đăng nhập giờ do chính Firebase Auth SDK lưu lại (bền hơn hẳn
+ * sessionStorage cũ — sống sót qua cả việc đóng hẳn trình duyệt, không chỉ
+ * trong 1 tab), nên "resumeSession" chỉ cần chờ onAuthStateChanged báo lại.
+ * KHÔNG cần sửa gì ở prepscholar-ui.js cho phần đăng nhập/đăng xuất — vẫn
+ * gọi đúng loginStudent/resumeSession/logoutStudent như cũ (đúng như ghi
+ * chú cũ đã tính trước: "chỉ cần sửa trong file này").
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, query, orderBy, limit
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {
+  getAuth, onAuthStateChanged, signInWithCustomToken, signOut
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 var firebaseConfig = {
   apiKey: "AIzaSyDurMtOnC6ghLYFIRBteHL348i-D983oRk",
@@ -40,8 +44,7 @@ var firebaseConfig = {
 
 var app = initializeApp(firebaseConfig);
 var db = getFirestore(app);
-
-var SESSION_KEY = 'opc_student_session_v1';
+var auth = getAuth(app);
 
 // ================= Đăng nhập học sinh =================
 async function loginStudent(usernameRaw, passwordRaw){
@@ -51,46 +54,48 @@ async function loginStudent(usernameRaw, passwordRaw){
     return { ok: false, error: 'Vui lòng nhập đủ tên đăng nhập và mật khẩu.' };
   }
   try{
-    var mapSnap = await getDoc(doc(db, 'usernames', username));
-    if(!mapSnap.exists()){
-      return { ok: false, error: 'Không tìm thấy tài khoản này. Kiểm tra lại tên đăng nhập hoặc liên hệ thầy cô.' };
+    var res = await fetch('/api/student-login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username, password: password })
+    });
+    var data = await res.json().catch(function(){ return {}; });
+    if(!res.ok || !data || !data.ok || !data.token){
+      return { ok: false, error: (data && data.error) || 'Đăng nhập thất bại — thử lại sau ít phút.' };
     }
-    var studentId = (mapSnap.data() || {}).studentId;
-    var stuSnap = studentId ? await getDoc(doc(db, 'students', studentId)) : null;
-    if(!stuSnap || !stuSnap.exists()){
+    await signInWithCustomToken(auth, data.token);
+    var stuSnap = await getDoc(doc(db, 'students', data.studentId));
+    if(!stuSnap.exists()){
       return { ok: false, error: 'Tài khoản không hợp lệ — liên hệ thầy cô để được hỗ trợ.' };
     }
-    var student = Object.assign({ id: stuSnap.id }, stuSnap.data());
-    if(String(student.password || '') !== password){
-      return { ok: false, error: 'Sai mật khẩu. Kiểm tra lại hoặc liên hệ thầy cô để được cấp lại.' };
-    }
-    try{ sessionStorage.setItem(SESSION_KEY, JSON.stringify({ studentId: student.id, username: username })); }catch(e){}
-    return { ok: true, student: student };
+    return { ok: true, student: Object.assign({ id: stuSnap.id }, stuSnap.data()) };
   }catch(e){
     console.error('Lỗi đăng nhập học sinh:', e);
-    // "permission-denied" gần như luôn có nghĩa là firestore.rules mới CHƯA
-    // được dán/Publish trong Firebase Console — báo rõ để dễ tự chẩn đoán,
-    // thay vì chỉ nói chung chung "lỗi kết nối".
-    if(e && e.code === 'permission-denied'){
-      return { ok: false, error: 'Hệ thống chưa cho phép đăng nhập (firestore.rules chưa được cập nhật/Publish trong Firebase Console). Báo thầy cô kiểm tra lại bước này.' };
-    }
     return { ok: false, error: 'Lỗi kết nối tới máy chủ (' + (e && (e.code || e.message) || 'không rõ') + ') — thử lại sau ít phút.' };
   }
 }
 
 function logoutStudent(){
-  try{ sessionStorage.removeItem(SESSION_KEY); }catch(e){}
+  signOut(auth).catch(function(e){ console.error('Lỗi đăng xuất:', e); });
+}
+
+// Chờ Firebase Auth SDK tự báo lại phiên đăng nhập cũ (đã lưu bền trên máy
+// học sinh từ lần đăng nhập trước — KHÔNG cần sessionStorage tự quản nữa).
+// onAuthStateChanged luôn gọi lại ít nhất 1 lần lúc khởi động (null nếu
+// chưa từng đăng nhập/đã đăng xuất), nên Promise này luôn resolve.
+function waitForAuthUser(){
+  return new Promise(function(resolve){
+    var unsub = onAuthStateChanged(auth, function(user){
+      unsub();
+      resolve(user);
+    });
+  });
 }
 
 async function resumeSession(){
-  var raw = null;
-  try{ raw = sessionStorage.getItem(SESSION_KEY); }catch(e){}
-  if(!raw) return null;
-  var parsed;
-  try{ parsed = JSON.parse(raw); }catch(e){ return null; }
-  if(!parsed || !parsed.studentId) return null;
   try{
-    var stuSnap = await getDoc(doc(db, 'students', parsed.studentId));
+    var user = await waitForAuthUser();
+    if(!user) return null;
+    var stuSnap = await getDoc(doc(db, 'students', user.uid));
     if(!stuSnap.exists()){ logoutStudent(); return null; }
     return Object.assign({ id: stuSnap.id }, stuSnap.data());
   }catch(e){
@@ -103,9 +108,10 @@ async function resumeSession(){
 // Lưu dưới subcollection students/{studentId}/attempts — KHÔNG lưu lại toàn
 // bộ nội dung câu hỏi (đã có sẵn trong ngân hàng đề), chỉ lưu điểm số + kết
 // quả đúng/sai từng câu (kèm nanoId/baiKey/topicKey) để tính lại mastery
-// thật. Ghi chú bảo mật: vì chưa có Auth thật, bất kỳ ai biết đúng studentId
-// (có được sau khi đăng nhập) đều ghi được — chấp nhận cùng đánh đổi với
-// phần đăng nhập ở trên.
+// thật. SỬA 25/9/2026: nhờ Firebase Auth thật (xem loginStudent ở trên),
+// firestore.rules giờ chỉ cho phép đúng học sinh đang đăng nhập (hoặc
+// admin) ghi vào đúng attempts của chính mình — không còn ai ghi được cho
+// người khác nữa.
 async function saveAttempt(studentId, attempt){
   if(!studentId) return { ok: false, error: 'Thiếu studentId.' };
   try{
@@ -198,9 +204,9 @@ async function submitRegistration(data){
 // computeStudentStatsFromAttempts trong prepscholar.js) rồi ghi đè lại sau
 // mỗi lần nộp bài — nhờ vậy trang admin (PrepScholarMonitoringPanel) chỉ cần
 // đọc 1 lần toàn bộ collection này thay vì đọc attempts của từng học sinh.
-// Ghi chú bảo mật: cùng đánh đổi như saveAttempt ở trên — chưa có Auth thật
-// nên tạm mở ghi theo đúng studentId (xem match /student_stats/{studentId}
-// trong firestore.rules).
+// SỬA 25/9/2026: firestore.rules giờ chỉ cho phép đúng học sinh đang đăng
+// nhập ghi vào đúng student_stats của chính mình (request.auth.uid ==
+// studentId) — xem match /student_stats/{studentId} trong firestore.rules.
 async function saveStudentStats(studentId, stats){
   if(!studentId) return { ok: false, error: 'Thiếu studentId.' };
   try{
@@ -214,9 +220,10 @@ async function saveStudentStats(studentId, stats){
 }
 
 // ================= Mặt bằng chung (peer benchmark) cho Radar 5 chiều ========
-// Đọc TOÀN BỘ collection student_stats (đã cho phép "read" công khai — xem
-// firestore.rules, cùng đánh đổi bảo mật với attempts/student_stats ở trên)
-// để tính trung bình cộng radar5 của MỌI học sinh THẬT đã có số liệu, dùng
+// Đọc TOÀN BỘ collection student_stats (SỬA 25/9/2026: giờ chỉ đọc được khi
+// đã đăng nhập thật — request.auth != null — không còn công khai cho người
+// lạ nữa, xem firestore.rules) để tính trung bình cộng radar5 của MỌI học
+// sinh THẬT đã có số liệu, dùng
 // vẽ đường "Mặt bằng chung" trên biểu đồ Radar của từng em. Đây là số liệu
 // THẬT (trung bình của các bạn học cùng hệ thống OPC) — KHÔNG PHẢI mặt bằng
 // chuẩn quốc gia "THPT 2026" (không có nguồn dữ liệu đó) nên giao diện phải

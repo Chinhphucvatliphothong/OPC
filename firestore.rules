@@ -3,87 +3,100 @@ rules_version = '2';
 // Quy tắc bảo mật Firestore cho OPC Luyện Thi Vật Lí (project opcluyenthivatli).
 // Nơi dán: Firebase Console → Firestore Database → tab "Rules" → Publish.
 //
-// ĐÃ CẬP NHẬT để trang học sinh (index.html) hoạt động với dữ liệu thật:
-//  - Học sinh đăng nhập bằng username/mật khẩu (KHÔNG phải Firebase Auth
-//    thật) nên cần đọc công khai (nhưng chỉ "get" — biết đúng ID mới đọc
-//    được, không "list" được cả danh sách) 2 collection "usernames" và
-//    "students".
-//  - Ngân hàng đề (de_thi) cho phép đọc công khai để học sinh luyện tập,
-//    vì chưa có Auth thật để giới hạn quyền xem theo từng học sinh.
-//  - Mọi thao tác GHI (write) vẫn CHỈ dành cho 2 email admin — không đổi.
+// SỬA 25/9/2026 — CHUYỂN SANG FIREBASE AUTHENTICATION THẬT cho học sinh
+// (chuẩn bị mở rộng ra ngoài lớp quen biết): trước đây học sinh đăng nhập
+// bằng cách so khớp username/mật khẩu ngay trên trình duyệt, không qua Auth
+// thật, nên rules phải mở "get" công khai cho usernames/students/de_thi —
+// ai biết đúng ID/username đều đọc được (kể cả toàn bộ ngân hàng đề + đáp
+// án), và attempts/student_stats ai cũng ghi được không cần biết gì cả. Đây
+// từng là lựa chọn CHỦ ĐỘNG để triển khai nhanh cho 1 lớp nhỏ, quen biết —
+// không còn phù hợp khi bắt đầu dùng tên miền thật + nạp đầy đủ ngân hàng đề.
 //
-// Đánh đổi bảo mật cần biết: vì "get theo ID" là công khai, ai biết đúng
-// username của một em vẫn có thể tự thử mật khẩu (không giới hạn số lần)
-// và ai có link/ID đề thi vẫn đọc được toàn bộ nội dung + đáp án. Đây là
-// lựa chọn triển khai nhanh; khi cần an toàn hơn nên chuyển sang Firebase
-// Authentication thật (xem ghi chú trong opc-live-data.js).
+// Từ bản này: loginStudent (opc-live-data.js) gọi api/student-login.js —
+// server (Firebase Admin SDK, không bị rules chi phối) kiểm tra mật khẩu rồi
+// cấp Custom Token — nên request.auth.uid CHÍNH XÁC là studentId của em đang
+// đăng nhập. Rules dưới đây dựa vào đó để khoá:
+//   - "usernames": không còn ai cần đọc trực tiếp nữa (server tự tra bằng
+//     Admin SDK) — chỉ admin.
+//   - "students/{id}", "attempts", "assignedExams", "student_stats": đọc/ghi
+//     CHỈ đúng em học sinh đang đăng nhập (request.auth.uid == studentId)
+//     hoặc admin — không ai đọc/ghi được của bạn khác nữa.
+//   - "de_thi" (ngân hàng đề + đáp án): đọc CHỈ khi đã đăng nhập thật (bất
+//     kỳ học sinh nào, không giới hạn theo từng em vì đề dùng chung cho cả
+//     lớp) — không còn đọc được mà không cần tài khoản.
+// "registrations" (đăng ký lớp thử nghiệm) và "settings" (giá gói dịch vụ
+// hiển thị công khai trên trang chủ) giữ nguyên công khai như trước — đúng
+// bản chất là chưa cần tài khoản.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Chỉ (các) email trong danh sách này được ghi dữ liệu OPC.
-    // Thêm email nếu sau này có thêm admin (vd. trợ giảng).
+    // Chỉ (các) email trong danh sách này được toàn quyền quản trị dữ liệu
+    // OPC. Thêm email nếu sau này có thêm admin (vd. trợ giảng).
     function isOpcAdmin() {
       return request.auth != null &&
         request.auth.token.email in ['vovanthai2018tv@gmail.com', 'chinhphucvatliphothong@gmail.com'];
     }
 
-    // Ánh xạ username -> studentId, KHÔNG chứa thông tin nhạy cảm nào khác.
-    // "get" công khai (phải biết đúng username) nhưng "list" (liệt kê toàn
-    // bộ) vẫn chỉ admin — nên không ai quét được danh sách username.
+    // Đúng học sinh đang đăng nhập (Custom Token từ api/student-login.js có
+    // uid == studentId — xem ghi chú đầu file).
+    function isSelf(studentId) {
+      return request.auth != null && request.auth.uid == studentId;
+    }
+
+    // Bất kỳ ai đã đăng nhập thật (học sinh HOẶC admin) — dùng cho dữ liệu
+    // dùng chung, không thuộc riêng 1 em (ngân hàng đề, mặt bằng chung).
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Ánh xạ username -> studentId. Từ 25/9/2026 chỉ còn server (Admin SDK,
+    // api/student-login.js) đọc trực tiếp lúc đăng nhập — Admin SDK không bị
+    // rules chi phối nên KHÔNG cần "get" công khai ở đây nữa. Client không
+    // còn đọc collection này trực tiếp.
     match /usernames/{username} {
-      allow get: if true;
-      allow list: if isOpcAdmin();
+      allow get, list: if isOpcAdmin();
       allow write: if isOpcAdmin();
     }
 
-    // Hồ sơ học sinh (có mật khẩu dạng thường, SĐT, thông tin phụ huynh...).
-    // "get" công khai để trang học sinh kiểm tra mật khẩu lúc đăng nhập và
-    // đọc lại hồ sơ của chính mình; "list" (liệt kê cả lớp) vẫn chỉ admin.
+    // Hồ sơ học sinh (mật khẩu — nay đã mã hoá bcrypt sau lần đăng nhập đầu
+    // kể từ bản này, SĐT, thông tin phụ huynh, mã giới thiệu, số dư hoa
+    // hồng...). Chỉ đúng em đó (đọc lại hồ sơ của chính mình) hoặc admin đọc
+    // được — không còn công khai. "list" (liệt kê cả lớp) vẫn chỉ admin.
     match /students/{studentId} {
-      allow get: if true;
+      allow get: if isOpcAdmin() || isSelf(studentId);
       allow list: if isOpcAdmin();
+      // Ghi vẫn chỉ admin qua admin.html — RIÊNG loginFailCount/loginLockUntil/
+      // password (mã hoá lại lần đầu) do api/student-login.js ghi qua Admin
+      // SDK, không qua đường rules này (Admin SDK bỏ qua rules).
       allow write: if isOpcAdmin();
 
-      // Lịch sử luyện tập thật (điểm số + đúng/sai từng câu). Đọc/ghi công
-      // khai vì chưa có Auth thật để xác minh "đúng là em học sinh đó đang
-      // ghi" — cùng đánh đổi bảo mật với phần đăng nhập ở trên. Không chứa
-      // thông tin nhạy cảm nào ngoài kết quả làm bài.
+      // Lịch sử luyện tập thật (điểm số + đúng/sai từng câu). Từ 25/9/2026:
+      // chỉ đúng em đó (đọc/ghi kết quả của chính mình) hoặc admin (xem để
+      // chấm/giám sát) — không ai đọc/ghi được của bạn khác nữa.
       match /attempts/{attemptId} {
-        allow read: if true;
-        allow write: if true;
+        allow read, write: if isOpcAdmin() || isSelf(studentId);
       }
 
-      // Đề cá nhân hóa mà giáo viên GIAO cho học sinh này (từ panel "Tạo đề
-      // theo lộ trình cá nhân hóa" trong admin.html) để em làm trực tiếp
-      // trên web, không cần tải file. Khác với "attempts"/"student_stats" ở
-      // trên: admin.html đăng nhập bằng Firebase Auth THẬT (isOpcAdmin) nên
-      // GHI chỉ dành cho admin — chặt hơn, vì chỉ giáo viên mới được giao đề.
-      // Đọc vẫn công khai (cùng lý do chưa có Auth thật cho học sinh).
+      // Đề cá nhân hóa mà giáo viên GIAO cho học sinh này. Đọc: đúng em đó
+      // hoặc admin. Ghi: chỉ admin (chỉ giáo viên mới được giao đề) — không đổi.
       match /assignedExams/{examId} {
-        allow read: if true;
+        allow read: if isOpcAdmin() || isSelf(studentId);
         allow write: if isOpcAdmin();
       }
 
-      // Báo cáo phụ huynh do OPC Learning AI soạn (draft) rồi thầy cô duyệt/
-      // sửa/đánh dấu đã gửi qua Zalo cá nhân — THÊM 24/9/2026, xem
-      // api/ai-parent-report.js + panel "Báo cáo Phụ huynh" trong admin.html.
-      // Phụ huynh KHÔNG có tài khoản đăng nhập (quyết định đã chốt) nên
-      // không cần đọc công khai — chỉ admin đọc/ghi, khác hẳn attempts/
-      // assignedExams ở trên.
+      // Báo cáo phụ huynh do OPC Learning AI soạn — phụ huynh không có tài
+      // khoản đăng nhập nên vẫn chỉ admin đọc/ghi, không đổi.
       match /parentReports/{reportId} {
         allow read, write: if isOpcAdmin();
       }
     }
 
     // Đăng ký lớp thử nghiệm từ trang giới thiệu công khai (index.html) —
-    // THÊM 24/9/2026, thay cho luồng mailto cũ (gửi thẳng mật khẩu qua
-    // email, không lưu gì lại). "create" công khai (học sinh chưa có tài
-    // khoản/Auth gì để xác thực) nhưng bị giới hạn CHẶT hơn "attempts" ở
-    // trên: chỉ được set đúng các trường liệt kê dưới, đúng kiểu dữ liệu,
-    // và status phải là 'pending' (không tự ý tạo bản ghi đã 'converted').
-    // Đọc/sửa/xoá (duyệt, từ chối) CHỈ admin — đây là hàng chờ nội bộ, học
-    // sinh gửi xong không đọc lại được của mình hay của người khác.
+    // "create" vẫn công khai (chưa có tài khoản gì để xác thực lúc này) —
+    // giữ nguyên giới hạn chặt: chỉ đúng các trường liệt kê, đúng kiểu dữ
+    // liệu, và status phải là 'pending'. Đọc/sửa/xoá (duyệt, từ chối) CHỈ
+    // admin — không đổi.
     match /registrations/{regId} {
       allow create: if request.resource.data.keys().hasOnly(['name','gmail','phone','parentZalo','referralCode','status','createdAt','source'])
         && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() < 100
@@ -95,36 +108,38 @@ service cloud.firestore {
       allow read, update, delete: if isOpcAdmin();
     }
 
-    // Cấu hình chung do admin quản lý qua panel trong admin.html — hiện có
-    // "settings/pricing" (giá/tính năng/ẩn-hiện của mục "Gói dịch vụ" trên
-    // trang chủ, xem panel "💰 Gói dịch vụ" + hàm loadPricingPlans trong
-    // opc-live-data.js). Đọc công khai vì trang chủ chưa đăng nhập ai cũng
-    // xem được; ghi chỉ admin. Dùng {settingId} chung để sau này thêm cấu
-    // hình khác (vd. thông báo trang chủ) không cần sửa rules nữa.
+    // Cấu hình chung do admin quản lý (hiện có "settings/pricing" — giá/
+    // tính năng gói dịch vụ hiển thị trên trang chủ). Đọc công khai vì trang
+    // chủ chưa đăng nhập ai cũng xem giá được — không chứa gì nhạy cảm; ghi
+    // chỉ admin — không đổi.
     match /settings/{settingId} {
       allow read: if true;
       allow write: if isOpcAdmin();
     }
 
     // Số liệu học tập THẬT (mastery/điểm dự đoán/sổ câu sai) — snapshot mới
-    // nhất do CHÍNH trang luyện tập của học sinh tự ghi lại sau mỗi lần nộp
-    // bài (xem OPC_LIVE.saveStudentStats trong opc-live-data.js), để trang
-    // admin (PrepScholarMonitoringPanel) đọc TOÀN BỘ collection 1 lần thay
-    // vì đọc attempts của từng học sinh. Đọc/ghi công khai — cùng đánh đổi
-    // bảo mật với "attempts" ở trên vì chưa có Auth thật cho học sinh.
+    // nhất do CHÍNH trang luyện tập của học sinh tự ghi sau mỗi lần nộp bài.
+    // Từ 25/9/2026: ghi CHỈ đúng em đó (không ai giả mạo điểm cho bạn khác
+    // được nữa); đọc cho phép MỌI người đã đăng nhập (không chỉ chính mình)
+    // vì admin cần đọc toàn bộ collection 1 lần cho trang Giám sát, và mỗi
+    // học sinh cần đọc của CẢ LỚP để tính "Mặt bằng chung" trên Radar 5
+    // chiều (loadPeerRadar5) — nhưng phải đăng nhập thật mới đọc được,
+    // không còn công khai cho người lạ như trước.
     match /student_stats/{studentId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn();
+      allow write: if isOpcAdmin() || isSelf(studentId);
     }
 
-    // Ngân hàng đề: đọc công khai (get + list) để học sinh luyện tập; ghi
-    // vẫn chỉ admin (nạp/sửa/xoá đề qua admin.html).
+    // Ngân hàng đề (kể cả đáp án): từ 25/9/2026 CHỈ đọc được khi đã đăng
+    // nhập thật (học sinh hoặc admin) — không còn công khai cho bất kỳ ai
+    // ghé trang mà chưa có tài khoản. Ghi vẫn chỉ admin (nạp/sửa/xoá đề qua
+    // admin.html) — không đổi.
     match /de_thi/{examId} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow write: if isOpcAdmin();
 
       match /images/{imageId} {
-        allow read: if true;
+        allow read: if isSignedIn();
         allow write: if isOpcAdmin();
       }
     }

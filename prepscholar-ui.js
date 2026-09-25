@@ -340,6 +340,11 @@
     var loginPassState = React.useState(''); var loginPass = loginPassState[0], setLoginPass = loginPassState[1];
     var loginErrState = React.useState(''); var loginErr = loginErrState[0], setLoginErr = loginErrState[1];
     var loginBusyState = React.useState(false); var loginBusy = loginBusyState[0], setLoginBusy = loginBusyState[1];
+    // authed: THÊM 25/9/2026 — true khi đã có phiên Firebase Auth thật (đăng
+    // nhập thành công hoặc khôi phục phiên cũ), dùng để trì hoãn việc tải
+    // ngân hàng đề/"Mặt bằng chung" tới ĐÚNG lúc có quyền đọc (xem
+    // firestore.rules — 2 collection này không còn đọc công khai được nữa).
+    var authedState = React.useState(false); var authed = authedState[0], setAuthed = authedState[1];
 
     var studentState = React.useState(null);
     var student = studentState[0];
@@ -363,8 +368,9 @@
       if(stats.nanoMastery) payload.nanoMastery = stats.nanoMastery;
       if(stats.mistakeLog) payload.mistakeCount = stats.mistakeLog.length;
       // radar5/levelXp: đẩy lên để (1) trang admin có thể xem thêm nếu cần,
-      // và (2) MỌI học sinh khác đọc được (student_stats đọc công khai) để
-      // tính đường "Mặt bằng chung" trên Radar — xem OPC_LIVE.loadPeerRadar5.
+      // và (2) mọi học sinh ĐÃ ĐĂNG NHẬP khác đọc được (student_stats yêu
+      // cầu Auth thật từ 25/9/2026, không còn công khai) để tính đường
+      // "Mặt bằng chung" trên Radar — xem OPC_LIVE.loadPeerRadar5.
       if(stats.radar5) payload.radar5 = stats.radar5;
       if(stats.levelXp) payload.levelXp = stats.levelXp;
       if(stats.currentChuDe) payload.currentChuDe = stats.currentChuDe;
@@ -395,6 +401,7 @@
       var appStu = toAppStudent(real);
       setStudent(appStu);
       setAuthState('in');
+      setAuthed(true); // đã có phiên Firebase Auth thật — cho phép tải ngân hàng đề/Mặt bằng chung
       setMistakeLog([]); // học sinh thật bắt đầu từ sổ tay trống, không dùng seed minh hoạ
       setAssignedExams([]);
       if(!window.OPC_LIVE) return;
@@ -447,14 +454,16 @@
       return function(){ cancelled = true; };
     }, [liveReady]);
 
-    // Nạp ngân hàng đề thật (không phụ thuộc trạng thái đăng nhập — xem ghi
-    // chú bảo mật trong opc-live-data.js). Giai đoạn thật hoàn toàn: không
-    // còn ngân hàng minh hoạ để rơi vào — QUESTION_BANK bắt đầu trống, ai vào
-    // trước khi nạp xong sẽ thấy banner "Đang tải ngân hàng đề thật…".
+    // Nạp ngân hàng đề thật — SỬA 25/9/2026: giờ CHỜ có phiên đăng nhập thật
+    // (authed) mới tải, vì firestore.rules không còn cho đọc "de_thi" công
+    // khai nữa (phải đăng nhập — xem opc-live-data.js). Giai đoạn thật hoàn
+    // toàn: không còn ngân hàng minh hoạ để rơi vào — QUESTION_BANK bắt đầu
+    // trống, học sinh vào xong sẽ thấy banner "Đang tải ngân hàng đề thật…"
+    // trong lúc chờ (thường rất nhanh, ngay sau khi đăng nhập).
     var bankVersionState = React.useState(0); var bankVersion = bankVersionState[0], setBankVersion = bankVersionState[1];
     var bankLiveState = React.useState(false); var bankIsLive = bankLiveState[0], setBankIsLive = bankLiveState[1];
     React.useEffect(function(){
-      if(!liveReady) return;
+      if(!liveReady || !authed) return;
       var cancelled = false;
       window.OPC_LIVE.loadRealQuestionBank().then(function(list){
         if(cancelled || !list || !list.length) return;
@@ -463,24 +472,25 @@
         setBankVersion(function(v){ return v + 1; });
       });
       return function(){ cancelled = true; };
-    }, [liveReady]);
+    }, [liveReady, authed]);
 
     // "Mặt bằng chung OPC" cho Radar 5 chiều — trung bình cộng radar5 THẬT
-    // của mọi học sinh đã có số liệu (đọc 1 lần collection student_stats,
-    // công khai — xem loadPeerRadar5 trong opc-live-data.js). null nếu
-    // chưa đủ dữ liệu (hệ thống còn quá ít học sinh đã luyện tập) — Radar
-    // khi đó chỉ vẽ đa giác của riêng học sinh, không vẽ đường so sánh giả.
+    // của mọi học sinh đã có số liệu (đọc 1 lần collection student_stats —
+    // SỬA 25/9/2026: giờ cần đã đăng nhập mới đọc được, không còn công khai
+    // — xem loadPeerRadar5 trong opc-live-data.js). null nếu chưa đủ dữ liệu
+    // (hệ thống còn quá ít học sinh đã luyện tập) — Radar khi đó chỉ vẽ đa
+    // giác của riêng học sinh, không vẽ đường so sánh giả.
     var peerRadar5State = React.useState(null);
     var peerRadar5 = peerRadar5State[0];
     var setPeerRadar5 = peerRadar5State[1];
     React.useEffect(function(){
-      if(!liveReady || !window.OPC_LIVE || !window.OPC_LIVE.loadPeerRadar5) return;
+      if(!liveReady || !authed || !window.OPC_LIVE || !window.OPC_LIVE.loadPeerRadar5) return;
       var cancelled = false;
       window.OPC_LIVE.loadPeerRadar5().then(function(avg){
         if(!cancelled && avg) setPeerRadar5(avg);
       });
       return function(){ cancelled = true; };
-    }, [liveReady]);
+    }, [liveReady, authed]);
 
     function handleLoginSubmit(e){
       if(e && e.preventDefault) e.preventDefault();
@@ -500,6 +510,7 @@
       if(window.OPC_LIVE) window.OPC_LIVE.logoutStudent();
       setStudent(null);
       setAuthState('form');
+      setAuthed(false); // đăng nhập lại sẽ tải lại ngân hàng đề/Mặt bằng chung qua hydrateAndEnter
     }
 
     var tabState = React.useState('home'); // home | map | drill | exam | mistakes
@@ -576,6 +587,31 @@
     var mistakeLogState = React.useState([]);
     var mistakeLog = mistakeLogState[0];
     var setMistakeLog = mistakeLogState[1];
+
+    // SỬA 25/9/2026: gắn lại "question" cho từng câu trong Sổ tay câu sai
+    // mỗi khi ngân hàng đề (mới) nạp xong. Cần thiết vì ngân hàng đề giờ
+    // chỉ bắt đầu tải SAU khi đăng nhập thành công (đổi để khớp
+    // firestore.rules mới — "de_thi" không còn đọc công khai được nữa, xem
+    // effect bankVersion ở trên), nên có thể hydrateAndEnter/nộp bài tính
+    // xong mistakeLog TRƯỚC KHI ngân hàng đề nạp xong lần đầu — nếu không
+    // gắn lại ở đây, "question" của các câu đó sẽ thiếu (undefined) cho tới
+    // tận lần nộp bài kế tiếp, khiến "Luyện lại các câu sai ngay" âm thầm bỏ
+    // sót đúng những câu vừa sai gần nhất.
+    React.useEffect(function(){
+      if(!bankIsLive) return;
+      setMistakeLog(function(prev){
+        if(!prev || !prev.length) return prev;
+        var changed = false;
+        var next = prev.map(function(m){
+          if(m.question) return m;
+          var q = window.PrepScholarEngine.QUESTION_BANK.filter(function(qq){ return qq.id === m.qId; })[0];
+          if(!q) return m;
+          changed = true;
+          return Object.assign({}, m, { question: q });
+        });
+        return changed ? next : prev;
+      });
+    }, [bankVersion]);
 
     // Đề cá nhân hóa được giáo viên GIAO trực tiếp cho học sinh này (qua
     // panel "Tạo đề theo lộ trình cá nhân hóa" trong admin.html) — nạp độc
