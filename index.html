@@ -135,8 +135,51 @@
     padding: 8px 16px; border-radius: 7px; font-weight:600;
   }
   .navlinks .cta:hover{ background: var(--accent-strong); }
+  /* Nút "Đăng nhập" — đặt ngay cạnh "Đăng ký học" (cta) để học sinh cũ và
+     học sinh mới đăng ký đều thấy lối vào rõ ràng ngay trên thanh nav, thay
+     vì phải đoán link "⚡ Luyện thi PrepScholar" chung chung là chỗ đăng nhập. */
+  .navlinks .btn-login{
+    border: 1px solid var(--line); color: var(--ink); padding: 7px 15px;
+    border-radius: 7px; font-weight:600; white-space:nowrap;
+  }
+  .navlinks .btn-login:hover{ border-color: var(--accent-strong); color: var(--accent-strong); }
   @media (max-width: 700px){
-    .navlinks a:not(.cta){ display:none; }
+    .navlinks a:not(.cta):not(.btn-login){ display:none; }
+  }
+
+  /* ================= CHẾ ĐỘ LUYỆN THI (học sinh đã đăng nhập) =============
+     SỬA 25/9/2026 — trước đây khu vực luyện tập thật (#luyen-thi-prepscholar)
+     nằm LẪN giữa trang giới thiệu công khai dài (hero, tính năng, các khu vực
+     minh hoạ cho giáo viên/phụ huynh, bảng giá, đăng ký...) — học sinh đăng
+     nhập xong cuộn lên vẫn thấy trang chủ, cuộn xuống cũng vẫn thấy trang chủ,
+     không có cảm giác "vào hẳn 1 app riêng". Giờ khi prepscholar-ui.js báo
+     đăng nhập thành công (sự kiện "opc-student-auth"), body được gắn class
+     "opc-app-mode" — ẨN toàn bộ nội dung giới thiệu công khai, chỉ còn lại
+     đúng khu vực luyện thi (đã có sẵn thanh Hồ sơ + Đăng xuất riêng bên
+     trong). Đăng xuất thì quay lại trang giới thiệu bình thường. */
+  body.opc-app-mode nav.top .navlinks{ display:none; }
+  body.opc-app-mode header.hero,
+  body.opc-app-mode .features,
+  body.opc-app-mode #cach-hoat-dong,
+  body.opc-app-mode #tao-de,
+  body.opc-app-mode #quan-ly-hoc-sinh,
+  body.opc-app-mode #giang-day,
+  body.opc-app-mode #ban-do-nang-luc,
+  body.opc-app-mode #lo-trinh,
+  body.opc-app-mode #goi-dich-vu,
+  body.opc-app-mode #lien-he,
+  body.opc-app-mode footer{
+    display:none !important;
+  }
+  body.opc-app-mode #luyen-thi-prepscholar{
+    border-block: none !important; /* !important: đè style inline sẵn có trên section này */
+    padding-block: 20px;
+  }
+  body.opc-app-mode #luyen-thi-prepscholar .demo-label,
+  body.opc-app-mode #luyen-thi-prepscholar .kicker,
+  body.opc-app-mode #luyen-thi-prepscholar .section-title,
+  body.opc-app-mode #luyen-thi-prepscholar .section-sub{
+    display:none !important;
   }
 
   /* HERO */
@@ -673,6 +716,24 @@
 </style>
 </head>
 <body>
+<script>
+// SỬA 25/9/2026 — chuyển trang giới thiệu công khai sang "chế độ luyện thi"
+// ngay khi học sinh đăng nhập thành công (prepscholar-ui.js phát sự kiện
+// "opc-student-auth" ở hydrateAndEnter/handleLogout — xem ghi chú CSS
+// ".opc-app-mode" ở trên). Đặt ngoài React, ngay đầu <body>, để đăng ký sớm
+// nhất có thể — không phụ thuộc lúc nào React mount xong.
+(function(){
+  window.addEventListener('opc-student-auth', function(e){
+    var loggedIn = !!(e && e.detail && e.detail.loggedIn);
+    document.body.classList.toggle('opc-app-mode', loggedIn);
+    if(loggedIn){
+      // Học sinh có thể đang cuộn ở giữa trang (vừa bấm "Đăng nhập" trên
+      // nav) — đưa về đầu khu vực luyện thi ngay khi phần còn lại đã ẩn.
+      window.scrollTo(0, 0);
+    }
+  });
+})();
+</script>
 <div id="tooltip"></div>
 
 <nav class="top">
@@ -690,6 +751,7 @@
       <a href="#ban-do-nang-luc">Bản đồ năng lực</a>
       <a href="#lo-trinh">Lộ trình tuần</a>
       <a href="/admin.html" class="cta" style="background:var(--navy-2); color:var(--on-navy); border:1px solid var(--navy-line);">Trang Giáo Viên / Admin ➔</a>
+      <a class="btn-login" href="#luyen-thi-prepscholar">Đăng nhập</a>
       <a class="cta" href="#lien-he">Đăng ký học</a>
     </div>
   </div>

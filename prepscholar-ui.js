@@ -402,6 +402,14 @@
       setStudent(appStu);
       setAuthState('in');
       setAuthed(true); // đã có phiên Firebase Auth thật — cho phép tải ngân hàng đề/Mặt bằng chung
+      // SỬA 25/9/2026 — báo cho index.html (bên ngoài React) biết học sinh đã
+      // đăng nhập, để ẨN toàn bộ trang giới thiệu công khai (hero, tính năng,
+      // minh hoạ, bảng giá, đăng ký...) và chỉ còn lại đúng khu vực luyện thi
+      // — trước đây 2 đằng "trộn chung" trên cùng 1 trang dài, cuộn lên/xuống
+      // đều vẫn thấy trang chủ marketing lẫn với phần luyện tập thật.
+      if(typeof window.dispatchEvent === 'function'){
+        window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: true } }));
+      }
       setMistakeLog([]); // học sinh thật bắt đầu từ sổ tay trống, không dùng seed minh hoạ
       setAssignedExams([]);
       if(!window.OPC_LIVE) return;
@@ -511,6 +519,11 @@
       setStudent(null);
       setAuthState('form');
       setAuthed(false); // đăng nhập lại sẽ tải lại ngân hàng đề/Mặt bằng chung qua hydrateAndEnter
+      // Thoát "chế độ luyện thi" trên index.html — hiện lại trang giới thiệu
+      // công khai bình thường (xem ghi chú ở hydrateAndEnter).
+      if(typeof window.dispatchEvent === 'function'){
+        window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: false } }));
+      }
     }
 
     var tabState = React.useState('home'); // home | map | drill | exam | mistakes
