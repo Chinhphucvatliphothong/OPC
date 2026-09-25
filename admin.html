@@ -1199,7 +1199,78 @@
     return { passage: passageText, images: imgs, remaining: Math.max(1, count), uncertain: uncertain };
   }
 
+  // Quét 1 khối {...} bắt đầu ĐÚNG tại dấu '{' ở startIdx (nhận diện đúng độ
+  // sâu ngoặc nhọn lồng nhau, bỏ qua ngoặc bị escape "\{"/"\}" — giống
+  // extractBraceBlocks phía trên nhưng trả thêm endIndex (vị trí NGAY SAU
+  // dấu '}' đóng) để phục vụ việc CẮT/THAY THẾ trực tiếp trên chuỗi gốc,
+  // điều extractBraceBlocks (vốn chỉ dùng để ĐỌC nội dung) không cần tới.
+  function scanBraceBlock(str, startIdx){
+    if(str[startIdx] !== '{') return null;
+    var depth = 1;
+    var i = startIdx + 1;
+    while(i < str.length && depth > 0){
+      if(str[i] === '{' && str[i - 1] !== '\\') depth++;
+      else if(str[i] === '}' && str[i - 1] !== '\\') depth--;
+      i++;
+    }
+    if(depth !== 0) return null; // ngoặc không khớp (file lỗi cú pháp/bị cắt cụt) — bỏ qua an toàn
+    return { content: str.substring(startIdx + 1, i - 1), endIndex: i };
+  }
+
+  // "Gỡ" cú pháp \immini{ \begin{ex}...\end{ex} }{hình} — một số đề dùng
+  // \immini để gắn 1 hình DUY NHẤT cho ĐÚNG 1 câu (không phải câu hỏi chùm
+  // dùng chung ngữ cảnh cho nhiều câu): đặt CẢ khối \begin{ex}...\end{ex}
+  // vào bên trong tham số thứ nhất của \immini, hình ảnh nằm ở tham số thứ
+  // hai — xuất hiện SAU \end{ex}. THÊM 25/9/2026, theo báo cáo thật của
+  // thầy: bộ máy bóc theo dòng bên dưới (dựa vào \begin{ex}/\end{ex} làm
+  // mốc) không thấy được phần hình này vì nó nằm NGOÀI phạm vi đã bắt được
+  // của câu hỏi -> hình bị mất khi hiện cho học sinh dù file .tex hoàn toàn
+  // hợp lệ. Xử lý TRƯỚC khi bóc theo dòng: chèn thẳng \includegraphics vào
+  // trong khối \begin{ex}...\end{ex} (ngay trước \end{ex}), rồi bỏ lớp bọc
+  // \immini{...}{...} ngoài cùng — nhờ vậy phần bóc ảnh theo từng câu (vốn
+  // đã hoạt động đúng, xem imgRegex bên dưới) tự nhận ra hình như bình
+  // thường, không cần sửa gì thêm ở bộ máy chính.
+  // KHÔNG đụng tới \immini dùng cho câu hỏi chùm thật (tham số 1 là đoạn
+  // văn/ngữ cảnh dùng chung, KHÔNG chứa \begin{ex}) — case đó vẫn được xử
+  // lý như cũ qua preambleBuffer/extractImminiGroup bên dưới. Cũng không
+  // đụng tới \immini{}{hình} đặt bên TRONG 1 câu (tham số 1 rỗng) — case
+  // này vốn đã hoạt động đúng vì \includegraphics vẫn nằm trong phạm vi
+  // \begin{ex}...\end{ex} đã bắt được.
+  function unwrapSingleQuestionImmini(content){
+    var out = '';
+    var pos = 0;
+    while(true){
+      var mIdx = content.indexOf('\\immini', pos);
+      if(mIdx === -1){ out += content.slice(pos); break; }
+      var brace1Start = content.indexOf('{', mIdx);
+      if(brace1Start === -1){ out += content.slice(pos); break; }
+      var block1 = scanBraceBlock(content, brace1Start);
+      if(!block1){ out += content.slice(pos, mIdx + 7); pos = mIdx + 7; continue; }
+      if(!/\\begin\{ex\}/.test(block1.content) || !/\\end\{ex\}/.test(block1.content)){
+        // Không phải case "bọc nguyên 1 câu" -> giữ nguyên như cũ.
+        out += content.slice(pos, mIdx + 7);
+        pos = mIdx + 7;
+        continue;
+      }
+      var afterBlock1 = block1.endIndex;
+      var imageArg = '';
+      var finalEnd = afterBlock1;
+      if(content[afterBlock1] === '{'){
+        var block2 = scanBraceBlock(content, afterBlock1);
+        if(block2){ imageArg = block2.content; finalEnd = block2.endIndex; }
+      }
+      var exContent = block1.content;
+      var withImage = imageArg ? exContent.replace(/\\end\{ex\}/, imageArg + '\n\\end{ex}') : exContent;
+      out += content.slice(pos, mIdx) + withImage;
+      pos = finalEnd;
+    }
+    return out;
+  }
+
   function parseTexBank(content, filename){
+    // THÊM 25/9/2026: gỡ trước cú pháp \immini{ \begin{ex}...\end{ex} }{hình}
+    // (1 hình cho đúng 1 câu) — xem giải thích đầy đủ ở unwrapSingleQuestionImmini.
+    content = unwrapSingleQuestionImmini(content);
     var lines = content.split(/\r?\n/);
     var currentPart = 'I';
     var questions = [];
