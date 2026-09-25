@@ -607,8 +607,15 @@
       return QUESTION_BANK.filter(function(q){ return q.topicKey === topicKey; });
     },
     createFocusedDrill: function(topicKey, count){
+      // SỬA 25/9/2026 — TRƯỚC ĐÂY: nếu chuyên đề chưa nạp câu hỏi nào (pool
+      // rỗng) thì tự động lấy TOÀN BỘ QUESTION_BANK (mọi chuyên đề khác) làm
+      // bài Drill — khiến học sinh chọn "Từ trường & Cảm ứng điện từ" nhưng
+      // lại làm nhầm câu hỏi của "Khí lí tưởng" (chuyên đề duy nhất đã nạp),
+      // mà tiêu đề bài Drill vẫn ghi đúng tên chuyên đề đã chọn — rất dễ gây
+      // hiểu lầm. Giờ trả về đúng pool của chuyên đề đó (có thể rỗng) — nơi
+      // gọi hàm này (startDrill trong prepscholar-ui.js) chịu trách nhiệm
+      // báo cho học sinh biết khi chưa có câu hỏi, thay vì âm thầm đổi đề.
       var pool = QUESTION_BANK.filter(function(q){ return q.topicKey === topicKey; });
-      if(!pool.length) pool = QUESTION_BANK;
       count = Math.min(count || 5, pool.length);
       return pool.slice(0, count);
     },

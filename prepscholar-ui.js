@@ -792,6 +792,10 @@
     // Bắt đầu một bài Focused Drill
     function startDrill(topicKey, count){
       var questions = window.PrepScholarEngine.createFocusedDrill(topicKey, count || 5);
+      if(!questions.length){
+        alert('Ngân hàng đề chưa có câu hỏi nào cho chuyên đề "' + window.PrepScholarEngine.CHU_DE_MAP[topicKey].name + '" — thầy cô cần nạp thêm đề.');
+        return;
+      }
       var session = {
         type: 'drill',
         topicKey: topicKey,
@@ -2009,6 +2013,11 @@
                   var val = student.mastery[key] || 50;
                   var statusClass = val < 50 ? 'critical' : (val < 75 ? 'warning' : 'good');
                   var statusLabel = val < 50 ? '‼ Cần củng cố gấp' : (val < 75 ? '! Đang cải thiện' : '✓ Đã thuần thục');
+                  // SỬA 25/9/2026 — chuyên đề chưa nạp câu hỏi nào thì khoá 2
+                  // nút Drill lại (thay vì để học sinh bấm rồi mới báo lỗi,
+                  // hoặc tệ hơn — trước đây còn âm thầm đưa nhầm câu hỏi của
+                  // chuyên đề khác vào, xem createFocusedDrill).
+                  var hasQuestions = window.PrepScholarEngine.getQuestionsByTopic(key).length > 0;
 
                   return h('div', { key: key, className: 'ps-topic-card' },
                     h('div', null,
@@ -2026,16 +2035,20 @@
                     ),
 
                     h('div', { className: 'ps-topic-card-actions' },
-                      h('span', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } }, 'Bộ câu hỏi chuẩn 2025'),
+                      h('span', { style: { fontSize: '0.8rem', color: hasQuestions ? 'var(--ink-2)' : 'var(--muted)' } }, hasQuestions ? 'Bộ câu hỏi chuẩn 2025' : 'Chưa có câu hỏi — thầy cô đang nạp đề'),
                       h('div', { style: { display: 'flex', gap: '8px' } },
                         h('button', {
                           type: 'button',
                           className: 'btn btn-secondary ps-drill-btn',
+                          disabled: !hasQuestions,
+                          style: hasQuestions ? null : { opacity: 0.45, cursor: 'not-allowed' },
                           onClick: function(){ startDrill(key, 5); }
                         }, 'Drill 5 câu'),
                         h('button', {
                           type: 'button',
                           className: 'btn btn-primary ps-drill-btn',
+                          disabled: !hasQuestions,
+                          style: hasQuestions ? null : { opacity: 0.45, cursor: 'not-allowed' },
                           onClick: function(){ startDrill(key, 10); }
                         }, 'Drill 10 câu ➔')
                       )
