@@ -158,16 +158,16 @@
      đúng khu vực luyện thi (đã có sẵn thanh Hồ sơ + Đăng xuất riêng bên
      trong). Đăng xuất thì quay lại trang giới thiệu bình thường. */
   body.opc-app-mode nav.top .navlinks{ display:none; }
+  /* SỬA 25/9/2026 lần 2 — trước đây liệt kê TỪNG id (#cach-hoat-dong,
+     #tao-de, #ban-do-nang-luc...) nên bỏ sót 2 khu minh hoạ #tien-do
+     ("Theo dõi qua thời gian") và #bao-cao — không nằm trong menu nav nên
+     lúc rà lại quên mất, học sinh cuộn xuống cuối vẫn thấy dính trang chủ.
+     Giờ ẩn TẤT CẢ <section> con trực tiếp của <body>, TRỪ đúng khu luyện
+     thi — thêm khu minh hoạ mới sau này cũng tự động bị ẩn, không cần nhớ
+     sửa lại danh sách này nữa. */
   body.opc-app-mode header.hero,
   body.opc-app-mode .features,
-  body.opc-app-mode #cach-hoat-dong,
-  body.opc-app-mode #tao-de,
-  body.opc-app-mode #quan-ly-hoc-sinh,
-  body.opc-app-mode #giang-day,
-  body.opc-app-mode #ban-do-nang-luc,
-  body.opc-app-mode #lo-trinh,
-  body.opc-app-mode #goi-dich-vu,
-  body.opc-app-mode #lien-he,
+  body.opc-app-mode > section:not(#luyen-thi-prepscholar),
   body.opc-app-mode footer{
     display:none !important;
   }
