@@ -387,6 +387,8 @@
         title: info.q.subtopic || info.q.topicName || 'Câu hỏi',
         reason: tier > 0 ? ('Đã làm sai lặp lại lần ' + (tier + 1) + ' — giãn cách ' + intervalDays + ' ngày') : 'Đã làm sai trong lượt luyện gần đây',
         daysOverdue: Math.max(0, daysSince - intervalDays),
+        dueNow: daysSince >= intervalDays, // true = đã đến/quá hạn ôn tập; false = còn "đang nghỉ" trong chu kỳ giãn cách, CHƯA nên nhắc/đưa vào đề
+        daysSince: daysSince, // để UI tính được "còn bao nhiêu ngày nữa mới đến hạn" khi dueNow === false (intervalDays - daysSince)
         intervalDays: intervalDays,
         tier: tier, // 0-3, dùng bởi PersonalizedExamGeneratorPanel (admin.html) để ưu tiên câu trễ hạn nhất
         part: info.q.part || null, // THÊM để admin.html biết xếp câu ôn lại vào đúng Phần I/II/III khi trộn đề

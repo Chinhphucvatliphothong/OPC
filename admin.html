@@ -4044,9 +4044,13 @@
       var chosenP2 = [];
       var chosenP3 = [];
 
-      // "Ưu tiên câu từng làm sai (Lặp giãn cách)" — THÊM 25/9/2026: dành
-      // tối thiểu 40% tổng số câu cho các câu ĐANG ĐẾN HẠN ôn lại
-      // (daysOverdue >= 0) trong Sổ tay câu sai THẬT của học sinh
+      // "Ưu tiên câu từng làm sai (Lặp giãn cách)" — THÊM 25/9/2026, SỬA
+      // 25/9/2026 (fix lỗi "dueNow" no-op — daysOverdue bị Math.max(0, ...)
+      // kẹp về 0 nên điều kiện cũ "daysOverdue >= 0" luôn đúng, tức là mọi
+      // câu sai đều bị coi là "đến hạn" kể cả khi còn 13 ngày nữa mới tới
+      // hạn; nay dùng cờ dueNow tính đúng ở computeStudentStatsFromAttempts):
+      // dành tối thiểu 40% tổng số câu cho các câu THẬT SỰ ĐANG ĐẾN/QUÁ HẠN
+      // ôn lại (dueNow === true) trong Sổ tay câu sai THẬT của học sinh
       // (studentStats.mistakeLog — đã tính đúng chu kỳ 1-3-7-14 ngày, xem
       // computeStudentStatsFromAttempts trong prepscholar.js), câu trễ hạn
       // NHIỀU NHẤT được ưu tiên trước (mistakeLog đã sắp sẵn theo đúng thứ
@@ -4057,7 +4061,7 @@
         var poolById = {};
         pool.forEach(function(q){ poolById[q.examId + '_q' + q.index] = q; });
         var dueReview = studentStats.mistakeLog
-          .filter(function(m){ return m.daysOverdue >= 0 && poolById[m.qId]; })
+          .filter(function(m){ return m.dueNow && poolById[m.qId]; })
           .sort(function(a, b){ return b.daysOverdue - a.daysOverdue; });
         var totalTarget = targetP1 + targetP2 + targetP3;
         var reviewTarget = Math.min(dueReview.length, Math.ceil(totalTarget * 0.4));
@@ -4469,7 +4473,7 @@
               student ? h('div',{style:{fontSize:'0.72rem', color:'var(--ink-2)', margin:'2px 0 10px'}},
                 'Học sinh đã làm ' + Object.keys(everAttemptedIds).length + ' câu trong ngân hàng đề hiện tại' +
                 (studentStats && studentStats.mistakeLog
-                  ? ' · ' + studentStats.mistakeLog.filter(function(m){ return m.daysOverdue >= 0; }).length + ' câu đang đến hạn ôn lại (giãn cách 1–3–7–14 ngày)'
+                  ? ' · ' + studentStats.mistakeLog.filter(function(m){ return m.dueNow; }).length + ' câu đang đến hạn ôn lại (giãn cách 1–3–7–14 ngày)'
                   : '')
               ) : null,
               h('label',{style:{display:'flex', alignItems:'flex-start', gap:'8px', fontWeight:400, fontSize:'0.82rem', marginBottom:'10px', cursor:'pointer'}},

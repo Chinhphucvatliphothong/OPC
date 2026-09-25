@@ -996,11 +996,20 @@
       setMasteryImpact(null);
     }
 
-    // Bắt đầu làm lại các câu sai trong Mistake Log
+    // Bắt đầu làm lại các câu sai trong Mistake Log — SỬA 25/9/2026: chỉ lấy
+    // các câu THẬT SỰ ĐANG ĐẾN/QUÁ HẠN (dueNow === true) theo đúng chu kỳ
+    // giãn cách 1-3-7-14 ngày, không lấy toàn bộ mistakeLog (trước đây lấy
+    // hết, kể cả câu còn đang "nghỉ" chưa tới hạn ôn — sai tinh thần Spaced
+    // Repetition: ôn quá sớm không giúp ghi nhớ dài hạn tốt hơn).
     function startMistakeDrill(){
-      var questions = mistakeLog.map(function(m){ return m.question; }).filter(Boolean);
+      var dueItems = mistakeLog.filter(function(m){ return m.dueNow; });
+      var questions = dueItems.map(function(m){ return m.question; }).filter(Boolean);
       if(!questions.length){
-        alert('Sổ tay câu sai hiện đang trống! Tuyệt vời, bạn đã giải quyết hết câu sai.');
+        if(mistakeLog.length){
+          alert('Hiện chưa có câu nào đến hạn ôn tập! Các câu sai gần đây vẫn đang trong chu kỳ giãn cách (1-3-7-14 ngày) — quay lại sau nhé.');
+        } else {
+          alert('Sổ tay câu sai hiện đang trống! Tuyệt vời, bạn đã giải quyết hết câu sai.');
+        }
         return;
       }
       var session = {
@@ -1471,7 +1480,9 @@
           onClick: function(){ setTab('mistakes'); setExamSession(null); }
         },
           '🔄 Sổ tay câu sai (Mistake Review)',
-          h('span', { className: 'ps-tab-badge' }, mistakeLog.length)
+          // SỬA 25/9/2026: hiện số câu THẬT SỰ đến hạn ôn (dueNow), không
+          // phải tổng số câu từng làm sai — đúng tinh thần "cần ôn ngay".
+          h('span', { className: 'ps-tab-badge' }, mistakeLog.filter(function(m){ return m.dueNow; }).length)
         ),
         h('button', {
           type: 'button',
@@ -2043,7 +2054,79 @@
               )
             );
           } else if(tab === 'mistakes'){
-            // TAB 3: SỔ TAY CÂU SAI & LẶP LẠI GIÃN CÁCH
+            // TAB 3: SỔ TAY CÂU SAI & LẶP LẠI GIÃN CÁCH — SỬA 25/9/2026: tách
+            // rõ 2 nhóm "Đến hạn ôn tập" (dueNow === true, hiện đầy đủ như cũ
+            // — có nút hỏi AI) và "Sắp tới hạn" (dueNow === false — chỉ hiện
+            // gọn để học sinh biết còn bao lâu nữa, KHÔNG hiện nhầm "Đến hạn
+            // ôn tập hôm nay" như trước đây). Trước đây daysOverdue bị kẹp về
+            // 0 nên mọi câu (kể cả còn 13 ngày nữa mới tới hạn) đều hiện sai
+            // là "Đến hạn ôn tập hôm nay" — nay dùng đúng cờ dueNow.
+            var dueMistakes = mistakeLog.filter(function(m){ return m.dueNow; });
+            var upcomingMistakes = mistakeLog.filter(function(m){ return !m.dueNow; });
+            function renderMistakeCard(item, idx){
+              var ai = aiTutor[item.id];
+              return h('div', { key: idx, className: 'ps-solution-card wrong' },
+                h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' } },
+                  h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                    h('span', { className: 'ps-q-badge' }, item.topicName),
+                    h('b', { style: { fontSize: '0.95rem' } }, item.title)
+                  ),
+                  h('span', { style: { fontSize: '0.78rem', color: 'var(--critical)', fontWeight: 700, background: 'color-mix(in srgb, var(--critical) 12%, transparent)', padding: '3px 8px', borderRadius: '5px' } },
+                    item.daysOverdue > 0 ? '‼ Quá hạn ' + item.daysOverdue + ' ngày' : '! Đến hạn ôn tập hôm nay'
+                  )
+                ),
+                h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', margin: '8px 0 4px' } },
+                  h('b', null, 'Nguyên nhân sai lầm: '), item.reason
+                ),
+                h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace', marginBottom: '10px' } },
+                  'Chu kỳ giãn cách: ' + item.intervalDays + ' ngày'
+                ),
+                h('button', {
+                  type: 'button',
+                  className: 'ps-ai-tutor-trigger' + ((ai && ai.loading) ? ' loading' : ''),
+                  disabled: !!(ai && ai.loading),
+                  onClick: function(){ askAiTutor(item); }
+                },
+                  h('span', { className: 'ps-ai-tutor-trigger-avatar' }, '🦉'),
+                  h('span', { className: 'ps-ai-tutor-trigger-text' },
+                    h('b', null, (ai && ai.loading) ? 'OPC Learning AI đang soạn câu trả lời…' : 'Hỏi OPC Learning AI'),
+                    !(ai && ai.loading) ? h('span', { className: 'ps-ai-tutor-trigger-sub' }, 'Giải thích lại vì sao bạn làm sai') : null
+                  )
+                ),
+                ai && ai.loading ? h('div', { className: 'ps-ai-tutor-card typing' },
+                  h('span', { className: 'ps-ai-tutor-avatar sm' }, '🦉'),
+                  h('span', { className: 'ps-ai-tutor-dots' }, h('span'), h('span'), h('span')),
+                  h('span', { className: 'ps-ai-tutor-typing-text' }, 'OPC Learning AI đang soạn câu trả lời…')
+                ) : null,
+                ai && !ai.loading && ai.error ? h('div', { className: 'ps-ai-tutor-card error' },
+                  h('span', { className: 'ps-ai-tutor-card-icon' }, '⚠️'),
+                  h('span', null, ai.error)
+                ) : null,
+                ai && !ai.loading && ai.text ? h('div', { className: 'ps-ai-tutor-card' },
+                  h('div', { className: 'ps-ai-tutor-card-head' },
+                    h('span', { className: 'ps-ai-tutor-avatar' }, '🦉'),
+                    h('div', null,
+                      h('div', { className: 'ps-ai-tutor-name' }, 'OPC Learning AI'),
+                      h('div', { className: 'ps-ai-tutor-tag' }, 'Gia sư ảo cá nhân hoá')
+                    )
+                  ),
+                  h('p', { className: 'ps-ai-tutor-text' }, ai.text),
+                  h('div', { className: 'ps-ai-tutor-disclaimer' }, '✦ Nội dung do AI tạo ra, có thể có sai sót — nên đối chiếu lại với lời giải hoặc hỏi thêm thầy cô.')
+                ) : null
+              );
+            }
+            function renderUpcomingRow(item, idx){
+              var daysLeft = Math.max(1, item.intervalDays - item.daysSince);
+              return h('div', { key: idx, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '10px', padding: '10px 14px', marginBottom: '8px' } },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                  h('span', { className: 'ps-q-badge' }, item.topicName),
+                  h('span', { style: { fontSize: '0.88rem' } }, item.title)
+                ),
+                h('span', { style: { fontSize: '0.76rem', color: 'var(--ink-2)', fontWeight: 600 } },
+                  '🕒 Còn ' + daysLeft + ' ngày nữa đến hạn'
+                )
+              );
+            }
             return h('div', null,
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' } },
                 h('div', null,
@@ -2065,59 +2148,18 @@
                   h('h4', null, 'Bạn không còn câu sai nào cần ôn tập!'),
                   h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem', marginTop: '4px' } }, 'Hãy làm thêm một bài Drill hoặc Thi thử để tiếp tục bứt phá điểm số.')
                 )
-              ) : (
-                mistakeLog.map(function(item, idx){
-                  var ai = aiTutor[item.id];
-                  return h('div', { key: idx, className: 'ps-solution-card wrong' },
-                    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' } },
-                      h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-                        h('span', { className: 'ps-q-badge' }, item.topicName),
-                        h('b', { style: { fontSize: '0.95rem' } }, item.title)
-                      ),
-                      h('span', { style: { fontSize: '0.78rem', color: 'var(--critical)', fontWeight: 700, background: 'color-mix(in srgb, var(--critical) 12%, transparent)', padding: '3px 8px', borderRadius: '5px' } },
-                        item.daysOverdue > 0 ? '‼ Quá hạn ' + item.daysOverdue + ' ngày' : '! Đến hạn ôn tập hôm nay'
-                      )
-                    ),
-                    h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', margin: '8px 0 4px' } },
-                      h('b', null, 'Nguyên nhân sai lầm: '), item.reason
-                    ),
-                    h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace', marginBottom: '10px' } },
-                      'Chu kỳ giãn cách: ' + item.intervalDays + ' ngày'
-                    ),
-                    h('button', {
-                      type: 'button',
-                      className: 'ps-ai-tutor-trigger' + ((ai && ai.loading) ? ' loading' : ''),
-                      disabled: !!(ai && ai.loading),
-                      onClick: function(){ askAiTutor(item); }
-                    },
-                      h('span', { className: 'ps-ai-tutor-trigger-avatar' }, '🦉'),
-                      h('span', { className: 'ps-ai-tutor-trigger-text' },
-                        h('b', null, (ai && ai.loading) ? 'OPC Learning AI đang soạn câu trả lời…' : 'Hỏi OPC Learning AI'),
-                        !(ai && ai.loading) ? h('span', { className: 'ps-ai-tutor-trigger-sub' }, 'Giải thích lại vì sao bạn làm sai') : null
-                      )
-                    ),
-                    ai && ai.loading ? h('div', { className: 'ps-ai-tutor-card typing' },
-                      h('span', { className: 'ps-ai-tutor-avatar sm' }, '🦉'),
-                      h('span', { className: 'ps-ai-tutor-dots' }, h('span'), h('span'), h('span')),
-                      h('span', { className: 'ps-ai-tutor-typing-text' }, 'OPC Learning AI đang soạn câu trả lời…')
-                    ) : null,
-                    ai && !ai.loading && ai.error ? h('div', { className: 'ps-ai-tutor-card error' },
-                      h('span', { className: 'ps-ai-tutor-card-icon' }, '⚠️'),
-                      h('span', null, ai.error)
-                    ) : null,
-                    ai && !ai.loading && ai.text ? h('div', { className: 'ps-ai-tutor-card' },
-                      h('div', { className: 'ps-ai-tutor-card-head' },
-                        h('span', { className: 'ps-ai-tutor-avatar' }, '🦉'),
-                        h('div', null,
-                          h('div', { className: 'ps-ai-tutor-name' }, 'OPC Learning AI'),
-                          h('div', { className: 'ps-ai-tutor-tag' }, 'Gia sư ảo cá nhân hoá')
-                        )
-                      ),
-                      h('p', { className: 'ps-ai-tutor-text' }, ai.text),
-                      h('div', { className: 'ps-ai-tutor-disclaimer' }, '✦ Nội dung do AI tạo ra, có thể có sai sót — nên đối chiếu lại với lời giải hoặc hỏi thêm thầy cô.')
-                    ) : null
-                  );
-                })
+              ) : h('div', null,
+                !dueMistakes.length ? (
+                  h('div', { style: { textAlign: 'center', padding: '28px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--line)', marginBottom: upcomingMistakes.length ? '18px' : 0 } },
+                    h('div', { style: { fontSize: '2rem', marginBottom: '8px' } }, '👍'),
+                    h('h4', { style: { margin: 0 } }, 'Chưa có câu nào đến hạn ôn tập ngay bây giờ'),
+                    h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem', marginTop: '4px' } }, 'Các câu sai gần đây vẫn đang trong chu kỳ giãn cách — xem danh sách "Sắp tới hạn" bên dưới.')
+                  )
+                ) : dueMistakes.map(renderMistakeCard),
+                upcomingMistakes.length ? h('div', { style: { marginTop: '20px' } },
+                  h('h5', { style: { fontSize: '0.9rem', color: 'var(--ink-2)', marginBottom: '10px' } }, 'Sắp tới hạn (' + upcomingMistakes.length + ' câu — đang trong chu kỳ giãn cách, chưa cần ôn ngay)'),
+                  upcomingMistakes.map(renderUpcomingRow)
+                ) : null
               )
             );
           } else if(tab === 'assigned'){
