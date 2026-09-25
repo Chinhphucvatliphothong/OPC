@@ -302,7 +302,9 @@
   .eb-nano-stem{ font-size:0.82rem; color:var(--ink-2); margin-top:6px; line-height:1.5; }
   .eb-nano-controls{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
   .eb-nano-bai-select{ flex:1; min-width:200px; padding:6px 9px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:0.8rem; }
-  .eb-nano-ai-btn{ font-size:0.76rem; font-weight:600; padding:6px 10px; border-radius:7px; border:1px dashed var(--line); background:var(--surface-2); color:var(--muted); cursor:not-allowed; white-space:nowrap; }
+  .eb-nano-ai-btn{ font-size:0.76rem; font-weight:600; padding:6px 10px; border-radius:7px; border:1px dashed var(--accent); background:color-mix(in srgb, var(--accent) 10%, var(--surface)); color:var(--accent-strong); cursor:pointer; white-space:nowrap; transition:background 150ms; }
+  .eb-nano-ai-btn:hover:not(:disabled){ background:color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+  .eb-nano-ai-btn:disabled{ border-style:solid; border-color:var(--line); background:var(--surface-2); color:var(--muted); cursor:not-allowed; }
   .eb-nano-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
   .eb-nano-chip{ font-size:0.76rem; padding:5px 10px; border-radius:999px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink-2); cursor:pointer; font-family:"Be Vietnam Pro",sans-serif; }
   .eb-nano-chip:hover{ border-color:var(--ink-2); }
@@ -3140,6 +3142,64 @@
       });
     }
 
+    // AI đọc nội dung THẬT của câu hỏi + toàn bộ danh mục (gửi kèm ngay
+    // trong request, luôn khớp window.OPC_NANO hiện hành) và gợi ý Bài +
+    // 1-2 nano-point phù hợp nhất — chính xác hơn khớp chuỗi theo tag,
+    // vì tag giáo viên ghi tay không phải lúc nào cũng khớp đúng tên Bài
+    // chuẩn trong sách. Thầy vẫn xem/sửa tay lại được sau khi AI gợi ý.
+    var aiSuggestingState = React.useState({}); var aiSuggesting = aiSuggestingState[0], setAiSuggesting = aiSuggestingState[1];
+
+    function buildNanoCatalogPayload(){
+      if(!window.OPC_NANO) return [];
+      return window.OPC_NANO.CHU_DE.map(function(cd){
+        return {
+          chuDeKey: cd.key,
+          chuDeName: cd.name,
+          bai: window.OPC_NANO.getBaiByChuDe(cd.key).map(function(b){
+            return {
+              baiKey: b.key,
+              baiName: b.name,
+              nano: window.OPC_NANO.getNanoByBai(b.key).map(function(n){ return { id: n.id, name: n.name }; })
+            };
+          })
+        };
+      });
+    }
+
+    async function requestAiNanoSuggestion(qIdx, q){
+      setAiSuggesting(function(prev){ return Object.assign({}, prev, { [qIdx]: true }); });
+      try{
+        var resp = await fetch('/api/ai-suggest-nano', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stem: q.stem || q.raw || '',
+            options: (q.options || []).map(function(o){ return o.key + '. ' + o.text; }),
+            level: q.level,
+            chuDeLon: q.chuDeLon,
+            dangBai: q.dangBai,
+            catalog: buildNanoCatalogPayload()
+          })
+        });
+        var data = await resp.json().catch(function(){ return {}; });
+        if(!resp.ok){
+          props.fireToast((data && data.error) || 'AI gợi ý thất bại — thử lại.', true);
+          return;
+        }
+        setNanoRows(function(prev){
+          var next = Object.assign({}, prev);
+          next[qIdx] = { baiKey: data.baiKey, nanoIds: data.nanoIds || [] };
+          return next;
+        });
+        props.fireToast('AI đã gợi ý cho câu ' + (qIdx + 1) + (data.reason ? ' — ' + data.reason : '') + ' — thầy xem lại giúp em.');
+      }catch(err){
+        console.error('Lỗi gọi AI gợi ý nano-point:', err);
+        props.fireToast('Không gọi được AI gợi ý — kiểm tra mạng, thử lại.', true);
+      }finally{
+        setAiSuggesting(function(prev){ var next = Object.assign({}, prev); delete next[qIdx]; return next; });
+      }
+    }
+
     React.useEffect(function(){
       var unsub = OPCref.examBank.subscribe(function(snap){
         var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
@@ -3641,7 +3701,7 @@
               // ===== Gắn nano-point cho từng câu (phân rã kiến thức mức nhỏ nhất) =====
               window.OPC_NANO ? h('div',{className:'eb-nano-panel'},
                 h('div',{className:'eb-nano-panel-title'}, '🧬 Gắn nano-point cho từng câu (mô hình Squirrel AI)'),
-                h('p',{className:'eb-nano-panel-sub'}, 'Điểm yếu của học sinh sẽ hiện đúng tới từng nano-point này thay vì chung chung theo cả chương — giúp việc chẩn đoán không còn phụ thuộc vào kinh nghiệm chấm bài của một giáo viên giỏi. Hiện chưa nối AI thật, hệ thống chỉ gợi ý "Bài" khớp gần nhất theo tag đã ghi trong .tex; thầy xác nhận / chọn tay nano-point cho từng câu bên dưới.'),
+                h('p',{className:'eb-nano-panel-sub'}, 'Điểm yếu của học sinh sẽ hiện đúng tới từng nano-point này thay vì chung chung theo cả chương — giúp việc chẩn đoán không còn phụ thuộc vào kinh nghiệm chấm bài của một giáo viên giỏi. Hệ thống tự gợi ý "Bài" khớp gần nhất theo tag đã ghi trong .tex; bấm "🪄 AI gợi ý" ở từng câu để AI đọc thẳng nội dung câu hỏi và đề xuất chính xác hơn. Thầy luôn xem lại / chọn tay lại được nếu chưa đúng ý.'),
 
                 h('div',{className:'eb-nano-bulk'},
                   h('label',null,'Gắn nhanh cho các câu còn thiếu:'),
@@ -3686,8 +3746,10 @@
                             );
                           })
                         ),
-                        h('button',{type:'button', className:'eb-nano-ai-btn', disabled:true,
-                          title:'Sẽ tự động đọc nội dung câu hỏi và đề xuất nano-point khi kết nối AI ở bản cập nhật sau.'}, '🪄 AI gợi ý (sắp có)')
+                        h('button',{type:'button', className:'eb-nano-ai-btn', disabled: !!aiSuggesting[idx],
+                          title:'AI đọc thẳng nội dung câu hỏi này và đề xuất Bài + nano-point phù hợp nhất.',
+                          onClick:function(){ requestAiNanoSuggestion(idx, q); }},
+                          aiSuggesting[idx] ? '⏳ Đang phân tích…' : '🪄 AI gợi ý')
                       ),
                       pool.length ? h('div',{className:'eb-nano-chips'},
                         pool.map(function(n){
