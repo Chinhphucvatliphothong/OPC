@@ -18,15 +18,26 @@
   // warriorTitle: danh xưng gamification hiển thị ở thẻ Cấp độ/XP trên Trang
   // chủ (kiểu "Chiến Binh Nhiệt Học") khi chủ đề này đang là "chương hiện
   // tại" của học sinh — xem getCurrentChuDe bên dưới.
+  // THÊM 25/9/2026: mở rộng từ 4 lên ĐÚNG 7 chủ đề khớp với nano-map.js
+  // (CHU_DE) sau khi danh mục nano-point được cập nhật đủ sách Chuyên đề
+  // Vật Lí 12 KNTT (Phase C, 24/9/2026) — trước đó CHU_DE_MAP ở đây là 1
+  // bản sao RIÊNG, tách biệt với nano-map.js, quên cập nhật theo nên toàn
+  // bộ mastery/"chương hiện tại"/gamification chỉ tính trên 4 chủ đề SGK
+  // cũ, bỏ sót hoàn toàn 3 chuyên đề mới. Key PHẢI khớp đúng key trong
+  // nano-map.js CHU_DE để 2 nơi luôn đồng bộ.
   var CHU_DE_MAP = {
     'nhiet': { name: 'Vật lí nhiệt', icon: '🔥', defaultMastery: 50, warriorTitle: 'Chiến Binh Nhiệt Học' },
     'khi': { name: 'Khí lí tưởng', icon: '💨', defaultMastery: 50, warriorTitle: 'Chiến Binh Khí Lí Tưởng' },
     'tu-truong': { name: 'Từ trường & Cảm ứng điện từ', icon: '🧲', defaultMastery: 50, warriorTitle: 'Chiến Binh Từ Trường' },
-    'hat-nhan': { name: 'Vật lí hạt nhân', icon: '⚛️', defaultMastery: 50, warriorTitle: 'Chiến Binh Hạt Nhân' }
+    'hat-nhan': { name: 'Vật lí hạt nhân', icon: '⚛️', defaultMastery: 50, warriorTitle: 'Chiến Binh Hạt Nhân' },
+    'cd1-dxc': { name: 'Dòng điện xoay chiều (Chuyên đề)', icon: '🔌', defaultMastery: 50, warriorTitle: 'Chiến Binh Dòng Điện Xoay Chiều' },
+    'cd2-yhoc': { name: 'Vật lí trong y học (Chuyên đề)', icon: '🫁', defaultMastery: 50, warriorTitle: 'Chiến Binh Y Học Vật Lí' },
+    'cd3-luongtu': { name: 'Vật lí lượng tử (Chuyên đề)', icon: '✨', defaultMastery: 50, warriorTitle: 'Chiến Binh Lượng Tử' }
   };
   // Thứ tự chương trình học — dùng để xác định "chương hiện tại" (chủ đề
   // đầu tiên chưa đạt Xanh), giống 1 "mặt trận" học sinh đang chinh chiến.
-  var CHU_DE_ORDER = ['nhiet', 'khi', 'tu-truong', 'hat-nhan'];
+  // 3 chuyên đề xếp SAU 4 chương SGK (thứ tự dạy thực tế phổ biến).
+  var CHU_DE_ORDER = ['nhiet', 'khi', 'tu-truong', 'hat-nhan', 'cd1-dxc', 'cd2-yhoc', 'cd3-luongtu'];
 
   // Ngân hàng câu hỏi THẬT — nạp từ Firestore (collection "de_thi", qua
   // opc-live-data.js -> replaceQuestionBank()). Giai đoạn thật hoàn toàn
@@ -341,26 +352,44 @@
     var scores = pool.map(function(a){ return Number(a.scaledScore10); }).filter(function(n){ return !isNaN(n); });
     if(scores.length) result.predicted = Math.round((scores.reduce(function(s, n){ return s + n; }, 0) / scores.length) * 10) / 10;
 
-    // Sổ tay câu sai: câu sai gần nhất mà SAU ĐÓ chưa từng làm đúng lại.
+    // Sổ tay câu sai + Lặp lại giãn cách (Spaced Repetition) — THÊM 25/9/2026:
+    // nâng từ giãn cách đơn giản (luôn 1 ngày) lên đúng chu kỳ 4 mốc chuẩn
+    // 1-3-7-14 ngày. Không có "log ôn tập" riêng (mỗi câu chỉ lưu 1 lần làm
+    // sai/đúng gần nhất qua wrongQuestions/rightQuestions của mỗi lượt nộp
+    // bài), nên mốc (tier) được suy ra từ SỐ LẦN LÀM SAI LIÊN TIẾP chưa được
+    // sửa (wrongStreak): sai lần 1 -> hạn ôn sau 1 ngày; vẫn còn trong sổ mà
+    // bị hỏi lại và lại sai (streak 2) -> hạn ôn giãn ra 3 ngày; streak 3 ->
+    // 7 ngày; streak 4 trở lên -> 14 ngày (mốc xa nhất, giữ nguyên). Làm
+    // đúng 1 lần là XOÁ khỏi sổ (reset streak về 0) — đúng tinh thần "đã
+    // thuộc, không cần ôn nữa", không tăng dần độ khó thêm.
+    var REVIEW_INTERVALS_DAYS = [1, 3, 7, 14];
     var lastWrong = {};
+    var wrongStreak = {};
     sorted.forEach(function(a){
-      (a.wrongQuestions || []).forEach(function(q){ lastWrong[q.qId] = { q: q, at: a.createdAt }; });
-      (a.rightQuestions || []).forEach(function(q){ delete lastWrong[q.qId]; });
+      (a.wrongQuestions || []).forEach(function(q){
+        lastWrong[q.qId] = { q: q, at: a.createdAt };
+        wrongStreak[q.qId] = (wrongStreak[q.qId] || 0) + 1;
+      });
+      (a.rightQuestions || []).forEach(function(q){ delete lastWrong[q.qId]; wrongStreak[q.qId] = 0; });
     });
     var now = Date.now();
     result.mistakeLog = Object.keys(lastWrong).map(function(qId){
       var info = lastWrong[qId];
       var daysSince = Math.floor((now - new Date(info.at).getTime()) / 86400000);
-      var intervalDays = 1; // giãn cách đơn giản — có thể nâng cấp thuật toán sau
+      var streak = wrongStreak[qId] || 1;
+      var tier = Math.min(streak - 1, REVIEW_INTERVALS_DAYS.length - 1); // 0..3
+      var intervalDays = REVIEW_INTERVALS_DAYS[tier];
       return {
         id: 'live_' + qId,
         qId: qId,
         topicKey: info.q.topicKey,
         topicName: info.q.topicName || '',
         title: info.q.subtopic || info.q.topicName || 'Câu hỏi',
-        reason: 'Đã làm sai trong lượt luyện gần đây',
+        reason: tier > 0 ? ('Đã làm sai lặp lại lần ' + (tier + 1) + ' — giãn cách ' + intervalDays + ' ngày') : 'Đã làm sai trong lượt luyện gần đây',
         daysOverdue: Math.max(0, daysSince - intervalDays),
         intervalDays: intervalDays,
+        tier: tier, // 0-3, dùng bởi PersonalizedExamGeneratorPanel (admin.html) để ưu tiên câu trễ hạn nhất
+        part: info.q.part || null, // THÊM để admin.html biết xếp câu ôn lại vào đúng Phần I/II/III khi trộn đề
         nanoId: info.q.nanoId
       };
     }).sort(function(a, b){ return b.daysOverdue - a.daysOverdue; }).slice(0, 15);

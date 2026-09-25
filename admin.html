@@ -771,6 +771,16 @@
 </script>
 
 <script src="nano-map.js"></script>
+<!-- prepscholar.js: THÊM 25/9/2026 — admin.html trước đây không nạp file này
+     (chỉ prepscholar-ui.js/trang luyện tập của học sinh mới dùng). Nay cần
+     dùng chung hàm computeStudentStatsFromAttempts (tính "Sổ tay câu sai" +
+     giãn cách 1-3-7-14 ngày từ lịch sử làm bài THẬT) cho tính năng "Tuỳ chọn
+     nâng cao" (Chỉ lấy câu chưa từng làm / Ưu tiên câu từng làm sai) trong
+     PersonalizedExamGeneratorPanel — dùng lại ĐÚNG 1 nguồn thuật toán với
+     trang luyện tập của học sinh, tránh viết trùng 2 nơi dễ lệch nhau. File
+     này tự bọc trong (function(window){...})(window), không đụng DOM, an
+     toàn khi nạp cùng admin.html. -->
+<script src="prepscholar.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
@@ -1520,6 +1530,16 @@
         { name: 'Từ trường & Cảm ứng', val: tTu },
         { name: 'Vật lí hạt nhân', val: tHn }
       ];
+      // THÊM 25/9/2026: thêm 3 chuyên đề mới vào danh sách xét "chủ đề yếu
+      // nhất" — CHỈ khi đã có số liệu thật cho chuyên đề đó (không gán mặc
+      // định như 4 chủ đề SGK ở trên, vì chuyên đề là nội dung mới, chưa
+      // chắc học sinh cũ nào cũng đã luyện — tránh báo "yếu" oan cho chuyên
+      // đề chỉ vì chưa từng làm câu nào).
+      ['cd1-dxc', 'cd2-yhoc', 'cd3-luongtu'].forEach(function(k){
+        if(s.mastery[k] !== undefined){
+          topics.push({ name: CHU_DE_LABEL[k], val: s.mastery[k] });
+        }
+      });
       topics.sort(function(a, b){ return a.val - b.val; });
       weakTopic = topics[0].name + ' (' + topics[0].val + '%)';
     }
@@ -2643,7 +2663,15 @@
   // định kỳ), (2) bấm tạo nháp AI cho từng em hoặc tất cả cùng lúc, (3)
   // xem/sửa rồi Sao chép + mở Zalo phụ huynh để gửi tay — ĐÚNG mô hình co-
   // pilot đã chốt (AI không tự gửi gì cả).
-  var CHU_DE_LABEL = { 'nhiet': 'Vật lí nhiệt', 'khi': 'Khí lí tưởng', 'tu-truong': 'Từ trường & Cảm ứng điện từ', 'hat-nhan': 'Vật lí hạt nhân' };
+  // THÊM 25/9/2026: mở rộng từ 4 lên 7 chủ đề — khớp đúng key với nano-map.js
+  // (CHU_DE) và prepscholar.js (CHU_DE_MAP), sau khi danh mục nano-point đã
+  // có đủ sách Chuyên đề Vật Lí 12 KNTT (Phase C, 24/9/2026). Trước đó biến
+  // này là 1 bản sao RIÊNG chỉ có 4 chủ đề SGK cũ, khiến báo cáo AI phụ
+  // huynh không bao giờ nhắc tới điểm mạnh/yếu chuyên đề của học sinh.
+  var CHU_DE_LABEL = {
+    'nhiet': 'Vật lí nhiệt', 'khi': 'Khí lí tưởng', 'tu-truong': 'Từ trường & Cảm ứng điện từ', 'hat-nhan': 'Vật lí hạt nhân',
+    'cd1-dxc': 'Dòng điện xoay chiều (Chuyên đề)', 'cd2-yhoc': 'Vật lí trong y học (Chuyên đề)', 'cd3-luongtu': 'Vật lí lượng tử (Chuyên đề)'
+  };
   var REPORT_STALE_DAYS = 7;
 
   function ParentReportsPanel(props){
@@ -3798,6 +3826,53 @@
     var loadErrState = React.useState(null); var loadErr = loadErrState[0], setLoadErr = loadErrState[1];
     var assigningState = React.useState(false); var assigning = assigningState[0], setAssigning = assigningState[1];
 
+    // ============ Tuỳ chọn nâng cao: Chỉ lấy câu chưa từng làm / Ưu tiên câu
+    // từng làm sai (Lặp giãn cách) — THÊM 25/9/2026 =========================
+    // Trước đây 2 tuỳ chọn này CHỈ tồn tại ở khối "Custom Exam Builder" minh
+    // hoạ công khai trên trang chủ (index.html, mục #tao-de, có nhãn "Minh
+    // hoạ tương tác") — chạy hoàn toàn trên trình duyệt với 1 học sinh mẫu
+    // cứng (SUBJECTS mastery 85/68/60/42 giả định), KHÔNG đọc dữ liệu thật.
+    // Nay xây dựng bản THẬT ngay tại đây — nơi giáo viên thật sự tạo đề giao
+    // cho học sinh thật — dùng đúng lịch sử làm bài thật (students/{id}/attempts)
+    // qua computeStudentStatsFromAttempts (prepscholar.js), CÙNG một thuật
+    // toán với trang luyện tập của học sinh (Sổ tay câu sai), không viết
+    // trùng 1 bản riêng dễ lệch nhau.
+    var onlyNewState = React.useState(false); var onlyNew = onlyNewState[0], setOnlyNew = onlyNewState[1];
+    var prioritizeWrongState = React.useState(false); var prioritizeWrong = prioritizeWrongState[0], setPrioritizeWrong = prioritizeWrongState[1];
+    // 2 tuỳ chọn loại trừ nhau về mặt ý nghĩa (1 cái đòi loại hết câu đã từng
+    // làm, cái kia đòi ưu tiên đúng những câu đã từng làm sai) — bật 1 cái
+    // tự tắt cái còn lại để giáo viên không nhầm tưởng cả 2 cùng áp dụng.
+    function toggleOnlyNew(val){ setOnlyNew(val); if(val) setPrioritizeWrong(false); }
+    function togglePrioritizeWrong(val){ setPrioritizeWrong(val); if(val) setOnlyNew(false); }
+
+    var studentAttemptsState = React.useState([]); var studentAttempts = studentAttemptsState[0], setStudentAttempts = studentAttemptsState[1];
+    React.useEffect(function(){
+      if(!selectedStudentId || !OPCref || !OPCref.attempts){ setStudentAttempts([]); return; }
+      var unsub = OPCref.attempts.subscribeForStudent(selectedStudentId, function(snap){
+        setStudentAttempts(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); }));
+      }, function(err){ console.error('Lỗi tải lịch sử làm bài (Tạo đề cá nhân hóa):', err); setStudentAttempts([]); });
+      return function(){ unsub(); };
+    }, [selectedStudentId]);
+
+    // studentStats.mistakeLog: câu sai chưa sửa, đã tính đúng chu kỳ giãn
+    // cách 1-3-7-14 ngày + daysOverdue (xem computeStudentStatsFromAttempts).
+    var studentStats = React.useMemo(function(){
+      if(!window.PrepScholarEngine || !window.PrepScholarEngine.computeStudentStatsFromAttempts) return null;
+      return window.PrepScholarEngine.computeStudentStatsFromAttempts(studentAttempts);
+    }, [studentAttempts]);
+
+    // everAttemptedIds: TOÀN BỘ câu đã từng làm (đúng lẫn sai, mọi lượt) —
+    // khác với mistakeLog (chỉ câu sai CHƯA sửa) — dùng cho "Chỉ lấy câu
+    // chưa từng làm".
+    var everAttemptedIds = React.useMemo(function(){
+      var set = {};
+      studentAttempts.forEach(function(a){
+        (a.wrongQuestions || []).forEach(function(q){ if(q.qId) set[q.qId] = true; });
+        (a.rightQuestions || []).forEach(function(q){ if(q.qId) set[q.qId] = true; });
+      });
+      return set;
+    }, [studentAttempts]);
+
     React.useEffect(function(){
       var unsub1 = OPCref.students.subscribe(function(snap){
         var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
@@ -3854,8 +3929,21 @@
         pool = pool.filter(function(q){ return q.chuDe === selectedTopic || q.chuDeLon === selectedTopic; });
       }
 
+      // "Chỉ lấy câu chưa từng làm" — THÊM 25/9/2026: loại hẳn mọi câu đã có
+      // trong lịch sử làm bài THẬT của học sinh (đúng lẫn sai, mọi lượt —
+      // everAttemptedIds), khớp bằng đúng công thức id "<examId>_q<index>"
+      // mà wrongQuestions/rightQuestions đã lưu.
+      var excludedAttemptedCount = 0;
+      if(onlyNew){
+        var beforeOnlyNewCount = pool.length;
+        pool = pool.filter(function(q){ return !everAttemptedIds[q.examId + '_q' + q.index]; });
+        excludedAttemptedCount = beforeOnlyNewCount - pool.length;
+      }
+
       if(!pool.length){
-        props.fireToast('Chưa có câu hỏi nào trong ngân hàng đề phù hợp với bộ lọc.', true);
+        props.fireToast(onlyNew
+          ? 'Học sinh đã làm hết câu hỏi phù hợp trong ngân hàng đề — tắt "Chỉ lấy câu chưa từng làm" hoặc nạp thêm đề mới.'
+          : 'Chưa có câu hỏi nào trong ngân hàng đề phù hợp với bộ lọc.', true);
         return;
       }
 
@@ -3885,37 +3973,74 @@
       var chosenP2 = [];
       var chosenP3 = [];
 
-      // Define ratios based on goalProfile:
+      // "Ưu tiên câu từng làm sai (Lặp giãn cách)" — THÊM 25/9/2026: dành
+      // tối thiểu 40% tổng số câu cho các câu ĐANG ĐẾN HẠN ôn lại
+      // (daysOverdue >= 0) trong Sổ tay câu sai THẬT của học sinh
+      // (studentStats.mistakeLog — đã tính đúng chu kỳ 1-3-7-14 ngày, xem
+      // computeStudentStatsFromAttempts trong prepscholar.js), câu trễ hạn
+      // NHIỀU NHẤT được ưu tiên trước (mistakeLog đã sắp sẵn theo đúng thứ
+      // tự đó). Chỉ dùng được câu nào Sổ tay câu sai trỏ tới MÀ vẫn còn thật
+      // trong ngân hàng đề hiện tại (pool) — khớp đúng id "<examId>_q<index>".
+      var reviewChosen = [];
+      if(prioritizeWrong && studentStats && studentStats.mistakeLog && studentStats.mistakeLog.length){
+        var poolById = {};
+        pool.forEach(function(q){ poolById[q.examId + '_q' + q.index] = q; });
+        var dueReview = studentStats.mistakeLog
+          .filter(function(m){ return m.daysOverdue >= 0 && poolById[m.qId]; })
+          .sort(function(a, b){ return b.daysOverdue - a.daysOverdue; });
+        var totalTarget = targetP1 + targetP2 + targetP3;
+        var reviewTarget = Math.min(dueReview.length, Math.ceil(totalTarget * 0.4));
+        for(var ri = 0; ri < dueReview.length && reviewChosen.length < reviewTarget; ri++){
+          var rq = poolById[dueReview[ri].qId];
+          var partTarget = rq.part === 'I' ? targetP1 : (rq.part === 'II' ? targetP2 : targetP3);
+          var partChosen = rq.part === 'I' ? chosenP1 : (rq.part === 'II' ? chosenP2 : chosenP3);
+          if(partChosen.length >= partTarget) continue; // Phần đó đã đủ chỗ, bỏ qua câu này
+          if(rq.part === 'I') chosenP1.push(rq); else if(rq.part === 'II') chosenP2.push(rq); else chosenP3.push(rq);
+          reviewChosen.push(rq);
+        }
+      }
+
+      // Định nghĩa tỉ lệ theo goalProfile — áp dụng cho SỐ CÂU CÒN THIẾU của
+      // mỗi Phần (đã trừ đi các câu ôn-lại-giãn-cách vừa dành chỗ ở trên):
       // foundation: 70% M1-M2, 30% M3
       // breakthrough: 25% M2, 55% M3, 20% M4
       // advanced: 30% M3, 70% M4
       // moet_standard: 45% M1-M2, 40% M3, 15% M4
+      var remP1 = Math.max(0, targetP1 - chosenP1.length);
+      var remP2 = Math.max(0, targetP2 - chosenP2.length);
+      var remP3 = Math.max(0, targetP3 - chosenP3.length);
+      var alreadyChosen = chosenP1.concat(chosenP2, chosenP3);
+      function filterPoolExclChosen(part, levelArray){
+        return filterPool(part, levelArray).filter(function(q){ return alreadyChosen.indexOf(q) === -1; });
+      }
       if(goalProfile === 'foundation'){
-        var m12Pool = shuffle(filterPool('I', ['M1', 'M2']));
-        var m3Pool = shuffle(filterPool('I', ['M3']));
-        chosenP1 = m12Pool.slice(0, Math.round(targetP1 * 0.7)).concat(m3Pool.slice(0, Math.round(targetP1 * 0.3)));
-        chosenP2 = shuffle(filterPool('II', ['M1', 'M2', 'M3'])).slice(0, targetP2);
-        chosenP3 = shuffle(filterPool('III', ['M2', 'M3'])).slice(0, targetP3);
+        var m12Pool = shuffle(filterPoolExclChosen('I', ['M1', 'M2']));
+        var m3Pool = shuffle(filterPoolExclChosen('I', ['M3']));
+        chosenP1 = chosenP1.concat(m12Pool.slice(0, Math.round(remP1 * 0.7)), m3Pool.slice(0, Math.round(remP1 * 0.3)));
+        chosenP2 = chosenP2.concat(shuffle(filterPoolExclChosen('II', ['M1', 'M2', 'M3'])).slice(0, remP2));
+        chosenP3 = chosenP3.concat(shuffle(filterPoolExclChosen('III', ['M2', 'M3'])).slice(0, remP3));
       } else if(goalProfile === 'advanced'){
-        var m3PoolA = shuffle(filterPool('I', ['M3']));
-        var m4PoolA = shuffle(filterPool('I', ['M4']));
-        chosenP1 = m3PoolA.slice(0, Math.round(targetP1 * 0.35)).concat(m4PoolA.slice(0, Math.round(targetP1 * 0.65)));
-        chosenP2 = shuffle(filterPool('II', ['M3', 'M4'])).slice(0, targetP2);
-        chosenP3 = shuffle(filterPool('III', ['M3', 'M4'])).slice(0, targetP3);
+        var m3PoolA = shuffle(filterPoolExclChosen('I', ['M3']));
+        var m4PoolA = shuffle(filterPoolExclChosen('I', ['M4']));
+        chosenP1 = chosenP1.concat(m3PoolA.slice(0, Math.round(remP1 * 0.35)), m4PoolA.slice(0, Math.round(remP1 * 0.65)));
+        chosenP2 = chosenP2.concat(shuffle(filterPoolExclChosen('II', ['M3', 'M4'])).slice(0, remP2));
+        chosenP3 = chosenP3.concat(shuffle(filterPoolExclChosen('III', ['M3', 'M4'])).slice(0, remP3));
       } else if(goalProfile === 'breakthrough'){
-        var m2PoolB = shuffle(filterPool('I', ['M2']));
-        var m3PoolB = shuffle(filterPool('I', ['M3']));
-        var m4PoolB = shuffle(filterPool('I', ['M4']));
-        chosenP1 = m2PoolB.slice(0, Math.round(targetP1 * 0.25))
-          .concat(m3PoolB.slice(0, Math.round(targetP1 * 0.55)))
-          .concat(m4PoolB.slice(0, Math.round(targetP1 * 0.20)));
-        chosenP2 = shuffle(filterPool('II', ['M2', 'M3', 'M4'])).slice(0, targetP2);
-        chosenP3 = shuffle(filterPool('III', ['M2', 'M3', 'M4'])).slice(0, targetP3);
+        var m2PoolB = shuffle(filterPoolExclChosen('I', ['M2']));
+        var m3PoolB = shuffle(filterPoolExclChosen('I', ['M3']));
+        var m4PoolB = shuffle(filterPoolExclChosen('I', ['M4']));
+        chosenP1 = chosenP1.concat(
+          m2PoolB.slice(0, Math.round(remP1 * 0.25)),
+          m3PoolB.slice(0, Math.round(remP1 * 0.55)),
+          m4PoolB.slice(0, Math.round(remP1 * 0.20))
+        );
+        chosenP2 = chosenP2.concat(shuffle(filterPoolExclChosen('II', ['M2', 'M3', 'M4'])).slice(0, remP2));
+        chosenP3 = chosenP3.concat(shuffle(filterPoolExclChosen('III', ['M2', 'M3', 'M4'])).slice(0, remP3));
       } else {
         // moet_standard or others
-        chosenP1 = shuffle(filterPool('I')).slice(0, targetP1);
-        chosenP2 = shuffle(filterPool('II')).slice(0, targetP2);
-        chosenP3 = shuffle(filterPool('III')).slice(0, targetP3);
+        chosenP1 = chosenP1.concat(shuffle(filterPoolExclChosen('I')).slice(0, remP1));
+        chosenP2 = chosenP2.concat(shuffle(filterPoolExclChosen('II')).slice(0, remP2));
+        chosenP3 = chosenP3.concat(shuffle(filterPoolExclChosen('III')).slice(0, remP3));
       }
 
       // If any part was underfilled, backfill from remaining of that part
@@ -3943,7 +4068,9 @@
         m1: allSelected.filter(function(q){ return q.level === 'M1'; }).length,
         m2: allSelected.filter(function(q){ return q.level === 'M2'; }).length,
         m3: allSelected.filter(function(q){ return q.level === 'M3'; }).length,
-        m4: allSelected.filter(function(q){ return q.level === 'M4'; }).length
+        m4: allSelected.filter(function(q){ return q.level === 'M4'; }).length,
+        reviewCount: reviewChosen.length,
+        excludedAttemptedCount: excludedAttemptedCount
       };
 
       setGenerated({
@@ -4261,6 +4388,35 @@
               )
             ),
 
+            // ============ Tuỳ chọn nâng cao — THÊM 25/9/2026 =================
+            // Bản THẬT của 2 tuỳ chọn trước đây chỉ có ở khối minh hoạ công
+            // khai trên trang chủ (index.html #tao-de) — ở đây dùng đúng
+            // lịch sử làm bài thật của học sinh đang chọn (xem
+            // studentAttempts/studentStats/everAttemptedIds ở trên).
+            h('div',{className:'sm-field', style:{marginTop:14, background:'var(--surface-2)', borderRadius:'8px', padding:'12px'}},
+              h('label',null,'4. Tuỳ chọn nâng cao'),
+              student ? h('div',{style:{fontSize:'0.72rem', color:'var(--ink-2)', margin:'2px 0 10px'}},
+                'Học sinh đã làm ' + Object.keys(everAttemptedIds).length + ' câu trong ngân hàng đề hiện tại' +
+                (studentStats && studentStats.mistakeLog
+                  ? ' · ' + studentStats.mistakeLog.filter(function(m){ return m.daysOverdue >= 0; }).length + ' câu đang đến hạn ôn lại (giãn cách 1–3–7–14 ngày)'
+                  : '')
+              ) : null,
+              h('label',{style:{display:'flex', alignItems:'flex-start', gap:'8px', fontWeight:400, fontSize:'0.82rem', marginBottom:'10px', cursor:'pointer'}},
+                h('input',{type:'checkbox', checked:onlyNew, onChange:function(e){ toggleOnlyNew(e.target.checked); }, style:{marginTop:3}}),
+                h('span',null,
+                  h('div',{style:{color:'var(--ink)'}}, 'Chỉ lấy câu chưa từng làm'),
+                  h('div',{style:{fontSize:'0.72rem', color:'var(--ink-2)', fontWeight:400, marginTop:2}}, 'Loại hẳn các câu học sinh đã từng làm (dù đúng hay sai) ra khỏi đề — phù hợp khi luyện chuyên đề mới.')
+                )
+              ),
+              h('label',{style:{display:'flex', alignItems:'flex-start', gap:'8px', fontWeight:400, fontSize:'0.82rem', cursor:'pointer'}},
+                h('input',{type:'checkbox', checked:prioritizeWrong, onChange:function(e){ togglePrioritizeWrong(e.target.checked); }, style:{marginTop:3}}),
+                h('span',null,
+                  h('div',{style:{color:'var(--ink)'}}, 'Ưu tiên câu từng làm sai (Lặp giãn cách)'),
+                  h('div',{style:{fontSize:'0.72rem', color:'var(--ink-2)', fontWeight:400, marginTop:2}}, 'Lấy tối thiểu 40% số câu từ Sổ tay câu sai thật, đang đến hạn theo chu kỳ 1–3–7–14 ngày, phần còn lại lấp theo đúng tỉ lệ Level đã chọn.')
+                )
+              )
+            ),
+
             h('div',{style:{marginTop:20}},
               h('button',{type:'button', className:'btn btn-primary', style:{width:'100%', justifyContent:'center'}, onClick:handleGenerate},
                 '🎯 Lọc & tạo đề theo lộ trình'
@@ -4287,7 +4443,9 @@
                     h('h4',{style:{fontFamily:'"Be Vietnam Pro",sans-serif', fontSize:'1.05rem', color:'var(--ink)'}}, generated.title),
                     h('div',{style:{fontSize:'0.8rem', color:'var(--ink-2)', marginTop:'2px'}},
                       'Mã đề: ' + generated.examCode + ' · Tổng số: ' + generated.stats.total + ' câu (P1: ' + generated.stats.p1 + ' | P2: ' + generated.stats.p2 + ' | P3: ' + generated.stats.p3 + ')'
-                    )
+                    ),
+                    generated.stats.reviewCount ? h('div',{style:{fontSize:'0.76rem', color:'#b45309', marginTop:'4px'}}, '🔁 Gồm ' + generated.stats.reviewCount + ' câu ôn lại từ Sổ tay câu sai (giãn cách 1–3–7–14 ngày)') : null,
+                    generated.stats.excludedAttemptedCount ? h('div',{style:{fontSize:'0.76rem', color:'#0369a1', marginTop:'4px'}}, '🆕 Đã loại ' + generated.stats.excludedAttemptedCount + ' câu học sinh từng làm trước đó') : null
                   ),
                   h('div',{style:{display:'flex', gap:'8px', flexWrap:'wrap'}},
                     h('button',{type:'button', className:'btn btn-primary', onClick:handleExportTeX}, '📄 Tải file .tex chuẩn Bộ GD'),
@@ -4442,6 +4600,10 @@
     var avgKhi = classAvgTopic(['khi']);
     var avgTuTruong = classAvgTopic(['tu-truong', 'tutruong']);
     var avgHatNhan = classAvgTopic(['hat-nhan', 'hatnhan']);
+    // THÊM 25/9/2026: 3 chuyên đề mới (đồng bộ nano-map.js/prepscholar.js).
+    var avgCd1 = classAvgTopic(['cd1-dxc']);
+    var avgCd2 = classAvgTopic(['cd2-yhoc']);
+    var avgCd3 = classAvgTopic(['cd3-luongtu']);
 
     var studentsWithPredicted = displayStudents.filter(function(s){
       return s.predictedScore != null || (s.averageScore != null && Number(s.averageScore) > 0);
@@ -4607,11 +4769,28 @@
           h('div',{className:'eb-matrix-cell'},
             h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgKhi)}}, avgKhi != null ? avgKhi + '%' : '—'),
             h('div',{className:'eb-matrix-lbl'}, 'Khí lí tưởng')),
+          // Từ trường: THÊM 25/9/2026 — trước đây classAvgTopic tính đúng
+          // nhưng ô này bị thiếu, không hiện ra (lỗi sót từ trước, không
+          // liên quan tới việc mở rộng 7 chủ đề — tiện sửa luôn khi đụng
+          // vào khối này).
+          h('div',{className:'eb-matrix-cell'},
+            h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgTuTruong)}}, avgTuTruong != null ? avgTuTruong + '%' : '—'),
+            h('div',{className:'eb-matrix-lbl'}, 'Từ trường')),
           h('div',{className:'eb-matrix-cell'},
             h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgHatNhan)}}, avgHatNhan != null ? avgHatNhan + '%' : '—'),
-            h('div',{className:'eb-matrix-lbl'}, 'Vật lí hạt nhân'))
+            h('div',{className:'eb-matrix-lbl'}, 'Vật lí hạt nhân')),
+          // 3 chuyên đề mới — THÊM 25/9/2026.
+          h('div',{className:'eb-matrix-cell'},
+            h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgCd1)}}, avgCd1 != null ? avgCd1 + '%' : '—'),
+            h('div',{className:'eb-matrix-lbl'}, 'DĐ xoay chiều (CĐ)')),
+          h('div',{className:'eb-matrix-cell'},
+            h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgCd2)}}, avgCd2 != null ? avgCd2 + '%' : '—'),
+            h('div',{className:'eb-matrix-lbl'}, 'Y học (CĐ)')),
+          h('div',{className:'eb-matrix-cell'},
+            h('div',{className:'eb-matrix-val', style:{color: masteryColor(avgCd3)}}, avgCd3 != null ? avgCd3 + '%' : '—'),
+            h('div',{className:'eb-matrix-lbl'}, 'Lượng tử (CĐ)'))
         ),
-        (avgNhiet == null && avgKhi == null && avgTuTruong == null && avgHatNhan == null) ? h('p',{style:{marginTop:10, fontSize:'0.8rem', color:'var(--muted)'}}, 'Chưa có học sinh nào luyện tập — số liệu sẽ tự cập nhật ngay khi có bài nộp đầu tiên.') : null
+        (avgNhiet == null && avgKhi == null && avgTuTruong == null && avgHatNhan == null && avgCd1 == null && avgCd2 == null && avgCd3 == null) ? h('p',{style:{marginTop:10, fontSize:'0.8rem', color:'var(--muted)'}}, 'Chưa có học sinh nào luyện tập — số liệu sẽ tự cập nhật ngay khi có bài nộp đầu tiên.') : null
       ),
 
       h('div',{className:'sm-table-wrap', style:{marginTop:20}},
@@ -4624,6 +4803,10 @@
               h('th',null,'Khí lí tưởng'),
               h('th',null,'Từ trường'),
               h('th',null,'Hạt nhân'),
+              // 3 cột chuyên đề mới — THÊM 25/9/2026 (đồng bộ nano-map.js/prepscholar.js).
+              h('th',null,'DĐ xoay chiều (CĐ)'),
+              h('th',null,'Y học (CĐ)'),
+              h('th',null,'Lượng tử (CĐ)'),
               h('th',null,'Sổ câu sai'),
               h('th',{style:{textAlign:'right'}},'Hành động')
             )
@@ -4637,6 +4820,10 @@
               var vKhi = studentMasteryVal(stu, ['khi']);
               var vTuTruong = studentMasteryVal(stu, ['tu-truong', 'tutruong']);
               var vHatNhan = studentMasteryVal(stu, ['hat-nhan', 'hatnhan']);
+              // 3 chuyên đề mới — THÊM 25/9/2026.
+              var vCd1 = studentMasteryVal(stu, ['cd1-dxc']);
+              var vCd2 = studentMasteryVal(stu, ['cd2-yhoc']);
+              var vCd3 = studentMasteryVal(stu, ['cd3-luongtu']);
               var pScore = stu.predictedScore != null ? Number(stu.predictedScore).toFixed(1) : (stu.averageScore ? (stu.averageScore * 0.95).toFixed(1) : null);
               var tScore = stu.targetScore != null ? stu.targetScore : 9.0;
               var mCount = stu.mistakeCount != null ? stu.mistakeCount : null;
@@ -4666,6 +4853,9 @@
                 h('td',null, pill(vKhi)),
                 h('td',null, pill(vTuTruong)),
                 h('td',null, pill(vHatNhan)),
+                h('td',null, pill(vCd1)),
+                h('td',null, pill(vCd2)),
+                h('td',null, pill(vCd3)),
                 h('td',null,
                   h('span',{style:{fontFamily:'IBM Plex Mono, monospace', fontSize:'0.82rem', color:'var(--ink)'}}, mCount != null ? mCount + ' câu' : '—')
                 ),

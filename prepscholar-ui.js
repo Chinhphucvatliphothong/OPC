@@ -22,8 +22,11 @@
   // xem computeStudentStatsFromAttempts trong prepscholar.js.
   function toAppStudent(real){
     // Mốc trung lập khi chưa có số liệu thật (giai đoạn thật hoàn toàn —
-    // không giả định trước em nào yếu/mạnh chuyên đề nào).
-    var defMastery = { 'nhiet': 50, 'khi': 50, 'tu-truong': 50, 'hat-nhan': 50 };
+    // không giả định trước em nào yếu/mạnh chuyên đề nào). THÊM 25/9/2026:
+    // suy TỰ ĐỘNG từ CHU_DE_MAP (nay 7 chủ đề, gồm 3 chuyên đề) thay vì gõ
+    // cứng 4 key — để không bỏ sót chủ đề mới nếu danh mục còn mở rộng thêm.
+    var defMastery = {};
+    Object.keys(window.PrepScholarEngine.CHU_DE_MAP).forEach(function(k){ defMastery[k] = 50; });
     return {
       id: real.id,
       name: real.name || 'Học sinh',
@@ -1166,8 +1169,12 @@
 
       setMistakeLog(newMistakes);
 
-      // Cập nhật lại học sinh
-      var avgMastery = Math.round((newMastery['nhiet'] + newMastery['khi'] + newMastery['tu-truong'] + newMastery['hat-nhan']) / 4);
+      // Cập nhật lại học sinh — THÊM 25/9/2026: trung bình trên TOÀN BỘ chủ
+      // đề trong CHU_DE_MAP (nay 7, gồm 3 chuyên đề), không cộng cứng đúng 4
+      // chủ đề SGK cũ — nếu không, điểm dự đoán không bao giờ phản ánh đúng
+      // phong độ chuyên đề của học sinh.
+      var avgMasteryKeys = Object.keys(window.PrepScholarEngine.CHU_DE_MAP);
+      var avgMastery = Math.round(avgMasteryKeys.reduce(function(s, k){ return s + (newMastery[k] != null ? newMastery[k] : 50); }, 0) / avgMasteryKeys.length);
       var newPredicted = Math.round((5.0 + (avgMastery / 100) * 4.8) * 10) / 10;
 
       setStudent(function(prev){
@@ -1341,8 +1348,11 @@
         h('p', { style: { color: 'var(--ink-2)', fontSize: '0.9rem' } }, 'Đang tải hồ sơ học sinh…'));
     }
 
-    // Tính overall mastery
-    var avgMastery = Math.round((student.mastery['nhiet'] + student.mastery['khi'] + student.mastery['tu-truong'] + student.mastery['hat-nhan']) / 4);
+    // Tính overall mastery — THÊM 25/9/2026: như trên, trung bình trên TOÀN
+    // BỘ chủ đề trong CHU_DE_MAP (nay 7, gồm 3 chuyên đề), không cộng cứng
+    // đúng 4 chủ đề SGK cũ.
+    var avgMasteryKeys = Object.keys(window.PrepScholarEngine.CHU_DE_MAP);
+    var avgMastery = Math.round(avgMasteryKeys.reduce(function(s, k){ return s + (student.mastery[k] != null ? student.mastery[k] : 50); }, 0) / avgMasteryKeys.length);
 
     // Số đề được giao CHƯA làm — dùng để "làm nổi bật" tab Đề được giao (tab
     // đổi màu/nhấp nháy nhẹ) + hiện banner nhắc trên Trang chủ, để học sinh
