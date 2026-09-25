@@ -705,7 +705,12 @@
         return onSnapshot(query(
           collection(db, 'students', studentId, 'attempts'),
           orderBy('createdAt', 'desc'),
-          limit(50)
+          // SỬA 25/9/2026: 50 -> 100, khớp đúng mặc định loadAttempts(studentId,
+          // max) bên opc-live-data.js (limit(max || 100)) mà app học sinh dùng.
+          // Trước đây admin chỉ đọc 50 lượt gần nhất trong khi học sinh luyện
+          // nhiều có thể đã tính Sổ tay câu sai/mastery từ tới 100 lượt — khiến
+          // 2 bên hiển thị lệch nhau cho học sinh luyện tập nhiều.
+          limit(100)
         ), onNext, onErr);
       }
     };
@@ -2400,22 +2405,40 @@
           )
         );
 
-    // Ví dụ minh hoạ báo cáo phụ huynh theo nano-point (chưa lấy dữ liệu luyện tập thật của học sinh)
-    function pickNanoPreview(student){
-      if(!window.OPC_NANO || !window.OPC_NANO.NANO.length) return [];
-      var pts = window.OPC_NANO.NANO;
-      var sid = String((student && (student.id || student.name)) || 'hs');
-      var seed = 0;
-      for(var i=0;i<sid.length;i++) seed += sid.charCodeAt(i);
-      var idxs = [seed % pts.length, (seed*3+7) % pts.length, (seed*7+13) % pts.length, (seed*11+19) % pts.length];
-      return idxs.map(function(pi, i){
-        var p = pts[pi];
-        var pct = 28 + ((seed + i*17) % 45); // minh hoạ 28-72%
-        return { name: p.name, pct: pct };
-      });
+    // Báo cáo tuần theo nano-point — SỬA 25/9/2026: trước đây hàm này CHỈ
+    // SINH DỮ LIỆU GIẢ (theo seed từ id/tên học sinh, xem git log) để minh
+    // hoạ định dạng — không phản ánh học lực thật, tự gắn nhãn "đang xây
+    // dựng". Nay dùng ĐÚNG student.nanoMastery — mastery thật theo từng
+    // nano-point (đơn vị kiến thức nhỏ nhất), được tính từ lịch sử làm bài
+    // thật qua computeStudentStatsFromAttempts (prepscholar.js) và ghi vào
+    // Firestore student_stats sau mỗi lượt nộp bài (syncStudentStats trong
+    // prepscholar-ui.js) — StudentsPanel đã gộp field này vào mỗi học sinh
+    // qua displayStudents/statsById ở trên, nên "selected" ở đây có sẵn dữ
+    // liệu thật, không cần tải thêm gì cả.
+    function pickWeakNanoPoints(student, limit){
+      limit = limit || 5;
+      if(!window.OPC_NANO || !student || !student.nanoMastery) return [];
+      var nm = student.nanoMastery;
+      return Object.keys(nm)
+        .filter(function(id){ return typeof nm[id] === 'number'; })
+        .map(function(id){
+          var nano = window.OPC_NANO.getNano(id);
+          var bai = nano ? window.OPC_NANO.getBai(nano.baiKey) : null;
+          var chuDe = bai ? window.OPC_NANO.getChuDe(bai.chuDeKey) : null;
+          return {
+            id: id,
+            name: nano ? nano.name : id, // giữ nguyên id nếu nano-point đã bị xoá/đổi khỏi danh mục sau khi học sinh từng làm
+            baiName: bai ? bai.name : '',
+            chuDeName: chuDe ? chuDe.name : '',
+            pct: Math.round(nm[id])
+          };
+        })
+        .sort(function(a, b){ return a.pct - b.pct; })
+        .slice(0, limit);
     }
     var selKpi = selected ? calculateStudentKPIs(selected) : null;
-    var nanoPreview = selected ? pickNanoPreview(selected) : [];
+    var nanoPreview = selected ? pickWeakNanoPoints(selected) : [];
+    var nanoTestedCount = selected && selected.nanoMastery ? Object.keys(selected.nanoMastery).filter(function(id){ return typeof selected.nanoMastery[id] === 'number'; }).length : 0;
     var detailModal = selected ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget) setSelected(null); }},
       h('div',{className:'sm-modal', role:'dialog', 'aria-modal':'true', 'aria-label':'Hồ sơ học sinh'},
         h('div',{className:'sm-modal-head'}, h('h3',null,'Hồ sơ học sinh & KPI'),
@@ -2501,19 +2524,23 @@
           h('p',null, h('b',null,'Họ tên: '), selected.parentName || 'Chưa cập nhật'),
           h('p',null, h('b',null,'SĐT / Zalo: '), selected.parentPhone || 'Chưa cập nhật'),
           h('p',null, h('b',null,'Email: '), selected.parentEmail || 'Chưa cập nhật')),
-        nanoPreview.length ? h('div',{className:'sm-info-block'},
-          h('div',{className:'sm-info-title'}, '🧬 Xem trước báo cáo tuần theo nano-point (đang xây dựng)'),
-          h('p',{style:{color:'var(--muted)', fontSize:'0.78rem', marginBottom:'6px', lineHeight:'1.55'}},
-            'Bản báo cáo mới sẽ liệt kê đúng những nano-point học sinh còn yếu thay vì chỉ nêu chung một chuyên đề — dữ liệu bên dưới là ví dụ minh hoạ định dạng, chưa lấy từ kết quả luyện tập thật.'),
-          nanoPreview.map(function(n, i){
-            var color = n.pct < 50 ? '#d03b3b' : (n.pct < 75 ? '#b8790a' : '#0ca30c');
-            return h('div',{key:i, className:'sm-nano-preview-row'},
-              h('span',{className:'sm-nano-preview-name'}, n.name),
-              h('div',{className:'sm-nano-preview-bar'}, h('div',{className:'sm-nano-preview-fill', style:{width:n.pct+'%', background:color}})),
-              h('span',{className:'sm-nano-preview-pct'}, n.pct+'%')
-            );
-          })
-        ) : null,
+        h('div',{className:'sm-info-block'},
+          h('div',{className:'sm-info-title'}, '🧬 Báo cáo tuần theo nano-point'),
+          !nanoTestedCount ? h('p',{style:{color:'var(--muted)', fontSize:'0.78rem', lineHeight:'1.55'}},
+            'Học sinh chưa luyện câu hỏi nào đã được gắn nano-point, nên chưa có dữ liệu để hiện ở đây. Gắn nano-point cho câu hỏi khi nạp đề (mục "🧬 Gắn nano-point cho từng câu") để lần luyện tập tới của học sinh bắt đầu tính được.') :
+            h('div', null,
+              h('p',{style:{color:'var(--muted)', fontSize:'0.78rem', marginBottom:'6px', lineHeight:'1.55'}},
+                'Top ' + nanoPreview.length + '/' + nanoTestedCount + ' nano-point (đơn vị kiến thức nhỏ nhất) học sinh đang yếu nhất, tính từ lịch sử luyện tập thật:'),
+              nanoPreview.map(function(n){
+                var color = n.pct < 50 ? '#d03b3b' : (n.pct < 75 ? '#b8790a' : '#0ca30c');
+                return h('div',{key:n.id, className:'sm-nano-preview-row'},
+                  h('span',{className:'sm-nano-preview-name', title: [n.chuDeName, n.baiName].filter(Boolean).join(' › ')}, n.name),
+                  h('div',{className:'sm-nano-preview-bar'}, h('div',{className:'sm-nano-preview-fill', style:{width:n.pct+'%', background:color}})),
+                  h('span',{className:'sm-nano-preview-pct'}, n.pct+'%')
+                );
+              })
+            )
+        ),
         h('div',{style:{marginTop:'18px', display:'flex', gap:'10px'}},
           h('button',{type:'button', className:'btn btn-danger', onClick:function(){ handleDelete(selected); }}, 'Xoá học sinh'),
           h('button',{type:'button', className:'btn btn-secondary', style:{flex:1, justifyContent:'center'}, onClick:function(){ setSelected(null); }}, 'Đóng'))
@@ -2772,6 +2799,10 @@
       var st = statsById[s.id] || {};
       return Object.assign({}, s, {
         mastery: st.mastery || s.mastery || {},
+        // nanoMastery: THÊM 25/9/2026 — mastery thật theo nano-point (xem
+        // buildPromptData bên dưới), trước đây panel này không đọc field
+        // này nên báo cáo AI luôn chỉ nêu được mức chuyên đề chung chung.
+        nanoMastery: st.nanoMastery || s.nanoMastery,
         predicted: st.predicted != null ? st.predicted : s.predictedScore,
         averageScore: st.averageScore != null ? st.averageScore : s.averageScore,
         recentTrend: st.recentTrend, recentAvgScore: st.recentAvgScore, priorAvgScore: st.priorAvgScore,
@@ -2795,13 +2826,42 @@
     var reviewIdState = React.useState(null); var reviewId = reviewIdState[0], setReviewId = reviewIdState[1];
     var sendingState = React.useState(false); var sending = sendingState[0], setSending = sendingState[1];
 
+    // SỬA 25/9/2026: điểm mạnh/yếu ưu tiên lấy theo NANO-POINT (đơn vị kiến
+    // thức nhỏ nhất, vd "Bài toán bình kín rò rỉ hoặc bơm thêm khí") thay vì
+    // chỉ nêu tên cả chuyên đề chung chung (vd "Khí lí tưởng") khi đã có đủ
+    // dữ liệu — giúp báo cáo AI cho phụ huynh cụ thể, hữu ích hơn nhiều mà
+    // KHÔNG cần sửa gì ở api/ai-parent-report.js: tên nano-point trong
+    // nano-map.js vốn đã là câu mô tả tự nhiên, không dùng mã/thuật ngữ kỹ
+    // thuật, nên khớp thẳng với field "name" mà endpoint AI đang mong đợi
+    // (xem SYSTEM_INSTRUCTION trong file đó — cấm dùng thuật ngữ nội bộ).
+    // Học sinh mới học (chưa đủ 3 nano-point từng kiểm tra) vẫn dùng lại
+    // mức chuyên đề như cũ, tránh AI viết báo cáo dựa trên quá ít dữ liệu.
     function buildPromptData(s){
       var mastery = s.mastery || {};
       var topics = Object.keys(CHU_DE_LABEL).filter(function(k){ return mastery[k] != null; })
         .map(function(k){ return { name: CHU_DE_LABEL[k], pct: Math.round(mastery[k]) }; })
         .sort(function(a, b){ return b.pct - a.pct; });
-      var strong = topics.slice(0, 1).filter(function(t){ return t.pct >= 65; });
-      var weak = topics.slice(-2).filter(function(t){ return t.pct < 65; });
+
+      var nanoRows = [];
+      if(window.OPC_NANO && s.nanoMastery){
+        nanoRows = Object.keys(s.nanoMastery)
+          .filter(function(id){ return typeof s.nanoMastery[id] === 'number'; })
+          .map(function(id){
+            var nano = window.OPC_NANO.getNano(id);
+            return nano ? { name: nano.name, pct: Math.round(s.nanoMastery[id]) } : null;
+          })
+          .filter(Boolean)
+          .sort(function(a, b){ return b.pct - a.pct; });
+      }
+
+      var strong, weak;
+      if(nanoRows.length >= 3){
+        strong = nanoRows.slice(0, 1).filter(function(t){ return t.pct >= 65; });
+        weak = nanoRows.slice(-2).filter(function(t){ return t.pct < 65; });
+      } else {
+        strong = topics.slice(0, 1).filter(function(t){ return t.pct >= 65; });
+        weak = topics.slice(-2).filter(function(t){ return t.pct < 65; });
+      }
       return {
         studentName: s.name,
         periodLabel: '7 ngày qua',
