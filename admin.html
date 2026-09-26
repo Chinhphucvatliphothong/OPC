@@ -1171,6 +1171,35 @@
   // từ chính số câu ghi trong đoạn văn — VD "câu 1 và câu 2" → 2 câu; nếu
   // không đọc được số nào thì tạm coi là áp dụng cho đúng 1 câu ngay sau đó
   // và đánh dấu "uncertain" để admin biết mà kiểm tra lại).
+  // SỬA 26/9/2026: đếm số câu hỏi mà 1 đoạn mở đầu dùng chung áp dụng cho,
+  // đọc từ chính câu chữ (VD "câu 1 và 2:", "câu 1, 2 và 3:", "câu 3 đến 5").
+  // Cách đếm CŨ (quét mọi cặp "câu <số>" rải rác trong CẢ đoạn văn) bỏ sót
+  // đúng cách viết tắt phổ biến nhất — "câu 1 và 2" — vì chữ "câu" chỉ xuất
+  // hiện MỘT LẦN trước cả cụm số, số thứ 2 ("2") không có chữ "câu" đứng
+  // trước nên bị regex cũ /câu\s*(\d+)/g bỏ qua, khiến hệ thống tưởng nhóm
+  // chỉ áp dụng cho đúng 1 câu. Sửa: từ vị trí chữ "câu" đầu tiên đi kèm số,
+  // lấy cả CỤM kí tự phía sau cho đến dấu ":" gần nhất (hoặc tối đa 60 kí
+  // tự nếu không có dấu ":"), rồi lấy MỌI số xuất hiện trong cụm đó — không
+  // đòi hỏi chữ "câu" phải lặp lại trước từng số.
+  function inferGroupQuestionCount(passageText){
+    var m = passageText.match(/c[aâ]u\s*\d/i);
+    if(!m) return { count: 1, uncertain: true };
+    var startIdx = m.index;
+    var colonIdx = passageText.indexOf(':', startIdx);
+    var windowEnd = (colonIdx > -1 && colonIdx - startIdx < 80) ? colonIdx : Math.min(passageText.length, startIdx + 60);
+    var windowText = passageText.slice(startIdx, windowEnd);
+    var nums = [];
+    var numRegex = /\d+/g;
+    var nm;
+    while((nm = numRegex.exec(windowText)) !== null){ nums.push(Number(nm[0])); }
+    if(nums.length >= 2){
+      return { count: Math.max.apply(null, nums) - Math.min.apply(null, nums) + 1, uncertain: false };
+    } else if(nums.length === 1){
+      return { count: 1, uncertain: false };
+    }
+    return { count: 1, uncertain: true };
+  }
+
   function extractImminiGroup(text){
     var mIdx = text.indexOf('\\immini');
     if(mIdx === -1) return null;
@@ -1189,19 +1218,44 @@
     var imgRegex2 = /\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g;
     var im2;
     while((im2 = imgRegex2.exec(imageRaw)) !== null){ imgs.push(im2[1]); }
-    var nums = [];
-    var numRegex = /c[aâ]u\s*(\d+)/gi;
-    var nm;
-    while((nm = numRegex.exec(passageText)) !== null){ nums.push(Number(nm[1])); }
-    var count = 1;
-    var uncertain = true;
-    if(nums.length >= 2){
-      count = Math.max.apply(null, nums) - Math.min.apply(null, nums) + 1;
-      uncertain = false;
-    } else if(nums.length === 1){
-      uncertain = false;
-    }
-    return { passage: passageText, images: imgs, remaining: Math.max(1, count), uncertain: uncertain };
+    var groupCount = inferGroupQuestionCount(passageText);
+    return { passage: passageText, images: imgs, remaining: Math.max(1, groupCount.count), uncertain: groupCount.uncertain };
+  }
+
+  // SỬA 26/9/2026 — theo báo cáo thật của thầy: nhiều đề dùng câu hỏi chùm
+  // KHÔNG qua \immini mà viết trực tiếp kiểu:
+  //   \textbf{Nội dung câu 1 và 2:} <đoạn văn/ngữ cảnh dùng chung>
+  //   \begin{center}\includegraphics[...]{...}\end{center}
+  //   \begin{ex} ... \end{ex}   (câu 1)
+  //   \begin{ex} ... \end{ex}   (câu 2)
+  // Trước đây preambleBuffer chỉ được xét khi có \immini -> case này bị xoá
+  // âm thầm (mất cả đoạn văn dùng chung lẫn hình minh hoạ chung), 2 câu hỏi
+  // hiện ra rời rạc, không có ngữ cảnh, không có hình. Nhận diện bằng cụm từ
+  // "Nội dung ... câu <số>" (không phân biệt hoa/thường, chấp nhận vài chữ
+  // xen giữa như "Nội dung dùng chung cho câu 1, 2:") — cụm này gần như chỉ
+  // xuất hiện ở đúng loại đoạn mở đầu câu hỏi chùm, không trùng với tiêu đề
+  // phần thi ("PHẦN II — ...") hay tên đề, nên an toàn để kích hoạt.
+  function extractPlainPreambleGroup(text){
+    if(!/N[ộo]i dung[^\n]{0,40}c[aâ]u\s*\d/i.test(text)) return null;
+    var imgs = [];
+    var imgRegex3 = /\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g;
+    var im3;
+    while((im3 = imgRegex3.exec(text)) !== null){ imgs.push(im3[1]); }
+    var passageText = text
+      .replace(/^%.*$/gm, '')
+      .replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, function(m, inner){
+        return inner.replace(/\\includegraphics(?:\[.*?\])?\{[^}]+\}/g, '').trim();
+      })
+      .replace(/\\includegraphics(?:\[.*?\])?\{[^}]+\}/g, '')
+      .replace(/\\textbf\{([^{}]*)\}/g, '$1')
+      .replace(/\\textit\{([^{}]*)\}/g, '$1')
+      .replace(/\\noindent/g, '')
+      .replace(/\\(subsubsection|tieuephan)\{[^{}]*\}/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if(!passageText) return null;
+    var groupCount = inferGroupQuestionCount(passageText);
+    return { passage: passageText, images: imgs, remaining: Math.max(1, groupCount.count), uncertain: groupCount.uncertain };
   }
 
   // Quét 1 khối {...} bắt đầu ĐÚNG tại dấu '{' ở startIdx (nhận diện đúng độ
@@ -1326,10 +1380,15 @@
         // \immini thì đó là ngữ cảnh dùng chung cho câu hỏi chùm sắp tới.
         if(preambleBuffer.length){
           var preambleText = preambleBuffer.join('\n');
+          var newGroup = null;
           if(/\\immini/.test(preambleText)){
-            var newGroup = extractImminiGroup(preambleText);
-            if(newGroup) pendingGroup = newGroup;
+            newGroup = extractImminiGroup(preambleText);
+          } else {
+            // SỬA 26/9/2026: câu hỏi chùm viết trực tiếp (không \immini),
+            // nhận diện qua cụm "Nội dung ... câu N" — xem extractPlainPreambleGroup.
+            newGroup = extractPlainPreambleGroup(preambleText);
           }
+          if(newGroup) pendingGroup = newGroup;
           preambleBuffer = [];
         }
         inEx = true;
@@ -1377,11 +1436,18 @@
             }
           }
 
-          // Bóc tách trả lời ngắn
+          // Bóc tách trả lời ngắn — SỬA 26/9/2026: dùng extractBraceBlocks
+          // (nhận diện đúng độ sâu ngoặc nhọn) thay vì regex "không tham
+          // lam" cũ /\{([^}]+)\}/. Đáp án số thập phân kiểu Việt Nam hay
+          // viết "\shortans{7{,}5}" (để KaTeX hiện dấu phẩy đúng) — ngoặc
+          // "{,}" lồng bên trong khiến regex cũ dừng lại ở dấu "}" đóng đầu
+          // tiên gặp được (của "{,}"), cắt cụt đáp án thành "7{," thay vì
+          // "7{,}5" -> lưu sai đáp án dùng để chấm điểm tự động.
           var shortansVal = null;
           if(qType === 'shortans'){
-            var sMatch = full.match(/\\shortans\{([^}]+)\}/);
-            if(sMatch) shortansVal = sMatch[1].trim();
+            var shortansIdx = full.indexOf('\\shortans');
+            var shortansBlocks = shortansIdx > -1 ? extractBraceBlocks(full, shortansIdx + 9, 1) : [];
+            if(shortansBlocks.length) shortansVal = shortansBlocks[0].trim();
           }
 
           // Bóc tách lời giải — dùng extractBraceBlocks (nhận diện đúng độ sâu
@@ -3203,6 +3269,15 @@
     var editDraftState = React.useState(null); var editDraft = editDraftState[0], setEditDraft = editDraftState[1];
     var savingAnswerState = React.useState(false); var savingAnswer = savingAnswerState[0], setSavingAnswer = savingAnswerState[1];
 
+    // THÊM 26/9/2026 — theo yêu cầu của thầy: cho phép Sửa / Xoá / Nạp riêng
+    // 1 câu ngay ở bước soát danh sách vừa bóc tách từ file .tex (TRƯỚC khi
+    // bấm "Nạp đề vào ngân hàng"), thay vì phải đợi nạp cả file rồi mới sửa
+    // qua màn hình chi tiết đề đã lưu (editingQIndex/editDraft ở trên chỉ
+    // hoạt động SAU khi đề đã có trong Firestore).
+    var preEditIdxState = React.useState(null); var preEditIdx = preEditIdxState[0], setPreEditIdx = preEditIdxState[1];
+    var preEditDraftState = React.useState(null); var preEditDraft = preEditDraftState[0], setPreEditDraft = preEditDraftState[1];
+    var importingRowsState = React.useState({}); var importingRows = importingRowsState[0], setImportingRows = importingRowsState[1];
+
     function startEditAnswer(q){
       setEditingQIndex(q.index);
       setEditDraft({
@@ -3301,12 +3376,183 @@
       });
     }
 
+    // Tính lại thống kê tổng quan (matrix M1-M4, số câu mỗi phần, danh sách
+    // chủ đề, số câu "chùm"...) sau khi Sửa/Xoá 1 câu ở bước soát — KHÔNG
+    // đụng tới parseTexBank, chỉ tính lại từ mảng câu hỏi hiện có, cùng công
+    // thức với khối "stats" trong parseTexBank để 2 nơi luôn khớp nhau.
+    function computeStatsFromQuestions(questions){
+      return {
+        total: questions.length,
+        p1: questions.filter(function(q){ return q.part === 'I'; }).length,
+        p2: questions.filter(function(q){ return q.part === 'II'; }).length,
+        p3: questions.filter(function(q){ return q.part === 'III'; }).length,
+        m1: questions.filter(function(q){ return q.level === 'M1'; }).length,
+        m2: questions.filter(function(q){ return q.level === 'M2'; }).length,
+        m3: questions.filter(function(q){ return q.level === 'M3'; }).length,
+        m4: questions.filter(function(q){ return q.level === 'M4'; }).length,
+        grouped: questions.filter(function(q){ return !!q.groupPassage; }).length,
+        topics: Array.from(new Set(questions.map(function(q){ return q.chuDeLon; }).filter(Boolean))),
+        subTopics: Array.from(new Set(questions.map(function(q){ return q.dangBai; }).filter(Boolean)))
+      };
+    }
+
+    // Loại 1 câu khỏi danh sách đang soát — dùng khi Xoá hẳn, hoặc sau khi
+    // đã Nạp riêng câu đó rồi (để tránh nạp trùng lúc nạp cả file). nanoRows/
+    // aiSuggesting/importingRows đang lưu theo CHỈ SỐ MẢNG (idx): xoá 1 phần
+    // tử ở giữa mảng câu hỏi làm lệch chỉ số của mọi câu phía sau nếu không
+    // dồn lại các object này theo đúng vị trí mới.
+    function removeQuestionAt(idx){
+      setParsedAnalysis(function(prev){
+        if(!prev) return prev;
+        var newQuestions = prev.questions.filter(function(_, i){ return i !== idx; });
+        return Object.assign({}, prev, { questions: newQuestions, stats: computeStatsFromQuestions(newQuestions) });
+      });
+      function shiftKeys(prevObj){
+        var next = {};
+        Object.keys(prevObj).forEach(function(k){
+          var ki = Number(k);
+          if(ki === idx) return;
+          next[ki > idx ? ki - 1 : ki] = prevObj[k];
+        });
+        return next;
+      }
+      setNanoRows(shiftKeys);
+      setAiSuggesting(shiftKeys);
+      setImportingRows(shiftKeys);
+      if(preEditIdx === idx){
+        setPreEditIdx(null);
+        setPreEditDraft(null);
+      } else if(preEditIdx != null && preEditIdx > idx){
+        setPreEditIdx(preEditIdx - 1);
+      }
+    }
+
+    function deleteQuestionAt(idx){
+      if(!window.confirm('Bỏ câu ' + (idx + 1) + ' khỏi danh sách nạp lần này? (chỉ bỏ khỏi lượt nạp này, không phải xoá khỏi ngân hàng — nếu câu đã có sẵn trong ngân hàng từ trước thì không liên quan)')) return;
+      removeQuestionAt(idx);
+    }
+
+    function startPreEdit(idx, q){
+      setPreEditIdx(idx);
+      setPreEditDraft({
+        stem: q.stem || '',
+        options: (q.options || []).map(function(o){ return Object.assign({}, o); }),
+        shortans: q.shortans || '',
+        loigiai: q.loigiai || '',
+        level: q.level || 'M2',
+        chuDeLon: q.chuDeLon || '',
+        dangBai: q.dangBai || ''
+      });
+    }
+    function cancelPreEdit(){ setPreEditIdx(null); setPreEditDraft(null); }
+    function updatePreEditField(key, val){
+      setPreEditDraft(function(prev){ return prev ? Object.assign({}, prev, { [key]: val }) : prev; });
+    }
+    function updatePreEditOption(oIdx, text){
+      setPreEditDraft(function(prev){
+        if(!prev) return prev;
+        return Object.assign({}, prev, { options: prev.options.map(function(o, i){ return i === oIdx ? Object.assign({}, o, { text: text }) : o; }) });
+      });
+    }
+    function setPreEditCorrectChoice(oIdx){
+      setPreEditDraft(function(prev){
+        if(!prev) return prev;
+        return Object.assign({}, prev, { options: prev.options.map(function(o, i){ return Object.assign({}, o, { isTrue: i === oIdx }); }) });
+      });
+    }
+    function togglePreEditTF(oIdx){
+      setPreEditDraft(function(prev){
+        if(!prev) return prev;
+        return Object.assign({}, prev, { options: prev.options.map(function(o, i){ return i === oIdx ? Object.assign({}, o, { isTrue: !o.isTrue }) : o; }) });
+      });
+    }
+    function savePreEdit(idx){
+      if(!preEditDraft || !parsedAnalysis) return;
+      var q0 = parsedAnalysis.questions[idx];
+      if(!q0) return;
+      if(!String(preEditDraft.stem || '').trim()){
+        props.fireToast('Nội dung câu hỏi không được để trống.', true);
+        return;
+      }
+      if(q0.type !== 'shortans' && !preEditDraft.options.some(function(o){ return o.isTrue; })){
+        props.fireToast('Cần chọn ít nhất 1 đáp án đúng trước khi lưu.', true);
+        return;
+      }
+      if(q0.type === 'shortans' && !String(preEditDraft.shortans || '').trim()){
+        props.fireToast('Đáp án không được để trống.', true);
+        return;
+      }
+      setParsedAnalysis(function(prev){
+        if(!prev) return prev;
+        var newQuestions = prev.questions.map(function(q, i){
+          if(i !== idx) return q;
+          var updated = Object.assign({}, q, {
+            stem: preEditDraft.stem.trim(),
+            loigiai: preEditDraft.loigiai,
+            level: preEditDraft.level,
+            chuDeLon: preEditDraft.chuDeLon.trim(),
+            dangBai: preEditDraft.dangBai.trim()
+          });
+          if(q.type === 'shortans'){ updated.shortans = preEditDraft.shortans.trim(); }
+          else { updated.options = preEditDraft.options; }
+          return updated;
+        });
+        return Object.assign({}, prev, { questions: newQuestions, stats: computeStatsFromQuestions(newQuestions) });
+      });
+      setPreEditIdx(null);
+      setPreEditDraft(null);
+      props.fireToast('Đã sửa câu ' + (idx + 1) + ' — nhớ bấm "Nạp đề vào ngân hàng" ở cuối để lưu thật.');
+    }
+
+    // Nạp NGAY 1 câu vào ngân hàng, tách riêng khỏi phần còn lại của file —
+    // dùng khi chỉ cần bổ sung gấp 1-2 câu, không muốn đợi soát/nạp cả đề.
+    // Dùng lại đúng danh sách ảnh đã chọn ở mục "Hình ảnh kèm theo" bên dưới
+    // (nếu câu này có \includegraphics khớp tên 1 trong các ảnh đó) — cùng
+    // cơ chế khớp tên file với lúc nạp cả đề, không cần logic ảnh riêng.
+    async function importSingleQuestion(idx, q){
+      if(!form.title.trim()){ props.fireToast('Vui lòng nhập tiêu đề đề thi trước khi nạp riêng 1 câu.', true); return; }
+      setImportingRows(function(prev){ return Object.assign({}, prev, { [idx]: true }); });
+      try{
+        var examRef = OPCref.examBank.newRef();
+        var images = [];
+        for(var i = 0; i < imgFiles.length; i++){
+          images.push(await compressImage(imgFiles[i], 1200, 0.82));
+        }
+        var row = nanoRows[idx] || { baiKey:'', nanoIds:[] };
+        var singleQ = Object.assign({}, q, { index: 1, nanoBaiKey: row.baiKey || '', nanoPointIds: row.nanoIds || [] });
+        var texContent = texFile ? await texFile.text() : '';
+        await OPCref.examBank.saveExamDoc(examRef, {
+          title: form.title.trim() + ' — Câu ' + (idx + 1),
+          chuDe: form.chuDe,
+          bai: form.bai.trim(),
+          mucDo: Number(form.mucDo),
+          tex: texFile ? { name: texFile.name, size: texFile.size, content: texContent } : null,
+          images: images,
+          stats: computeStatsFromQuestions([singleQ]),
+          questions: [singleQ],
+          createdByEmail: (window.OPC_currentUser && window.OPC_currentUser.email) || ''
+        });
+        props.fireToast('Đã nạp riêng câu ' + (idx + 1) + ' vào ngân hàng.');
+        removeQuestionAt(idx);
+      }catch(err){
+        console.error('Lỗi nạp riêng 1 câu:', err);
+        props.fireToast('Nạp riêng câu này thất bại — thử lại.', true);
+        setImportingRows(function(prev){ var next = Object.assign({}, prev); delete next[idx]; return next; });
+      }
+    }
+
     // AI đọc nội dung THẬT của câu hỏi + toàn bộ danh mục (gửi kèm ngay
     // trong request, luôn khớp window.OPC_NANO hiện hành) và gợi ý Bài +
     // 1-2 nano-point phù hợp nhất — chính xác hơn khớp chuỗi theo tag,
     // vì tag giáo viên ghi tay không phải lúc nào cũng khớp đúng tên Bài
     // chuẩn trong sách. Thầy vẫn xem/sửa tay lại được sau khi AI gợi ý.
     var aiSuggestingState = React.useState({}); var aiSuggesting = aiSuggestingState[0], setAiSuggesting = aiSuggestingState[1];
+    // Gợi ý nano-point AI HÀNG LOẠT cho cả file (kể cả file tổng hợp nhiều
+    // chuyên đề trộn lẫn — mỗi câu vẫn được gửi đúng nội dung riêng của nó
+    // cho AI, không bị lẫn chuyên đề với câu khác).
+    var bulkAiRunningState = React.useState(false); var bulkAiRunning = bulkAiRunningState[0], setBulkAiRunning = bulkAiRunningState[1];
+    var bulkAiProgressState = React.useState({ done: 0, total: 0 }); var bulkAiProgress = bulkAiProgressState[0], setBulkAiProgress = bulkAiProgressState[1];
+    var bulkAiOverwriteState = React.useState(false); var bulkAiOverwrite = bulkAiOverwriteState[0], setBulkAiOverwrite = bulkAiOverwriteState[1];
 
     function buildNanoCatalogPayload(){
       if(!window.OPC_NANO) return [];
@@ -3325,7 +3571,12 @@
       });
     }
 
-    async function requestAiNanoSuggestion(qIdx, q){
+    // opts.silent=true: dùng khi gọi hàng loạt (runBulkAiSuggest) — không
+    // hiện toast riêng cho từng câu (tránh dội hàng chục thông báo liên
+    // tiếp), trả về true/false để hàm gọi hàng loạt tự đếm số câu thành
+    // công/lỗi và hiện đúng 1 toast tổng kết ở cuối.
+    async function requestAiNanoSuggestion(qIdx, q, opts){
+      var silent = opts && opts.silent;
       setAiSuggesting(function(prev){ return Object.assign({}, prev, { [qIdx]: true }); });
       try{
         var resp = await fetch('/api/ai-suggest-nano', {
@@ -3342,20 +3593,66 @@
         });
         var data = await resp.json().catch(function(){ return {}; });
         if(!resp.ok){
-          props.fireToast((data && data.error) || 'AI gợi ý thất bại — thử lại.', true);
-          return;
+          if(!silent) props.fireToast((data && data.error) || 'AI gợi ý thất bại — thử lại.', true);
+          return false;
         }
         setNanoRows(function(prev){
           var next = Object.assign({}, prev);
           next[qIdx] = { baiKey: data.baiKey, nanoIds: data.nanoIds || [] };
           return next;
         });
-        props.fireToast('AI đã gợi ý cho câu ' + (qIdx + 1) + (data.reason ? ' — ' + data.reason : '') + ' — thầy xem lại giúp em.');
+        if(!silent) props.fireToast('AI đã gợi ý cho câu ' + (qIdx + 1) + (data.reason ? ' — ' + data.reason : '') + ' — thầy xem lại giúp em.');
+        return true;
       }catch(err){
         console.error('Lỗi gọi AI gợi ý nano-point:', err);
-        props.fireToast('Không gọi được AI gợi ý — kiểm tra mạng, thử lại.', true);
+        if(!silent) props.fireToast('Không gọi được AI gợi ý — kiểm tra mạng, thử lại.', true);
+        return false;
       }finally{
         setAiSuggesting(function(prev){ var next = Object.assign({}, prev); delete next[qIdx]; return next; });
+      }
+    }
+
+    // Gọi requestAiNanoSuggestion LẦN LƯỢT (không gọi song song — tránh dội
+    // API/limit tốc độ) cho MỌI câu trong parsedAnalysis.questions, kể cả
+    // khi file .tex là "Tổng hợp nhiều chuyên đề" (mỗi câu vẫn được gửi
+    // đúng stem/level/chuDeLon/dangBai riêng của chính nó lên AI — không hề
+    // trộn lẫn giữa các chuyên đề). Mặc định BỎ QUA câu đã có sẵn ít nhất 1
+    // nano-point (thủ công hoặc từ lần gợi ý trước) để không ghi đè công
+    // sức đã chọn tay, trừ khi thầy tick "Ghi đè...". Dừng sớm nếu gặp 3
+    // lỗi liên tiếp (nghi ngờ mất mạng / API lỗi) thay vì âm thầm chạy hết
+    // cả file rồi mới biết không câu nào thành công.
+    async function runBulkAiSuggest(){
+      if(!parsedAnalysis || !parsedAnalysis.questions.length || bulkAiRunning) return;
+      var questions = parsedAnalysis.questions;
+      var initialRows = nanoRows;
+      var overwrite = bulkAiOverwrite;
+      setBulkAiRunning(true);
+      setBulkAiProgress({ done: 0, total: questions.length });
+      var okCount = 0, failCount = 0, skipCount = 0, consecutiveFails = 0, aborted = false;
+      for(var i = 0; i < questions.length; i++){
+        var existing = initialRows[i];
+        var hasExisting = existing && existing.nanoIds && existing.nanoIds.length;
+        if(hasExisting && !overwrite){
+          skipCount++;
+        } else {
+          var ok = await requestAiNanoSuggestion(i, questions[i], { silent: true });
+          if(ok){ okCount++; consecutiveFails = 0; }
+          else {
+            failCount++; consecutiveFails++;
+            if(consecutiveFails >= 3){
+              aborted = true;
+              setBulkAiProgress({ done: i + 1, total: questions.length });
+              break;
+            }
+          }
+        }
+        setBulkAiProgress({ done: i + 1, total: questions.length });
+      }
+      setBulkAiRunning(false);
+      if(aborted){
+        props.fireToast('Dừng gợi ý hàng loạt sau 3 lỗi liên tiếp (có thể mất mạng hoặc AI đang lỗi) — đã gợi ý xong ' + okCount + ' câu trước đó, thử lại cho các câu còn lại sau.', true);
+      } else {
+        props.fireToast('Gợi ý AI hàng loạt xong: ' + okCount + ' câu thành công' + (skipCount ? ', ' + skipCount + ' câu bỏ qua vì đã có sẵn' : '') + (failCount ? ', ' + failCount + ' câu lỗi' : '') + '.', !!failCount && !okCount);
       }
     }
 
@@ -3416,10 +3713,17 @@
       setProgress(0);
       setUploadMsg('');
       setNanoRows({});
+      setPreEditIdx(null);
+      setPreEditDraft(null);
+      setImportingRows({});
+      setBulkAiRunning(false);
+      setBulkAiProgress({ done: 0, total: 0 });
     }
 
     async function onPickTex(e){
       var f = e.target.files && e.target.files[0];
+      setPreEditIdx(null); setPreEditDraft(null); setImportingRows({});
+      setBulkAiProgress({ done: 0, total: 0 });
       if(!f){ setTexFile(null); setParsedAnalysis(null); setNanoRows({}); return; }
       if(!/\.tex$/i.test(f.name)){ setFormErr('File đề phải có đuôi .tex.'); e.target.value=''; return; }
       if(f.size > MAX_TEX_BYTES){ setFormErr('File .tex vượt quá ' + fmtBytes(MAX_TEX_BYTES) + '.'); e.target.value=''; return; }
@@ -3876,6 +4180,16 @@
                   )
                 ),
 
+                h('div',{className:'eb-nano-bulk', style:{marginTop:8}},
+                  h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.82rem'}, disabled: bulkAiRunning,
+                    title:'AI đọc từng câu và gợi ý Bài + nano-point cho TOÀN BỘ file này — kể cả đề tổng hợp nhiều chuyên đề, mỗi câu vẫn gửi đúng nội dung riêng của nó, không trộn lẫn.',
+                    onClick: runBulkAiSuggest},
+                    bulkAiRunning ? ('⏳ Đang gợi ý ' + bulkAiProgress.done + '/' + bulkAiProgress.total + '…') : '🪄 AI gợi ý cho tất cả câu'),
+                  h('label',{style:{display:'flex', alignItems:'center', gap:'5px', fontWeight:400}},
+                    h('input',{type:'checkbox', checked:bulkAiOverwrite, disabled:bulkAiRunning, onChange:function(e){ setBulkAiOverwrite(e.target.checked); }}),
+                    'Ghi đè cả câu đã có sẵn gợi ý')
+                ),
+
                 h('div',{className:'eb-nano-progress'},
                   Object.keys(nanoRows).filter(function(k){ return nanoRows[k] && nanoRows[k].nanoIds && nanoRows[k].nanoIds.length; }).length +
                   '/' + parsedAnalysis.stats.total + ' câu đã gắn ít nhất 1 nano-point'),
@@ -3887,35 +4201,88 @@
                     var matchedBai = row.baiKey ? window.OPC_NANO.getBai(row.baiKey) : null;
                     var stemPreview = (q.stem || '').replace(/\s+/g,' ').trim();
                     if(stemPreview.length > 140) stemPreview = stemPreview.slice(0, 140) + '…';
+                    var isEditingThis = preEditIdx === idx;
                     return h('div',{key:'nano-'+idx, className:'eb-nano-row'},
                       h('div',{className:'eb-nano-row-head'},
                         h('span',{className:'eb-q-idx'}, 'Câu ' + (idx+1)),
                         h('span',{className:'eb-level-badge eb-level-' + String(q.level||'m2').toLowerCase()}, q.level),
-                        matchedBai ? h('span',{className:'eb-nano-match'}, '✓ khớp: ' + matchedBai.name) : h('span',{className:'eb-nano-nomatch'}, '⚠️ chưa khớp danh mục — chọn Bài bên dưới')
+                        matchedBai ? h('span',{className:'eb-nano-match'}, '✓ khớp: ' + matchedBai.name) : h('span',{className:'eb-nano-nomatch'}, '⚠️ chưa khớp danh mục — chọn Bài bên dưới'),
+                        h('span',{style:{marginLeft:'auto', display:'flex', gap:'6px'}},
+                          h('button',{type:'button', className:'sm-link-btn', style:{fontSize:'0.78rem'}, disabled: isEditingThis || !!importingRows[idx],
+                            onClick:function(){ startPreEdit(idx, q); }}, '✏️ Sửa'),
+                          h('button',{type:'button', className:'sm-link-btn', style:{fontSize:'0.78rem'}, disabled: !!importingRows[idx],
+                            title:'Lưu ngay câu này vào ngân hàng, không cần đợi nạp cả file.',
+                            onClick:function(){ importSingleQuestion(idx, q); }}, importingRows[idx] ? '⏳ Đang nạp…' : '📥 Nạp riêng'),
+                          h('button',{type:'button', className:'sm-link-btn', style:{fontSize:'0.78rem', color:'var(--bad, #b91c1c)'}, disabled: !!importingRows[idx],
+                            onClick:function(){ deleteQuestionAt(idx); }}, '✕ Xoá')
+                        )
                       ),
-                      stemPreview ? h('div',{className:'eb-nano-stem'}, stemPreview) : null,
-                      h('div',{className:'eb-nano-controls'},
-                        h('select',{className:'eb-nano-bai-select', value:row.baiKey, onChange:function(e){ setRowBai(idx, e.target.value); }},
-                          h('option',{value:''}, '— chọn Bài —'),
-                          window.OPC_NANO.CHU_DE.map(function(cd){
-                            return h('optgroup',{key:cd.key, label:cd.icon + ' ' + cd.name},
-                              window.OPC_NANO.getBaiByChuDe(cd.key).map(function(b){
-                                return h('option',{key:b.key, value:b.key}, b.name);
-                              })
+
+                      isEditingThis ? h('div',{className:'eb-answer-edit', style:{marginTop:'8px'}},
+                        h('div',{className:'sm-field'},
+                          h('label',null,'Nội dung câu hỏi:'),
+                          h('textarea',{rows:3, value:preEditDraft.stem, onChange:function(e){ updatePreEditField('stem', e.target.value); }})
+                        ),
+                        q.type === 'shortans' ? h('div',{className:'sm-field'},
+                          h('label',null,'Đáp án đúng (điền số ngắn):'),
+                          h('input',{type:'text', value:preEditDraft.shortans, onChange:function(e){ updatePreEditField('shortans', e.target.value); }})
+                        ) : h('div',{className:'eb-q-opts'},
+                          preEditDraft.options.map(function(opt, oIdx){
+                            return h('label',{key:opt.key, className:cx('eb-q-opt', 'editable', opt.isTrue && 'correct')},
+                              h('input',{
+                                type: q.type === 'choiceTF' ? 'checkbox' : 'radio',
+                                name: 'eb-preedit-' + idx,
+                                checked: !!opt.isTrue,
+                                onChange: function(){ if(q.type === 'choiceTF'){ togglePreEditTF(oIdx); } else { setPreEditCorrectChoice(oIdx); } }
+                              }),
+                              h('span',{className:'eb-q-opt-key'}, opt.key + '.'),
+                              h('input',{type:'text', style:{flex:1, border:'none', background:'transparent'}, value:opt.text, onChange:function(e){ updatePreEditOption(oIdx, e.target.value); }})
                             );
                           })
                         ),
-                        h('button',{type:'button', className:'eb-nano-ai-btn', disabled: !!aiSuggesting[idx],
-                          title:'AI đọc thẳng nội dung câu hỏi này và đề xuất Bài + nano-point phù hợp nhất.',
-                          onClick:function(){ requestAiNanoSuggestion(idx, q); }},
-                          aiSuggesting[idx] ? '⏳ Đang phân tích…' : '🪄 AI gợi ý')
-                      ),
-                      pool.length ? h('div',{className:'eb-nano-chips'},
-                        pool.map(function(n){
-                          var active = row.nanoIds.indexOf(n.id) > -1;
-                          return h('button',{key:n.id, type:'button', className:'eb-nano-chip' + (active?' active':''), onClick:function(){ toggleNano(idx, n.id); }}, (active?'✓ ':'') + n.name);
-                        })
-                      ) : null
+                        h('div',{className:'sm-form-grid'},
+                          h('div',{className:'sm-field'}, h('label',null,'Mức độ:'),
+                            h('select',{value:preEditDraft.level, onChange:function(e){ updatePreEditField('level', e.target.value); }},
+                              h('option',{value:'M1'},'M1 · Nhận biết'), h('option',{value:'M2'},'M2 · Thông hiểu'),
+                              h('option',{value:'M3'},'M3 · Vận dụng'), h('option',{value:'M4'},'M4 · Vận dụng cao'))),
+                          h('div',{className:'sm-field'}, h('label',null,'Chủ đề lớn:'),
+                            h('input',{type:'text', value:preEditDraft.chuDeLon, onChange:function(e){ updatePreEditField('chuDeLon', e.target.value); }})),
+                          h('div',{className:'sm-field'}, h('label',null,'Dạng bài:'),
+                            h('input',{type:'text', value:preEditDraft.dangBai, onChange:function(e){ updatePreEditField('dangBai', e.target.value); }}))
+                        ),
+                        h('div',{className:'sm-field'},
+                          h('label',null,'Lời giải:'),
+                          h('textarea',{rows:3, value:preEditDraft.loigiai, onChange:function(e){ updatePreEditField('loigiai', e.target.value); }})
+                        ),
+                        h('div',{style:{display:'flex', gap:'8px', marginTop:'6px'}},
+                          h('button',{type:'button', className:'btn btn-primary', style:{fontSize:'0.82rem'}, onClick:function(){ savePreEdit(idx); }}, '💾 Lưu sửa'),
+                          h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.82rem'}, onClick:cancelPreEdit}, 'Huỷ')
+                        )
+                      ) : h(React.Fragment, null,
+                        stemPreview ? h('div',{className:'eb-nano-stem'}, stemPreview) : null,
+                        h('div',{className:'eb-nano-controls'},
+                          h('select',{className:'eb-nano-bai-select', value:row.baiKey, onChange:function(e){ setRowBai(idx, e.target.value); }},
+                            h('option',{value:''}, '— chọn Bài —'),
+                            window.OPC_NANO.CHU_DE.map(function(cd){
+                              return h('optgroup',{key:cd.key, label:cd.icon + ' ' + cd.name},
+                                window.OPC_NANO.getBaiByChuDe(cd.key).map(function(b){
+                                  return h('option',{key:b.key, value:b.key}, b.name);
+                                })
+                              );
+                            })
+                          ),
+                          h('button',{type:'button', className:'eb-nano-ai-btn', disabled: !!aiSuggesting[idx],
+                            title:'AI đọc thẳng nội dung câu hỏi này và đề xuất Bài + nano-point phù hợp nhất.',
+                            onClick:function(){ requestAiNanoSuggestion(idx, q); }},
+                            aiSuggesting[idx] ? '⏳ Đang phân tích…' : '🪄 AI gợi ý')
+                        ),
+                        pool.length ? h('div',{className:'eb-nano-chips'},
+                          pool.map(function(n){
+                            var active = row.nanoIds.indexOf(n.id) > -1;
+                            return h('button',{key:n.id, type:'button', className:'eb-nano-chip' + (active?' active':''), onClick:function(){ toggleNano(idx, n.id); }}, (active?'✓ ':'') + n.name);
+                          })
+                        ) : null
+                      )
                     );
                   })
                 )
