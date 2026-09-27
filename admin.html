@@ -892,6 +892,17 @@
     centering: 1, allowbreak: 1, newpage: 1, clearpage: 1, quad: 1, qquad: 1,
     par: 1, item: 1, small: 1, large: 1, normalsize: 1, sffamily: 1, rmfamily: 1
   };
+  // SỬA 27/9/2026: xem chú thích LATEX_SYMBOL_CMDS trong prepscholar-ui.js —
+  // giữ y hệt danh sách để 2 nơi không lệch cách hiển thị.
+  var LATEX_SYMBOL_CMDS_PDF = {
+    circ: '°', deg: '°',
+    pm: '±', mp: '∓', times: '×', div: '÷', cdot: '·',
+    infty: '∞', approx: '≈', neq: '≠', leq: '≤', geq: '≥',
+    rightarrow: '→', to: '→', leftarrow: '←', ldots: '…', cdots: '⋯',
+    Omega: 'Ω', omega: 'ω', Delta: 'Δ', delta: 'δ', alpha: 'α', beta: 'β',
+    gamma: 'γ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', theta: 'θ',
+    Phi: 'Φ', phi: 'φ', Psi: 'Ψ', psi: 'ψ'
+  };
   function tokenizeLatexRunsPDF(str){
     var i = 0, len = str.length;
     function parseNodes(stopAtBrace){
@@ -900,10 +911,18 @@
       while(i < len){
         var c = str[i];
         if(stopAtBrace && c === '}'){ i++; break; }
+        // "{,}"/"{.}" — dấu thập phân viết an toàn ngoài chế độ toán (xem
+        // chú thích đầy đủ trong tokenizeLatexRuns của prepscholar-ui.js).
+        if(c === '{' && (str[i+1] === ',' || str[i+1] === '.') && str[i+2] === '}'){
+          buf += str[i+1]; i += 3; continue;
+        }
         if(c === '\\'){
           var next = str[i + 1];
           if(next === '\\'){ flush(); nodes.push({ type: 'br' }); i += 2; continue; }
           if(next && '%&_$#{}~'.indexOf(next) !== -1){ buf += (next === '~' ? ' ' : next); i += 2; continue; }
+          // \, \; \: \! — lệnh chèn khoảng trắng, không phải chữ cái nên
+          // regex lệnh bên dưới không khớp được.
+          if(next && ',;:!'.indexOf(next) !== -1){ buf += ' '; i += 2; continue; }
           var m = /^\\([a-zA-Z]+)\*?/.exec(str.slice(i));
           if(m){
             var cmdName = m[1];
@@ -927,6 +946,11 @@
               if(!LATEX_DROP_CMDS_PDF[cmdName]) nodes.push({ type: 'cmd', name: cmdName, children: children });
               continue;
             }
+            if(LATEX_SYMBOL_CMDS_PDF[cmdName] !== undefined){
+              buf += LATEX_SYMBOL_CMDS_PDF[cmdName];
+              i = j;
+              continue;
+            }
             flush(); i = j; continue;
           }
           buf += '\\'; i++; continue;
@@ -939,6 +963,9 @@
           i = end + 1;
           continue;
         }
+        // "^" ngoài $...$ không có nghĩa gì (chỉ là thói quen viết "^\circ"
+        // thay cho "độ" ngoài chế độ toán) — bỏ qua, không in ra.
+        if(c === '^'){ i++; continue; }
         buf += c; i++;
       }
       flush();
@@ -3825,6 +3852,13 @@
             level: q.level,
             chuDeLon: q.chuDeLon,
             dangBai: q.dangBai,
+            // THÊM 27/9/2026: gửi kèm ngữ cảnh chung (câu hỏi chùm) + lời giải
+            // — dữ kiện vật lí thật nhiều khi nằm ở groupPassage chứ không ở
+            // "stem" riêng của câu (vd stem chỉ ghi "Tính x"), và lời giải nêu
+            // thẳng công thức/định luật đã dùng — thiếu 2 thứ này AI dễ đoán
+            // sai Bài/nano-point, nhất là với câu hỏi chùm hoặc câu tình huống.
+            groupPassage: q.groupPassage || '',
+            loigiai: q.loigiai || '',
             catalog: buildNanoCatalogPayload()
           })
         });
@@ -3835,7 +3869,7 @@
         }
         setNanoRows(function(prev){
           var next = Object.assign({}, prev);
-          next[qIdx] = { baiKey: data.baiKey, nanoIds: data.nanoIds || [] };
+          next[qIdx] = { baiKey: data.baiKey, nanoIds: data.nanoIds || [], aiReason: data.reason || '' };
           return next;
         });
         if(!silent) props.fireToast('AI đã gợi ý cho câu ' + (qIdx + 1) + (data.reason ? ' — ' + data.reason : '') + ' — thầy xem lại giúp em.');
@@ -4524,7 +4558,13 @@
                             var active = row.nanoIds.indexOf(n.id) > -1;
                             return h('button',{key:n.id, type:'button', className:'eb-nano-chip' + (active?' active':''), onClick:function(){ toggleNano(idx, n.id); }}, (active?'✓ ':'') + n.name);
                           })
-                        ) : null
+                        ) : null,
+                        // THÊM 27/9/2026: hiện lại lý do AI chọn (kể cả khi gợi
+                        // ý hàng loạt — bulk suggest chạy "silent" nên KHÔNG có
+                        // toast từng câu, nếu không lưu lại đây thầy sẽ mất
+                        // trắng phần giải thích, chỉ còn mỗi kết quả chọn sẵn
+                        // mà không rõ vì sao AI chọn vậy để xét lại nhanh).
+                        row.aiReason ? h('div',{className:'eb-hint', style:{marginTop:'4px', fontStyle:'italic'}}, '🪄 AI: ' + row.aiReason) : null
                       )
                     );
                   })

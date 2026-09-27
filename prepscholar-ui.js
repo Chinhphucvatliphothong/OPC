@@ -81,6 +81,22 @@
     centering: 1, allowbreak: 1, newpage: 1, clearpage: 1, quad: 1, qquad: 1,
     par: 1, item: 1, small: 1, large: 1, normalsize: 1, sffamily: 1, rmfamily: 1
   };
+  // SỬA 27/9/2026: nhiều đề (đặc biệt câu hỏi chùm/lời giải soạn tay) viết
+  // các ký hiệu như "\circ" (độ), "\Omega" (điện trở Ω), các chữ cái Hy Lạp…
+  // NGOÀI cặp $...$ (không ở chế độ toán) — ví dụ "100\,^\circ\text{C}" thay
+  // vì "$100\,^\circ\text{C}$". Trước đây các lệnh này không kèm {} nên bị
+  // coi là "lệnh canh lề/khoảng cách" và bị XOÁ HẲN, làm mất luôn ký hiệu
+  // (hiện ra "100 C" mất dấu độ) — nay thay đúng bằng ký tự Unicode tương
+  // ứng thay vì xoá, dù thiếu cặp $ vẫn hiển thị đúng.
+  var LATEX_SYMBOL_CMDS = {
+    circ: '°', deg: '°',
+    pm: '±', mp: '∓', times: '×', div: '÷', cdot: '·',
+    infty: '∞', approx: '≈', neq: '≠', leq: '≤', geq: '≥',
+    rightarrow: '→', to: '→', leftarrow: '←', ldots: '…', cdots: '⋯',
+    Omega: 'Ω', omega: 'ω', Delta: 'Δ', delta: 'δ', alpha: 'α', beta: 'β',
+    gamma: 'γ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', theta: 'θ',
+    Phi: 'Φ', phi: 'φ', Psi: 'Ψ', psi: 'ψ'
+  };
   function tokenizeLatexRuns(str){
     var i = 0, len = str.length;
     function parseNodes(stopAtBrace){
@@ -90,10 +106,23 @@
       while(i < len){
         var c = str[i];
         if(stopAtBrace && c === '}'){ i++; break; }
+        // SỬA 27/9/2026: "{,}"/"{.}" — cách viết dấu phẩy/chấm thập phân AN
+        // TOÀN trong LaTeX (vd \shortans{7{,}5}) để tránh bị hiểu nhầm là
+        // dấu phân cách tham số macro. Ở NGOÀI chế độ toán, không lệnh nào
+        // "ăn" cặp ngoặc này nên trước đây hiện nguyên xi cả ngoặc — chỉ xử
+        // lý đúng trường hợp hẹp (đúng 1 ký tự , hoặc . bên trong) để không
+        // lỡ nuốt mất ngoặc nhóm có ý nghĩa khác.
+        if(c === '{' && (str[i+1] === ',' || str[i+1] === '.') && str[i+2] === '}'){
+          buf += str[i+1]; i += 3; continue;
+        }
         if(c === '\\'){
           var next = str[i + 1];
           if(next === '\\'){ flush(); nodes.push({ type: 'br' }); i += 2; continue; }
           if(next && '%&_$#{}~'.indexOf(next) !== -1){ buf += (next === '~' ? ' ' : next); i += 2; continue; }
+          // SỬA 27/9/2026: \, \; \: \! — các lệnh chèn khoảng trắng của LaTeX
+          // (không phải chữ cái nên regex \\([a-zA-Z]+) bên dưới KHÔNG khớp,
+          // trước đây rơi xuống nhánh mặc định và hiện nguyên xi dấu "\").
+          if(next && ',;:!'.indexOf(next) !== -1){ buf += ' '; i += 2; continue; }
           var m = /^\\([a-zA-Z]+)\*?/.exec(str.slice(i));
           if(m){
             var cmdName = m[1];
@@ -121,7 +150,14 @@
               if(!LATEX_DROP_CMDS[cmdName]) nodes.push({ type: 'cmd', name: cmdName, children: children });
               continue;
             }
-            // Lệnh không kèm { } (vd \quad, \item đứng riêng) — bỏ qua lệnh, giữ nguyên phần sau
+            // Lệnh không kèm { } (vd \quad, \item đứng riêng) — nếu là ký
+            // hiệu toán phổ biến viết ngoài $...$ (xem LATEX_SYMBOL_CMDS ở
+            // trên) thì thay đúng ký tự Unicode, còn lại vẫn bỏ qua như cũ.
+            if(LATEX_SYMBOL_CMDS[cmdName] !== undefined){
+              buf += LATEX_SYMBOL_CMDS[cmdName];
+              i = j;
+              continue;
+            }
             flush();
             i = j;
             continue;
@@ -136,6 +172,12 @@
           i = end + 1;
           continue;
         }
+        // SỬA 27/9/2026: dấu "^" đứng ngoài $...$ không có nghĩa gì (chỉ có
+        // tác dụng "số mũ" trong chế độ toán) — thường chỉ là thói quen viết
+        // "^\circ" thay cho "độ" khi soạn nhanh ngoài toán. Bỏ qua, không in
+        // ra, để không còn sót ký tự "^" đứng trơ trước ký hiệu độ (vd
+        // "100 ^°C" thay vì đúng ra phải là "100 °C").
+        if(c === '^'){ i++; continue; }
         buf += c; i++;
       }
       flush();
