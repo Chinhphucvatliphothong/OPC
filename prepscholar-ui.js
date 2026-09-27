@@ -259,6 +259,70 @@
     );
   }
 
+  // Hiển thị "Bạn đã chọn gì / Đáp án đúng là gì" ở màn xem lại kết quả sau
+  // khi nộp bài — THÊM 27/9/2026. scoreExam() trong prepscholar.js đã TÍNH
+  // SẴN đầy đủ userChoice/correctKey (Phần I), userStmts (Phần II),
+  // userAnswer/correctAnswer (Phần III) cho từng câu trong perQuestionResults,
+  // nhưng màn "Phân tích chi tiết từng câu" trước đây chỉ hiện đề bài + lời
+  // giải chữ, KHÔNG hiện lại các phương án lẫn phần đối chiếu này — học sinh
+  // (và giáo viên xem hộ) không thấy được mình đã chọn gì sai ở đâu, phải tự
+  // suy luận lại từ lời giải. Dùng lại đúng dữ liệu đã có sẵn, không cần
+  // tính toán thêm gì mới.
+  function renderAnswerReview(item, q){
+    if(!item || !q) return null;
+    if(q.part === 'I'){
+      if(!q.options || !q.options.length) return null;
+      return h('div', { className: 'ps-choice-list', style: { marginTop: '10px' } },
+        q.options.map(function(opt){
+          var isCorrect = opt.key === item.correctKey;
+          var isUserPick = opt.key === item.userChoice;
+          var cls = 'ps-choice-item' + (isCorrect ? ' correct-answer' : (isUserPick ? ' wrong-answer' : ''));
+          return h('div', { key: opt.key, className: cls, style: { cursor: 'default' } },
+            h('div', { className: 'ps-choice-key' }, opt.key),
+            h('div', { style: { flex: 1 } }, renderLatexText(opt.text)),
+            isCorrect ? h('span', { style: { fontSize: '0.74rem', fontWeight: 700, color: 'var(--good)', flex: 'none' } }, '✓ Đáp án đúng')
+              : (isUserPick ? h('span', { style: { fontSize: '0.74rem', fontWeight: 700, color: 'var(--critical)', flex: 'none' } }, '✗ Bạn đã chọn') : null)
+          );
+        }),
+        (item.userChoice === 'Chưa chọn') ? h('div', { style: { fontSize: '0.78rem', color: 'var(--critical)' } }, '⚠️ Bạn đã bỏ trống câu này.') : null
+      );
+    }
+    if(q.part === 'II'){
+      if(!q.statements || !q.statements.length) return null;
+      return h('table', { className: 'ps-stmt-table', style: { marginTop: '10px' } },
+        h('tbody', null,
+          q.statements.map(function(st){
+            var userVal = item.userStmts ? item.userStmts[st.key] : undefined;
+            var isMatch = userVal === st.isTrue;
+            return h('tr', { key: st.key, className: 'ps-stmt-row' },
+              h('td', { className: 'ps-stmt-text' },
+                h('span', { className: 'ps-stmt-key' }, st.key + ')'),
+                renderLatexText(st.text)
+              ),
+              h('td', { className: 'ps-stmt-actions' },
+                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' } },
+                  h('span', { className: 'ps-stmt-btn ' + (st.isTrue ? 'active-true' : 'active-false') }, 'Đáp án: ' + (st.isTrue ? 'ĐÚNG' : 'SAI')),
+                  isMatch ? null : h('span', { className: 'ps-stmt-btn', style: { borderColor: 'var(--critical)', color: 'var(--critical)', background: 'transparent' } },
+                    'Bạn chọn: ' + (userVal === undefined ? 'chưa chọn' : (userVal ? 'ĐÚNG' : 'SAI')))
+                )
+              )
+            );
+          })
+        )
+      );
+    }
+    if(q.part === 'III'){
+      var isRight = item.isFullCorrect;
+      return h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px', fontSize: '0.85rem' } },
+        h('span', { style: { padding: '6px 12px', borderRadius: '8px', background: 'color-mix(in srgb, var(--good) 14%, var(--surface))', color: 'var(--good)', fontWeight: 700 } },
+          'Đáp án đúng: ' + item.correctAnswer + (item.unit ? ' ' + item.unit : '')),
+        h('span', { style: { padding: '6px 12px', borderRadius: '8px', fontWeight: 700, background: isRight ? 'color-mix(in srgb, var(--good) 14%, var(--surface))' : 'color-mix(in srgb, var(--critical) 12%, var(--surface))', color: isRight ? 'var(--good)' : 'var(--critical)' } },
+          'Bạn trả lời: ' + (item.userAnswer === undefined || item.userAnswer === '' ? 'chưa trả lời' : item.userAnswer + (item.unit ? ' ' + item.unit : '')))
+      );
+    }
+    return null;
+  }
+
   // ===== Radar năng lực 5 chiều (SVG thuần, không thư viện ngoài) =====
   // 5 chiều SUY RA TỰ ĐỘNG từ dữ liệu làm bài thật (computeRadar5 trong
   // prepscholar.js) — KHÔNG phải nhãn giáo viên gắn thủ công. "Mặt bằng
@@ -1666,6 +1730,7 @@
                   renderLatexText(q.stem)
                 ),
                 renderQuestionImages(q),
+                renderAnswerReview(item, q),
 
                 h('div', { className: 'ps-solution-body' },
                   h('div', { style: { fontWeight: 700, color: 'var(--accent-strong)', marginBottom: '6px' } }, '💡 Lời giải chi tiết:'),
