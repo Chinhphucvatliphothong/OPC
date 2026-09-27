@@ -889,7 +889,9 @@
   var LATEX_DROP_CMDS_PDF = {
     vspace: 1, hspace: 1, label: 1, ref: 1, noindent: 1, hfill: 1, vfill: 1,
     centering: 1, allowbreak: 1, newpage: 1, clearpage: 1, quad: 1, qquad: 1,
-    par: 1, item: 1, small: 1, large: 1, normalsize: 1, sffamily: 1, rmfamily: 1
+    par: 1, item: 1, small: 1, large: 1, normalsize: 1, sffamily: 1, rmfamily: 1,
+    // SỬA 27/9/2026: xem chú thích ở LATEX_DROP_CMDS trong prepscholar-ui.js
+    includegraphics: 1
   };
   // SỬA 27/9/2026: xem chú thích LATEX_SYMBOL_CMDS trong prepscholar-ui.js —
   // giữ y hệt danh sách để 2 nơi không lệch cách hiển thị.
@@ -902,6 +904,13 @@
     gamma: 'γ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', theta: 'θ',
     Phi: 'Φ', phi: 'φ', Psi: 'Ψ', psi: 'ψ'
   };
+  // Xem chú thích đầy đủ ở splitLatexTableCells trong prepscholar-ui.js.
+  function splitLatexTableCellsPDF(rowStr){
+    var PLACEHOLDER = '\u0000AMP\u0000';
+    return rowStr.split('\\&').join(PLACEHOLDER).split('&').map(function(cell){
+      return cell.split(PLACEHOLDER).join('\\&');
+    });
+  }
   function tokenizeLatexRunsPDF(str){
     var i = 0, len = str.length;
     function parseNodes(stopAtBrace){
@@ -933,9 +942,38 @@
               while(str[j] === ' ') j++;
             }
             if(cmdName === 'begin' || cmdName === 'end'){
+              // SỬA 27/9/2026: xem chú thích đầy đủ ở tokenizeLatexRuns trong
+              // prepscholar-ui.js — \begin{tabular}{colspec}...\end{tabular}
+              // nay dựng thành bảng HTML có viền thay vì in chữ thô "&"/"\\".
+              var envNameStart = -1, envName = '';
               if(str[j] === '{'){
+                envNameStart = j + 1;
                 var d = 1; j++;
                 while(j < len && d > 0){ if(str[j] === '{') d++; else if(str[j] === '}') d--; j++; }
+                envName = str.slice(envNameStart, j - 1).trim();
+              }
+              if(cmdName === 'begin' && envName === 'tabular'){
+                while(str[j] === ' ') j++;
+                if(str[j] === '{'){
+                  var d2 = 1; j++;
+                  while(j < len && d2 > 0){ if(str[j] === '{') d2++; else if(str[j] === '}') d2--; j++; }
+                }
+                var endTag = '\\end{tabular}';
+                var endIdx = str.indexOf(endTag, j);
+                var tableBody = (endIdx > -1 ? str.slice(j, endIdx) : str.slice(j)).replace(/\\hline/g, '');
+                var tableRows = tableBody.split('\\\\').map(function(rowStr){
+                  return splitLatexTableCellsPDF(rowStr).map(function(cellStr){
+                    return tokenizeLatexRunsPDF(cellStr.trim());
+                  });
+                }).filter(function(cells){
+                  return cells.some(function(cellNodes){
+                    return cellNodes.some(function(n){ return (n.type === 'text' && n.value.trim()) || n.type === 'math' || n.type === 'cmd'; });
+                  });
+                });
+                flush();
+                nodes.push({ type: 'table', rows: tableRows });
+                i = endIdx > -1 ? endIdx + endTag.length : len;
+                continue;
               }
               flush(); i = j; continue;
             }
@@ -986,6 +1024,15 @@
       if(node.type === 'cmd'){
         var tag = LATEX_TAG_MAP_PDF[node.name] || 'span';
         return '<' + tag + '>' + latexNodesToHtmlPDF(node.children) + '</' + tag + '>';
+      }
+      if(node.type === 'table'){
+        var rowsHtml = node.rows.map(function(cells, rIdx){
+          var cellsHtml = cells.map(function(cellNodes){
+            return '<td style="border:1px solid #cbd5e1;padding:4px 10px;text-align:center;' + (rIdx === 0 ? 'font-weight:700;background:#f1f5f9;' : '') + '">' + latexNodesToHtmlPDF(cellNodes) + '</td>';
+          }).join('');
+          return '<tr>' + cellsHtml + '</tr>';
+        }).join('');
+        return '<table style="border-collapse:collapse;margin:4px 0;font-size:0.9em;">' + rowsHtml + '</table>';
       }
       return '';
     }).join('');

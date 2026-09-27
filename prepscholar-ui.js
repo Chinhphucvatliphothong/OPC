@@ -79,7 +79,12 @@
   var LATEX_DROP_CMDS = {
     vspace: 1, hspace: 1, label: 1, ref: 1, noindent: 1, hfill: 1, vfill: 1,
     centering: 1, allowbreak: 1, newpage: 1, clearpage: 1, quad: 1, qquad: 1,
-    par: 1, item: 1, small: 1, large: 1, normalsize: 1, sffamily: 1, rmfamily: 1
+    par: 1, item: 1, small: 1, large: 1, normalsize: 1, sffamily: 1, rmfamily: 1,
+    // SỬA 27/9/2026: \includegraphics{Images/xxx.png} đứng trong đề bài chỉ
+    // là tên file gốc — ảnh THẬT đã hiện riêng qua renderQuestionImages (khớp
+    // tên file với q.images do opc-live-data.js gán), nên bỏ hẳn lệnh này
+    // khỏi phần chữ để khỏi lộ tên file thô ra màn hình học sinh.
+    includegraphics: 1
   };
   // SỬA 27/9/2026: nhiều đề (đặc biệt câu hỏi chùm/lời giải soạn tay) viết
   // các ký hiệu như "\circ" (độ), "\Omega" (điện trở Ω), các chữ cái Hy Lạp…
@@ -97,6 +102,17 @@
     gamma: 'γ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', theta: 'θ',
     Phi: 'Φ', phi: 'φ', Psi: 'Ψ', psi: 'ψ'
   };
+  // Tách 1 dòng bảng LaTeX ("ô 1 & ô 2 & ô 3") thành mảng các ô theo đúng
+  // dấu "&" — trừ "\&" (dấu & thoát, nghĩa là ký tự & thật trong nội dung ô,
+  // không phải dấu ngăn cột). Thay "\&" bằng ký tự tạm không đụng hàng trước
+  // khi split rồi khôi phục lại, để "\&" vẫn được tokenizeLatexRuns xử lý
+  // đúng thành ký tự "&" thật ở bước sau (xem nhánh '%&_$#{}~' bên dưới).
+  function splitLatexTableCells(rowStr){
+    var PLACEHOLDER = '\u0000AMP\u0000';
+    return rowStr.split('\\&').join(PLACEHOLDER).split('&').map(function(cell){
+      return cell.split(PLACEHOLDER).join('\\&');
+    });
+  }
   function tokenizeLatexRuns(str){
     var i = 0, len = str.length;
     function parseNodes(stopAtBrace){
@@ -134,10 +150,51 @@
               while(str[j] === ' ') j++;
             }
             if(cmdName === 'begin' || cmdName === 'end'){
-              // \begin{...}/\end{...}: bỏ cả lệnh lẫn tên môi trường, không cố hiểu ngữ nghĩa
+              // \begin{...}/\end{...}: mặc định bỏ cả lệnh lẫn tên môi trường,
+              // không cố hiểu ngữ nghĩa (đủ cho \begin{center}/\end{center}...
+              // chỉ dùng để canh giữa, không có nội dung cần giữ lại riêng).
+              var envNameStart = -1, envName = '';
               if(str[j] === '{'){
+                envNameStart = j + 1;
                 var d = 1; j++;
                 while(j < len && d > 0){ if(str[j] === '{') d++; else if(str[j] === '}') d--; j++; }
+                envName = str.slice(envNameStart, j - 1).trim();
+              }
+              // SỬA 27/9/2026: \begin{tabular}{colspec}...\end{tabular} — đề
+              // thí nghiệm vật lí hay có bảng số liệu ghi bằng bảng LaTeX
+              // thật (không phải ảnh chụp), vd bảng I(A)/F(N) trong bài đo
+              // lực từ. Trước đây \begin/\end bị bỏ "mù" như mọi môi trường
+              // khác nên chỉ nuốt được tên môi trường "{tabular}", còn phần
+              // {colspec} (vd "{|l|c|c|c|c|}") lẫn TOÀN BỘ nội dung bảng (nối
+              // ô bằng "&", ngắt dòng bằng "\\", có "\hline") bị in ra chữ
+              // thô một mạch, không hề có khung/viền bảng nào — đúng lỗi
+              // "thiếu khung" thầy báo. Nay nhận diện riêng "tabular" để dựng
+              // đúng bảng HTML có viền, ô nào cũng được tokenize lại (giữ
+              // nguyên $...$ / \textbf... bên trong ô).
+              if(cmdName === 'begin' && envName === 'tabular'){
+                while(str[j] === ' ') j++;
+                if(str[j] === '{'){ // bỏ qua {colspec}, vd {|l|c|c|c|c|}
+                  var d2 = 1; j++;
+                  while(j < len && d2 > 0){ if(str[j] === '{') d2++; else if(str[j] === '}') d2--; j++; }
+                }
+                var endTag = '\\end{tabular}';
+                var endIdx = str.indexOf(endTag, j);
+                var tableBody = (endIdx > -1 ? str.slice(j, endIdx) : str.slice(j)).replace(/\\hline/g, '');
+                var tableRows = tableBody.split('\\\\').map(function(rowStr){
+                  return splitLatexTableCells(rowStr).map(function(cellStr){
+                    return tokenizeLatexRuns(cellStr.trim());
+                  });
+                }).filter(function(cells){
+                  // bỏ "dòng" trắng (thường là phần sau dấu \\ cuối cùng, hoặc
+                  // dòng chỉ có mỗi \hline vừa bị xoá ở trên)
+                  return cells.some(function(cellNodes){
+                    return cellNodes.some(function(n){ return (n.type === 'text' && n.value.trim()) || n.type === 'math' || n.type === 'cmd'; });
+                  });
+                });
+                flush();
+                nodes.push({ type: 'table', rows: tableRows });
+                i = endIdx > -1 ? endIdx + endTag.length : len;
+                continue;
               }
               flush();
               i = j;
@@ -207,6 +264,25 @@
       if(node.type === 'cmd'){
         var tag = LATEX_TAG_MAP[node.name] || 'span';
         out.push(h(tag, { key: key }, renderLatexNodes(node.children, key)));
+        return;
+      }
+      // Bảng LaTeX (\begin{tabular}...\end{tabular}) — xem chú thích ở
+      // tokenizeLatexRuns. Bọc trong div cuộn ngang để bảng nhiều cột không
+      // vỡ layout trên màn hình điện thoại.
+      if(node.type === 'table'){
+        out.push(h('div', { key: key, style: { overflowX: 'auto', margin: '10px 0' } },
+          h('table', { className: 'ps-latex-table' },
+            h('tbody', null,
+              node.rows.map(function(cells, rIdx){
+                return h('tr', { key: key + '_r' + rIdx },
+                  cells.map(function(cellNodes, cIdx){
+                    return h('td', { key: key + '_r' + rIdx + '_c' + cIdx }, renderLatexNodes(cellNodes, key + '_r' + rIdx + '_c' + cIdx));
+                  })
+                );
+              })
+            )
+          )
+        ));
         return;
       }
     });

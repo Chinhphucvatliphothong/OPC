@@ -787,6 +787,25 @@
   border-color: var(--critical);
 }
 
+/* Bảng số liệu LaTeX (\begin{tabular}...\end{tabular}) trong đề bài/lời giải
+   — THÊM 27/9/2026: trước đây bảng loại này chỉ hiện chữ thô nối bằng "&",
+   không có khung/viền gì (xem tokenizeLatexRuns trong prepscholar-ui.js). */
+.ps-latex-table {
+  border-collapse: collapse;
+  margin: 4px 0;
+  font-size: 0.88rem;
+}
+.ps-latex-table td {
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  text-align: center;
+  color: var(--ink);
+}
+.ps-latex-table tr:first-child td {
+  font-weight: 700;
+  background: var(--surface-2);
+}
+
 /* Part III: Short Answer */
 .ps-short-box {
   background: var(--surface);
