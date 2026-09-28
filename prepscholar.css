@@ -131,24 +131,29 @@
   margin-top: 4px;
 }
 
-/* Tab Switcher */
+/* Tab Switcher — SỬA 28/9/2026: đổi từ 1 hàng cuộn ngang (overflow-x:auto,
+   white-space:nowrap) sang dạng "viên thuốc" (pill) tự xuống dòng khi hết
+   chỗ (flex-wrap). Thầy phản ánh thanh tab cũ dài, học sinh khó thấy hết —
+   đúng vậy: kiểu cuộn ngang cũ KHÔNG có gợi ý còn tab bị trôi ra ngoài (vd
+   "Đề được giao"/"Thi thử & Chẩn đoán" mất hút bên phải), học sinh phải tự
+   đoán để vuốt tìm. Nay mọi tab luôn hiện đủ trên màn hình, không cần vuốt.
+   Tên vài tab cũng được rút gọn (bỏ phần tiếng Anh trong ngoặc, chuyển vào
+   title/tooltip) để mỗi "viên" gọn hơn, đỡ chiếm chỗ. */
 .ps-nav-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  border-bottom: 2px solid var(--line);
   margin-bottom: 20px;
-  overflow-x: auto;
-  padding-bottom: 2px;
 }
 .ps-tab-btn {
-  background: none;
-  border: none;
-  padding: 10px 18px;
-  font: 0.88rem "Be Vietnam Pro", sans-serif;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  padding: 9px 16px;
+  font: 0.85rem "Be Vietnam Pro", sans-serif;
   font-weight: 600;
   color: var(--ink-2);
   cursor: pointer;
-  border-radius: 8px 8px 0 0;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -158,27 +163,34 @@
 }
 .ps-tab-btn:hover {
   color: var(--ink);
-  background: var(--surface-2);
+  border-color: var(--accent);
 }
 .ps-tab-btn.active {
-  color: var(--accent-strong);
+  color: var(--accent-ink);
   font-weight: 700;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-bottom-color: var(--surface);
-  margin-bottom: -2px;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .ps-tab-badge {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.72rem;
   padding: 2px 7px;
   border-radius: 999px;
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--muted);
 }
 .ps-tab-btn.active .ps-tab-badge {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-ink) 20%, transparent);
+  color: var(--accent-ink);
+}
+/* Màn hẹp (điện thoại đứng): thu nhỏ thêm chữ/khoảng đệm để nhiều tab vẫn
+   vừa mỗi hàng trước khi phải xuống dòng, đỡ tốn chiều cao màn hình. */
+@media (max-width: 560px) {
+  .ps-tab-btn {
+    padding: 7px 12px;
+    font-size: 0.78rem;
+    gap: 6px;
+  }
 }
 
 /* Topic Drill Cards */
