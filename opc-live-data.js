@@ -330,7 +330,11 @@ function transformQuestion(q, examMeta){
     examTitle: examMeta.title,
     examId: examMeta.examId,
     baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
-    nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null
+    nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null,
+    // THÊM 28/9/2026 — chương 1–4 (khoá/mở chương theo học sinh, xem
+    // curriculum.js). null = chưa gắn chương -> không bao giờ hiện cho học
+    // sinh (PrepScholarEngine chỉ giữ câu thuộc chương đã mở).
+    chuong: window.OPC_CURRICULUM ? window.OPC_CURRICULUM.inferChuong(q) : null
   };
   if(q.type === 'choiceTF'){
     out.statements = (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; });
@@ -387,7 +391,23 @@ async function loadPricingPlans(){
   }
 }
 
+// ================= Khoá/mở chương (settings/curriculum) =====================
+// THÊM 28/9/2026 — doc đơn "settings/curriculum" { defaultUnlockedChapters }
+// do admin quản lý (panel "📚 Quản lý chương" trong admin.html). "settings"
+// đọc công khai (xem firestore.rules). Doc chưa tồn tại / lỗi mạng -> trả
+// null để nơi gọi dùng mặc định [1,2] (OPC_CURRICULUM.getUnlockedChapters).
+async function loadCurriculum(){
+  try{
+    var snap = await getDoc(doc(db, 'settings', 'curriculum'));
+    return snap.exists() ? snap.data() : null;
+  }catch(e){
+    console.error('Lỗi tải cấu hình chương (settings/curriculum):', e);
+    return null;
+  }
+}
+
 window.OPC_LIVE = {
+  loadCurriculum: loadCurriculum,
   loginStudent: loginStudent,
   logoutStudent: logoutStudent,
   resumeSession: resumeSession,

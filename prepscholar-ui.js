@@ -48,6 +48,9 @@
       radar5: { lyThuyet: null, vdc: null, neBayTF: null, doThi: null, tinhNhanh: null },
       levelXp: { totalXP: 0, level: 1, xpIntoLevel: 0, xpForNextLevel: 2000 },
       currentChuDe: 'nhiet',
+      // THÊM 28/9/2026 — danh sách chương admin mở RIÊNG cho em này (ghi đè
+      // mặc định của lớp trong settings/curriculum). null = theo mặc định lớp.
+      unlockedChapters: Array.isArray(real.unlockedChapters) ? real.unlockedChapters : null,
       isLive: true
     };
   }
@@ -664,6 +667,38 @@
       return function(){ cancelled = true; };
     }, [liveReady, authed]);
 
+    // THÊM 28/9/2026 — KHOÁ/MỞ CHƯƠNG THEO HỌC SINH. Đọc cấu hình lớp
+    // (settings/curriculum) sau khi đăng nhập, gộp với unlockedChapters riêng
+    // của em này (curriculum.js -> getUnlockedChapters), rồi báo cho engine
+    // lọc lại QUESTION_BANK — mọi chức năng sinh đề chỉ còn thấy câu thuộc
+    // chương đã mở. Trước khi tải xong cấu hình: [] (chưa mở gì) để không
+    // lộ câu chương khoá trong lúc chờ.
+    var curriculumState = React.useState({ loaded: false, data: null });
+    var curriculum = curriculumState[0], setCurriculum = curriculumState[1];
+    React.useEffect(function(){
+      if(!liveReady || !authed || !window.OPC_LIVE) return;
+      if(!window.OPC_LIVE.loadCurriculum){ setCurriculum({ loaded: true, data: null }); return; }
+      var cancelled = false;
+      window.OPC_LIVE.loadCurriculum().then(function(data){
+        if(!cancelled) setCurriculum({ loaded: true, data: data });
+      });
+      return function(){ cancelled = true; };
+    }, [liveReady, authed]);
+    var unlockedChapters = (curriculum.loaded && student && window.OPC_CURRICULUM)
+      ? window.OPC_CURRICULUM.getUnlockedChapters({ unlockedChapters: student.unlockedChapters }, curriculum.data)
+      : [];
+    var unlockedKey = unlockedChapters.join(',');
+    var hasAllChapters = !!window.OPC_CURRICULUM && window.OPC_CURRICULUM.hasAllChapters(unlockedChapters);
+    React.useEffect(function(){
+      if(!window.PrepScholarEngine.setUnlockedChapters) return;
+      window.PrepScholarEngine.setUnlockedChapters(unlockedChapters);
+      setBankVersion(function(v){ return v + 1; });
+    }, [unlockedKey]);
+    function chapterNamesText(list){
+      if(!window.OPC_CURRICULUM || !list.length) return 'chưa có chương nào';
+      return list.map(function(n){ var c = window.OPC_CURRICULUM.getChapter(n); return 'Chương ' + n + (c ? ' (' + c.name + ')' : ''); }).join(', ');
+    }
+
     // "Mặt bằng chung OPC" cho Radar 5 chiều — trung bình cộng radar5 THẬT
     // của mọi học sinh đã có số liệu (đọc 1 lần collection student_stats —
     // SỬA 25/9/2026: giờ cần đã đăng nhập mới đọc được, không còn công khai
@@ -1209,7 +1244,25 @@
         questions = window.PrepScholarEngine.createDiagnosticExam();
         title = 'Bài kiểm tra đầu vào (Diagnostic Test) — 28 câu chuẩn cấu trúc 2025-2026';
         timeSec = 40 * 60;
+      } else if(type === 'rolling'){
+        // THÊM 28/9/2026 — Đề cuốn chiếu: 18 ABCD + 4 Đúng/Sai + 6 trả lời
+        // ngắn, CHỈ từ chương đã mở. Thiếu câu phần nào thì báo rõ, KHÔNG
+        // mượn câu chương khác.
+        var rolling = window.PrepScholarEngine.createRollingExam();
+        if(!rolling.ok){
+          alert('Chưa tạo được Đề cuốn chiếu — ngân hàng đề của các chương đã mở (' + chapterNamesText(rolling.chapters) + ') chưa đủ câu:\n' +
+            rolling.shortages.map(function(sh){ return '• ' + sh.label + ': thiếu ' + sh.missing + ' câu (cần ' + sh.need + ', hiện có ' + sh.have + ')'; }).join('\n') +
+            '\n\nHệ thống không lấy câu của chương chưa mở để bù — báo thầy cô nạp thêm đề.');
+          return;
+        }
+        questions = rolling.questions;
+        title = 'Đề cuốn chiếu — ' + chapterNamesText(rolling.chapters);
+        timeSec = 50 * 60;
       } else {
+        if(!hasAllChapters){
+          alert('Đề chuẩn BGD đầy đủ sẽ mở khi đã học đủ 4 chương.');
+          return;
+        }
         questions = window.PrepScholarEngine.QUESTION_BANK.slice(0);
         title = 'Đề thi thử chuẩn cấu trúc Bộ GD&ĐT 2025 - 2026';
         timeSec = 40 * 60;
@@ -2172,11 +2225,16 @@
                 (function(){
                   // Chuyên đề yếu nhất tính TỪ DỮ LIỆU THẬT của chính em này —
                   // không còn giả định cứng "Vật lí hạt nhân luôn yếu nhất".
-                  var weakestKey = Object.keys(window.PrepScholarEngine.CHU_DE_MAP).reduce(function(worst, k){
+                  // SỬA 28/9/2026: chỉ xét chủ đề thuộc chương ĐÃ MỞ.
+                  var openKeys = Object.keys(window.PrepScholarEngine.CHU_DE_MAP).filter(function(k){ return window.PrepScholarEngine.isTopicUnlocked(k); });
+                  if(!openKeys.length){
+                    return h('p', { style: { margin: 0, fontSize: '0.86rem', color: 'var(--ink-2)' } }, '🔒 Chưa có chương nào được mở cho bạn — chờ thầy cô mở chương để bắt đầu luyện tập.');
+                  }
+                  var weakestKey = openKeys.reduce(function(worst, k){
                     var v = student.mastery[k] != null ? student.mastery[k] : 50;
                     var wv = student.mastery[worst] != null ? student.mastery[worst] : 50;
                     return v < wv ? k : worst;
-                  }, Object.keys(window.PrepScholarEngine.CHU_DE_MAP)[0]);
+                  }, openKeys[0]);
                   var weakestName = window.PrepScholarEngine.CHU_DE_MAP[weakestKey].name;
                   var weakestVal = student.mastery[weakestKey] != null ? student.mastery[weakestKey] : 50;
                   return h(React.Fragment, null,
@@ -2216,12 +2274,19 @@
                   // hoặc tệ hơn — trước đây còn âm thầm đưa nhầm câu hỏi của
                   // chuyên đề khác vào, xem createFocusedDrill).
                   var hasQuestions = window.PrepScholarEngine.getQuestionsByTopic(key).length > 0;
+                  // THÊM 28/9/2026 — chương chưa mở: ổ khoá + khoá nút Drill
+                  // (QUESTION_BANK đã loại sẵn câu chương khoá, nên hasQuestions
+                  // cũng false — ở đây chỉ để báo đúng lí do cho học sinh).
+                  var topicLocked = !window.PrepScholarEngine.isTopicUnlocked(key);
+                  var topicChuong = window.OPC_CURRICULUM ? window.OPC_CURRICULUM.TOPIC_TO_CHUONG[key] : null;
 
-                  return h('div', { key: key, className: 'ps-topic-card' },
+                  return h('div', { key: key, className: 'ps-topic-card', style: topicLocked ? { opacity: 0.7 } : null },
                     h('div', null,
                       h('div', { className: 'ps-topic-card-top' },
-                        h('div', { className: 'ps-topic-title' }, t.icon + ' ' + t.name),
-                        h('span', { className: 'ps-topic-status-badge ' + statusClass }, statusLabel)
+                        h('div', { className: 'ps-topic-title' }, (topicLocked ? '🔒 ' : '') + t.icon + ' ' + t.name),
+                        topicLocked
+                          ? h('span', { className: 'ps-topic-status-badge', style: { color: 'var(--muted)' } }, topicChuong ? '🔒 Chương ' + topicChuong + ' chưa mở' : '🔒 Chưa mở')
+                          : h('span', { className: 'ps-topic-status-badge ' + statusClass }, statusLabel)
                       ),
                       h('div', { className: 'ps-meter-bar' },
                         h('div', { className: 'ps-meter-fill ' + statusClass, style: { width: val + '%' } })
@@ -2233,7 +2298,10 @@
                     ),
 
                     h('div', { className: 'ps-topic-card-actions' },
-                      h('span', { style: { fontSize: '0.8rem', color: hasQuestions ? 'var(--ink-2)' : 'var(--muted)' } }, hasQuestions ? 'Bộ câu hỏi chuẩn 2025' : 'Chưa có câu hỏi — thầy cô đang nạp đề'),
+                      h('span', { style: { fontSize: '0.8rem', color: hasQuestions ? 'var(--ink-2)' : 'var(--muted)' } },
+                        topicLocked
+                          ? (topicChuong ? '🔒 Chương đang khoá — chờ thầy cô mở' : '🔒 Ngoài 4 chương đang học')
+                          : (hasQuestions ? 'Bộ câu hỏi chuẩn 2025' : 'Chưa có câu hỏi — thầy cô đang nạp đề')),
                       h('div', { style: { display: 'flex', gap: '8px' } },
                         h('button', {
                           type: 'button',
@@ -2279,9 +2347,45 @@
                   )
                 ),
 
-                h('div', { className: 'ps-topic-card' },
+                // THÊM 28/9/2026 — Đề cuốn chiếu: đúng cấu trúc 18/4/6 nhưng chỉ
+                // lấy câu từ chương đã mở; hiện trước số câu còn thiếu từng phần.
+                (function(){
+                  var shortages = window.PrepScholarEngine.getRollingExamShortages();
+                  var canStart = unlockedChapters.length > 0 && !shortages.length;
+                  return h('div', { className: 'ps-topic-card' },
+                    h('div', null,
+                      h('div', { className: 'ps-topic-title' }, '📚 Đề cuốn chiếu (theo chương đã học)'),
+                      h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: '8px' } },
+                        'Giữ đúng cấu trúc đề thi: 18 câu ABCD + 4 câu Đúng/Sai + 6 câu trả lời ngắn, nhưng CHỈ lấy câu thuộc các chương bạn đã được mở: ',
+                        h('b', null, chapterNamesText(unlockedChapters)), '.'
+                      ),
+                      shortages.length && unlockedChapters.length ? h('div', { style: { marginTop: '10px', fontSize: '0.8rem', color: 'var(--warning)', lineHeight: 1.6 } },
+                        h('div', { style: { fontWeight: 700 } }, '⚠️ Ngân hàng đề các chương đã mở chưa đủ câu:'),
+                        shortages.map(function(sh){
+                          return h('div', { key: sh.part }, '• ' + sh.label + ': thiếu ' + sh.missing + ' câu (cần ' + sh.need + ', hiện có ' + sh.have + ')');
+                        }),
+                        h('div', { style: { color: 'var(--muted)' } }, 'Hệ thống không lấy câu của chương chưa mở để bù.')
+                      ) : null,
+                      h('div', { style: { marginTop: '12px', fontSize: '0.8rem', color: 'var(--muted)' } },
+                        '⏱️ Thời gian: 50 phút · 28 câu hỏi (Phần I, II, III)'
+                      )
+                    ),
+                    h('div', { className: 'ps-topic-card-actions' },
+                      h('span', { style: { fontSize: '0.8rem', color: 'var(--good)', fontWeight: 700 } }, '✓ Học tới đâu thi tới đó'),
+                      h('button', {
+                        type: 'button',
+                        className: 'btn btn-primary',
+                        disabled: !canStart,
+                        style: canStart ? null : { opacity: 0.45, cursor: 'not-allowed' },
+                        onClick: function(){ startExam('rolling'); }
+                      }, 'Vào làm đề cuốn chiếu ➔')
+                    )
+                  );
+                })(),
+
+                h('div', { className: 'ps-topic-card', style: hasAllChapters ? null : { opacity: 0.7 } },
                   h('div', null,
-                    h('div', { className: 'ps-topic-title' }, '⏱️ Đề thi thử chuẩn Bộ GD&ĐT'),
+                    h('div', { className: 'ps-topic-title' }, (hasAllChapters ? '' : '🔒 ') + '⏱️ Đề chuẩn BGD đầy đủ'),
                     h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: '8px' } },
                       'Mô phỏng 100% không khí phòng thi thật với đồng hồ đếm ngược, cấu trúc 3 phần chính thức: Trắc nghiệm 4 lựa chọn, Đúng/Sai 4 lệnh, và Trả lời ngắn số học.'
                     ),
@@ -2290,12 +2394,16 @@
                     )
                   ),
                   h('div', { className: 'ps-topic-card-actions' },
-                    h('span', { style: { fontSize: '0.8rem', color: 'var(--accent-strong)', fontWeight: 700 } }, '⭐ Thực chiến điểm cao'),
+                    hasAllChapters
+                      ? h('span', { style: { fontSize: '0.8rem', color: 'var(--accent-strong)', fontWeight: 700 } }, '⭐ Thực chiến điểm cao')
+                      : h('span', { style: { fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 700 } }, '🔒 Mở khi đã học đủ 4 chương'),
                     h('button', {
                       type: 'button',
                       className: 'btn btn-primary',
+                      disabled: !hasAllChapters,
+                      style: hasAllChapters ? null : { opacity: 0.45, cursor: 'not-allowed' },
                       onClick: function(){ startExam('mock'); }
-                    }, 'Vào thi thử chuẩn Bộ ➔')
+                    }, hasAllChapters ? 'Vào thi thử chuẩn Bộ ➔' : '🔒 Đang khoá')
                   )
                 )
               )
@@ -2509,7 +2617,10 @@
             }
 
             var baiStatus = window.PrepScholarEngine.buildBaiMasteryStatus(nanoMastery);
-            var redTags = window.PrepScholarEngine.getRedTags(nanoMastery, 5);
+            // SỬA 28/9/2026: chỉ đẩy lên "Cần luyện ngay" các Tag thuộc chương đã mở.
+            var redTags = window.PrepScholarEngine.getRedTags(nanoMastery, 50).filter(function(n){
+              return window.PrepScholarEngine.isTopicUnlocked(n.chuDeKey);
+            }).slice(0, 5);
             var STATUS_META = {
               green: { label: '🔒 Đã vững — tạm khoá', color: 'var(--good)', bg: 'color-mix(in srgb, var(--good) 10%, transparent)' },
               yellow: { label: 'Cần luyện thêm', color: 'var(--warning)', bg: 'color-mix(in srgb, var(--warning) 10%, transparent)' },
@@ -2640,10 +2751,11 @@
               h('div', { className: 'ps-topic-grid' },
                 baiStatus.map(function(b){
                   var meta = STATUS_META[b.status];
-                  return h('div', { key: b.key, className: 'ps-topic-card', style: { opacity: b.status === 'green' ? 0.82 : 1 } },
+                  var baiLocked = !window.PrepScholarEngine.isTopicUnlocked(b.chuDeKey); // THÊM 28/9/2026
+                  return h('div', { key: b.key, className: 'ps-topic-card', style: { opacity: (b.status === 'green' || baiLocked) ? 0.7 : 1 } },
                     h('div', null,
                       h('div', { className: 'ps-topic-card-top' },
-                        h('div', { className: 'ps-topic-title', style: { fontSize: '0.92rem' } }, b.chuDeIcon + ' ' + b.name),
+                        h('div', { className: 'ps-topic-title', style: { fontSize: '0.92rem' } }, (baiLocked ? '🔒 ' : '') + b.chuDeIcon + ' ' + b.name),
                         h('span', { style: { fontSize: '0.72rem', fontWeight: 700, color: meta.color, background: meta.bg, padding: '3px 8px', borderRadius: '999px', whiteSpace: 'nowrap' } }, meta.label)
                       ),
                       h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '4px' } },
@@ -2652,7 +2764,9 @@
                     ),
                     h('div', { className: 'ps-topic-card-actions' },
                       h('span', { style: { fontSize: '0.78rem', color: 'var(--ink-2)' } }, b.chuDeName),
-                      b.status === 'green'
+                      baiLocked
+                        ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, '🔒 Chương chưa mở')
+                        : b.status === 'green'
                         ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, 'Có thể ôn lại tuỳ chọn')
                         : h('button', {
                             type: 'button',

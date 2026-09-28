@@ -45,6 +45,100 @@
   // này CHỈ được điền bằng dữ liệu thật của giáo viên, bắt đầu trống.
   var QUESTION_BANK = [];
 
+  // THÊM 28/9/2026 — KHOÁ/MỞ CHƯƠNG THEO HỌC SINH (xem curriculum.js).
+  // ALL_QUESTIONS giữ TOÀN BỘ ngân hàng đề đã nạp; QUESTION_BANK (mảng mà
+  // MỌI chức năng sinh đề bên dưới đọc: Drill, Diagnostic, Nano/Bài drill,
+  // luyện thích ứng, Sổ tay câu sai, Thi thử...) chỉ còn đúng các câu thuộc
+  // chương học sinh đã được mở. Câu chưa gắn chương (chuong == null) KHÔNG
+  // BAO GIỜ lọt vào. Mặc định [] (chưa mở gì) cho tới khi trang học sinh
+  // gọi setUnlockedChapters sau khi đọc xong cấu hình của em đó — tránh lộ
+  // câu chương khoá trong khoảnh khắc chờ tải cấu hình.
+  var ALL_QUESTIONS = [];
+  var UNLOCKED_CHAPTERS = [];
+
+  function applyChapterFilter(){
+    QUESTION_BANK.length = 0;
+    ALL_QUESTIONS.forEach(function(q){
+      if(q && q.chuong && UNLOCKED_CHAPTERS.indexOf(q.chuong) > -1) QUESTION_BANK.push(q);
+    });
+  }
+
+  function setUnlockedChapters(list){
+    var C = window.OPC_CURRICULUM;
+    UNLOCKED_CHAPTERS = C ? C.normalizeChapters(list) : (Array.isArray(list) ? list.slice() : []);
+    applyChapterFilter();
+    return UNLOCKED_CHAPTERS.slice();
+  }
+
+  // Chủ đề (key CHU_DE_MAP) có đang mở với học sinh hiện tại không. 3
+  // chuyên đề ngoài 4 chương SGK không thuộc chương nào -> luôn khoá.
+  function isTopicUnlocked(topicKey){
+    var C = window.OPC_CURRICULUM;
+    var n = C ? C.TOPIC_TO_CHUONG[topicKey] : null;
+    return !!n && UNLOCKED_CHAPTERS.indexOf(n) > -1;
+  }
+
+  // Cấu trúc đề thi Vật lí THPT (GDPT 2018): Phần I 18 câu ABCD, Phần II 4
+  // câu Đúng/Sai, Phần III 6 câu trả lời ngắn.
+  var MOET_STRUCTURE = { I: 18, II: 4, III: 6 };
+  var PART_LABELS = { I: 'Phần I (ABCD)', II: 'Phần II (Đúng/Sai)', III: 'Phần III (Trả lời ngắn)' };
+
+  // Chọn "count" câu trong pool, ưu tiên PHỦ RỘNG nhiều Tag (nano-point)
+  // khác nhau trước khi lặp lại Tag.
+  function pickCoverage(pool, count){
+    var seenNano = {};
+    var picked = [];
+    for(var i = 0; i < pool.length && picked.length < count; i++){
+      var q = pool[i];
+      var key = q.nanoId || ('_' + q.id);
+      if(!seenNano[key]){ seenNano[key] = true; picked.push(q); }
+    }
+    if(picked.length < count){
+      var pickedIds = {};
+      picked.forEach(function(q){ pickedIds[q.id] = true; });
+      for(var j = 0; j < pool.length && picked.length < count; j++){
+        if(!pickedIds[pool[j].id]){ picked.push(pool[j]); pickedIds[pool[j].id] = true; }
+      }
+    }
+    return picked;
+  }
+
+  function shuffled(arr){
+    var a = arr.slice();
+    for(var i = a.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  // Đếm số câu khả dụng theo từng Phần (chỉ trong chương đã mở) so với cấu
+  // trúc 18/4/6 — trả về danh sách phần còn THIẾU và thiếu bao nhiêu câu.
+  function getRollingExamShortages(){
+    var out = [];
+    Object.keys(MOET_STRUCTURE).forEach(function(part){
+      var have = QUESTION_BANK.filter(function(q){ return q.part === part; }).length;
+      var need = MOET_STRUCTURE[part];
+      if(have < need) out.push({ part: part, label: PART_LABELS[part], need: need, have: have, missing: need - have });
+    });
+    return out;
+  }
+
+  // "Đề cuốn chiếu": giữ nguyên cấu trúc 18 ABCD + 4 Đúng/Sai + 6 trả lời
+  // ngắn, CHỈ lấy câu thuộc chương đã mở. Nếu thiếu câu cho 1 phần bất kỳ
+  // thì KHÔNG tạo đề (không mượn câu chương khác) — trả về ok:false kèm
+  // shortages để giao diện báo rõ thiếu bao nhiêu câu.
+  function createRollingExam(){
+    var shortages = getRollingExamShortages();
+    if(shortages.length) return { ok: false, questions: [], shortages: shortages, chapters: UNLOCKED_CHAPTERS.slice() };
+    var questions = [];
+    Object.keys(MOET_STRUCTURE).forEach(function(part){
+      var pool = shuffled(QUESTION_BANK.filter(function(q){ return q.part === part; }));
+      questions = questions.concat(pickCoverage(pool, MOET_STRUCTURE[part]));
+    });
+    return { ok: true, questions: questions, shortages: [], chapters: UNLOCKED_CHAPTERS.slice() };
+  }
+
   // Thuật toán chấm điểm chuẩn Bộ Giáo Dục 2025:
   // - Phần I (Trắc nghiệm 4 chọn 1): 0.25đ / câu
   // - Phần II (Trắc nghiệm Đúng/Sai 4 ý): Đúng 1 ý: 0.1đ; Đúng 2 ý: 0.25đ; Đúng 3 ý: 0.5đ; Đúng 4 ý: 1.0đ
@@ -593,10 +687,12 @@
   // câu hỏi thật. Giữ nguyên tham chiếu mảng QUESTION_BANK (dùng
   // splice/push thay vì gán lại biến) để các hàm closure phía dưới
   // (getQuestionsByTopic, createFocusedDrill...) vẫn thấy được dữ liệu mới.
+  // SỬA 28/9/2026: lưu toàn bộ vào ALL_QUESTIONS rồi lọc lại theo chương
+  // đã mở (applyChapterFilter) — QUESTION_BANK chỉ chứa câu chương đã mở.
   function replaceQuestionBank(list){
     if(!list || !list.length) return false;
-    QUESTION_BANK.length = 0;
-    Array.prototype.push.apply(QUESTION_BANK, list);
+    ALL_QUESTIONS = list.slice();
+    applyChapterFilter();
     return true;
   }
 
@@ -609,6 +705,12 @@
     getCurrentChuDe: getCurrentChuDe,
     QUESTION_BANK: QUESTION_BANK,
     replaceQuestionBank: replaceQuestionBank,
+    setUnlockedChapters: setUnlockedChapters,
+    getUnlockedChapters: function(){ return UNLOCKED_CHAPTERS.slice(); },
+    isTopicUnlocked: isTopicUnlocked,
+    MOET_STRUCTURE: MOET_STRUCTURE,
+    getRollingExamShortages: getRollingExamShortages,
+    createRollingExam: createRollingExam,
     scoreExam: scoreExam,
     getQuestionsByTopic: function(topicKey){
       return QUESTION_BANK.filter(function(q){ return q.topicKey === topicKey; });
@@ -634,24 +736,7 @@
     // Nếu ngân hàng đề thật chưa đủ câu cho 1 phần nào đó, tự động lấy ít
     // hơn (không báo lỗi) — phần "Cần kiểm tra thêm" sẽ hiện "Chưa kiểm tra".
     createDiagnosticExam: function(){
-      var TARGET = { I: 18, II: 4, III: 6 };
-      function pickCoverage(pool, count){
-        var seenNano = {};
-        var picked = [];
-        for(var i = 0; i < pool.length && picked.length < count; i++){
-          var q = pool[i];
-          var key = q.nanoId || ('_' + q.id);
-          if(!seenNano[key]){ seenNano[key] = true; picked.push(q); }
-        }
-        if(picked.length < count){
-          var pickedIds = {};
-          picked.forEach(function(q){ pickedIds[q.id] = true; });
-          for(var j = 0; j < pool.length && picked.length < count; j++){
-            if(!pickedIds[pool[j].id]){ picked.push(pool[j]); pickedIds[pool[j].id] = true; }
-          }
-        }
-        return picked;
-      }
+      var TARGET = MOET_STRUCTURE;
       var out = [];
       Object.keys(TARGET).forEach(function(part){
         var pool = QUESTION_BANK.filter(function(q){ return q.part === part; });

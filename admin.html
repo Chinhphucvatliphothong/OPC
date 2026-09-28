@@ -163,6 +163,17 @@
   table.sm-table td{ padding:13px 16px; border-bottom:1px solid var(--line); vertical-align:middle; }
   table.sm-table tbody tr:last-child td{ border-bottom:none; }
   table.sm-table tbody tr:hover{ background: color-mix(in srgb, var(--accent) 5%, transparent); }
+  /* THÊM 28/9/2026 — công tắc bật/tắt chương (panel "Quản lý chương") */
+  .cp-switch{ position:relative; display:inline-block; width:42px; height:24px; border-radius:999px; border:1px solid var(--line); background:var(--surface-2); cursor:pointer; padding:0; transition:background .15s; }
+  .cp-switch::after{ content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--muted); transition:transform .15s, background .15s; }
+  .cp-switch.on{ background: color-mix(in srgb, var(--good) 30%, var(--surface)); border-color: var(--good); }
+  .cp-switch.on::after{ transform:translateX(18px); background:var(--good); }
+  .cp-switch:disabled{ opacity:.5; cursor:wait; }
+  .cp-chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .cp-chapter-box{ border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:var(--surface); min-width:200px; flex:1; }
+  .cp-chapter-box h4{ font-size:0.9rem; margin:0 0 6px; }
+  .cp-chapter-box .btn{ font-size:0.78rem; padding:6px 10px; margin-top:6px; margin-right:6px; }
+  .cp-stem{ font-size:0.82rem; color:var(--ink-2); max-width:60ch; line-height:1.5; }
   .sm-student-cell{ display:flex; align-items:center; gap:11px; }
   .sm-avatar{ width:34px; height:34px; border-radius:50%; background:color-mix(in srgb, var(--accent) 18%, var(--surface-2)); color:var(--accent-strong); font-weight:700; font-size:0.85rem; display:flex; align-items:center; justify-content:center; flex:none; }
   .sm-student-name{ font-weight:600; color:var(--ink); display:flex; align-items:center; gap:7px; }
@@ -492,7 +503,7 @@
         addDoc = fsMod.addDoc, setDoc = fsMod.setDoc, updateDoc = fsMod.updateDoc,
         deleteDoc = fsMod.deleteDoc, onSnapshot = fsMod.onSnapshot, query = fsMod.query,
         orderBy = fsMod.orderBy, serverTimestamp = fsMod.serverTimestamp, getDocs = fsMod.getDocs,
-        limit = fsMod.limit;
+        limit = fsMod.limit, deleteField = fsMod.deleteField;
     var getStorage = stMod.getStorage, ref = stMod.ref, uploadBytesResumable = stMod.uploadBytesResumable,
         getDownloadURL = stMod.getDownloadURL, deleteObject = stMod.deleteObject;
 
@@ -778,6 +789,30 @@
         return setDoc(doc(db, 'settings', 'pricing'), Object.assign({}, data, { updatedAt: serverTimestamp() }));
       }
     };
+
+    // ================= Khoá/mở chương theo học sinh ============================
+    // THÊM 28/9/2026 — doc đơn "settings/curriculum" { defaultUnlockedChapters }
+    // (chương mở mặc định cho cả lớp — "settings" đọc công khai, ghi chỉ admin,
+    // xem firestore.rules) + trường "unlockedChapters" riêng trên từng
+    // students/{id} (ghi đè mặc định). Trang học sinh đọc qua
+    // OPC_LIVE.loadCurriculum (opc-live-data.js) + hồ sơ của chính em đó.
+    OPC.curriculum = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(doc(db, 'settings', 'curriculum'), function(snap){
+          onNext(snap.exists() ? snap.data() : null);
+        }, onErr);
+      },
+      saveDefault: function(chapters){
+        return setDoc(doc(db, 'settings', 'curriculum'), { defaultUnlockedChapters: chapters, updatedAt: serverTimestamp() }, { merge: true });
+      },
+      setStudentChapters: function(studentId, chapters){
+        return updateDoc(doc(db, 'students', studentId), { unlockedChapters: chapters });
+      },
+      // Bỏ danh sách riêng -> em đó quay về theo mặc định của lớp.
+      resetStudentChapters: function(studentId){
+        return updateDoc(doc(db, 'students', studentId), { unlockedChapters: deleteField() });
+      }
+    };
    }catch(err){
     OPC.configReady = false;
     OPC.sdkError = (err && err.message) ? err.message : String(err);
@@ -790,6 +825,9 @@
 </script>
 
 <script src="nano-map.js"></script>
+<!-- curriculum.js: THÊM 28/9/2026 — khoá/mở chương theo học sinh, dùng
+     chung với trang học sinh (suy chương của câu hỏi, chương đã mở). -->
+<script src="curriculum.js"></script>
 <!-- prepscholar.js: THÊM 25/9/2026 — admin.html trước đây không nạp file này
      (chỉ prepscholar-ui.js/trang luyện tập của học sinh mới dùng). Nay cần
      dùng chung hàm computeStudentStatsFromAttempts (tính "Sổ tay câu sai" +
@@ -3539,6 +3577,266 @@
     );
   }
 
+  // ================= Quản lý chương (khoá/mở chương theo học sinh) =========
+  // THÊM 28/9/2026 — bảng học sinh × 4 chương (mỗi ô là 1 công tắc), nút mở/
+  // khoá 1 chương cho cả lớp, chương mở mặc định cho lớp (settings/curriculum),
+  // và danh sách câu hỏi CHƯA GẮN CHƯƠNG để gắn bổ sung (câu chưa gắn chương
+  // không bao giờ hiện với học sinh — xem curriculum.js / prepscholar.js).
+  function CurriculumPanel(props){
+    var OPCref = window.OPC;
+    var CUR = window.OPC_CURRICULUM;
+    var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var curState = React.useState({ loaded: false, data: null }); var cur = curState[0], setCur = curState[1];
+    var examsState = React.useState([]); var exams = examsState[0], setExams = examsState[1];
+    var busyState = React.useState({}); var busy = busyState[0], setBusy = busyState[1];
+    var bulkBusyState = React.useState(false); var bulkBusy = bulkBusyState[0], setBulkBusy = bulkBusyState[1];
+    var searchState = React.useState(''); var search = searchState[0], setSearch = searchState[1];
+    var pickState = React.useState({}); var picks = pickState[0], setPicks = pickState[1]; // key "<examId>#<idx>" -> chương chọn
+    var showAllState = React.useState(false); var showAll = showAllState[0], setShowAll = showAllState[1];
+
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.curriculum) return;
+      var unsub1 = OPCref.students.subscribe(function(snap){
+        setStudents(snap.docs.map(function(d){ return Object.assign({}, d.data() || {}, { id: d.id }); }));
+      }, function(err){ console.error('Lỗi tải học sinh (Quản lý chương):', err); });
+      var unsub2 = OPCref.curriculum.subscribe(function(data){ setCur({ loaded: true, data: data }); },
+        function(err){ console.error('Lỗi tải settings/curriculum:', err); setCur({ loaded: true, data: null }); });
+      var unsub3 = OPCref.examBank.subscribe(function(snap){
+        setExams(snap.docs.map(function(d){ return Object.assign({}, d.data() || {}, { id: d.id }); }));
+      }, function(err){ console.error('Lỗi tải ngân hàng đề (Quản lý chương):', err); });
+      return function(){ unsub1(); unsub2(); unsub3(); };
+    }, []);
+
+    // ---- Thống kê câu hỏi theo chương + danh sách câu chưa gắn chương ----
+    var bankInfo = React.useMemo(function(){
+      var perChapter = {};
+      if(!CUR) return { perChapter: perChapter, untagged: [] };
+      CUR.ALL_CHAPTERS.forEach(function(n){ perChapter[n] = { I: 0, II: 0, III: 0 }; });
+      var untagged = [];
+      exams.forEach(function(exam){
+        (exam.questions || []).forEach(function(q, idx){
+          var c = CUR.inferChuong(q);
+          if(c){ perChapter[c][q.part || 'I'] = (perChapter[c][q.part || 'I'] || 0) + 1; return; }
+          var sugTopic = window.OPC_NANO ? window.OPC_NANO.findChuDeByText(q.chuDeLon) : null;
+          var suggestion = sugTopic ? (CUR.TOPIC_TO_CHUONG[sugTopic.key] || null) : null;
+          untagged.push({ key: exam.id + '#' + idx, examId: exam.id, examTitle: exam.title || '(chưa đặt tên)', idx: idx, q: q, suggestion: suggestion });
+        });
+      });
+      return { perChapter: perChapter, untagged: untagged };
+    }, [exams]);
+
+    if(!CUR){
+      return h('div', { className: 'card' }, h('p', null, 'Không tải được curriculum.js — kiểm tra lại file đã được deploy.'));
+    }
+
+    var defaultChapters = CUR.getUnlockedChapters(null, cur.data);
+    function chaptersOf(s){ return CUR.getUnlockedChapters(s, cur.data); }
+    function hasOwn(s){ return Array.isArray(s.unlockedChapters); }
+    function withChapter(list, num, on){
+      var next = list.filter(function(n){ return n !== num; });
+      if(on) next.push(num);
+      return CUR.normalizeChapters(next);
+    }
+    function markBusy(key, val){ setBusy(function(prev){ var n = Object.assign({}, prev); if(val) n[key] = true; else delete n[key]; return n; }); }
+
+    function toggleCell(s, num){
+      var list = chaptersOf(s);
+      var on = list.indexOf(num) < 0;
+      var key = s.id + '#' + num;
+      markBusy(key, true);
+      OPCref.curriculum.setStudentChapters(s.id, withChapter(list, num, on))
+        .then(function(){ props.fireToast((on ? 'Đã mở ' : 'Đã khoá ') + 'Chương ' + num + ' cho ' + (s.name || 'học sinh') + '.'); })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ markBusy(key, false); });
+    }
+
+    function resetStudent(s){
+      markBusy(s.id + '#reset', true);
+      OPCref.curriculum.resetStudentChapters(s.id)
+        .then(function(){ props.fireToast((s.name || 'Học sinh') + ' đã quay về theo mặc định của lớp.'); })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ markBusy(s.id + '#reset', false); });
+    }
+
+    function toggleDefault(num){
+      var on = defaultChapters.indexOf(num) < 0;
+      setBulkBusy(true);
+      OPCref.curriculum.saveDefault(withChapter(defaultChapters, num, on))
+        .then(function(){ props.fireToast('Đã cập nhật chương mở mặc định (áp dụng cho học sinh chưa có cấu hình riêng).'); })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setBulkBusy(false); });
+    }
+
+    // Mở/Khoá 1 chương cho CẢ LỚP: sửa mặc định của lớp + danh sách riêng của
+    // từng em đang có cấu hình riêng (em theo mặc định tự nhận theo).
+    function setChapterForClass(num, on){
+      var ch = CUR.getChapter(num);
+      if(!window.confirm((on ? 'Mở' : 'Khoá') + ' Chương ' + num + ' (' + (ch ? ch.name : '') + ') cho CẢ LỚP (' + students.length + ' học sinh)?')) return;
+      setBulkBusy(true);
+      var jobs = [OPCref.curriculum.saveDefault(withChapter(defaultChapters, num, on))];
+      students.forEach(function(s){
+        if(hasOwn(s)) jobs.push(OPCref.curriculum.setStudentChapters(s.id, withChapter(chaptersOf(s), num, on)));
+      });
+      Promise.all(jobs)
+        .then(function(){ props.fireToast('Đã ' + (on ? 'mở' : 'khoá') + ' Chương ' + num + ' cho cả lớp.'); })
+        .catch(function(err){ console.error(err); props.fireToast('Có lỗi khi lưu — một số học sinh có thể chưa được cập nhật, thử lại.', true); })
+        .finally(function(){ setBulkBusy(false); });
+    }
+
+    var filteredUntagged = bankInfo.untagged.filter(function(it){
+      if(!search.trim()) return true;
+      var hay = (it.examTitle + ' ' + (it.q.chuDeLon || '') + ' ' + (it.q.dangBai || '') + ' ' + (it.q.stem || '')).toLowerCase();
+      return hay.indexOf(search.trim().toLowerCase()) > -1;
+    });
+    var visibleUntagged = showAll ? filteredUntagged : filteredUntagged.slice(0, 50);
+
+    // Gắn chương cho 1 loạt câu: gom theo đề rồi ghi lại mảng questions của
+    // từng đề 1 lần (OPC.examBank.updateQuestions).
+    function saveTags(items){
+      var byExam = {};
+      items.forEach(function(it){ (byExam[it.examId] || (byExam[it.examId] = [])).push(it); });
+      var jobs = Object.keys(byExam).map(function(examId){
+        var exam = exams.filter(function(e){ return e.id === examId; })[0];
+        if(!exam) return Promise.resolve();
+        var qs = (exam.questions || []).slice();
+        byExam[examId].forEach(function(it){ qs[it.idx] = Object.assign({}, qs[it.idx], { chuong: it.chuong }); });
+        return OPCref.examBank.updateQuestions(examId, qs);
+      });
+      setBulkBusy(true);
+      return Promise.all(jobs)
+        .then(function(){
+          props.fireToast('Đã gắn chương cho ' + items.length + ' câu hỏi.');
+          setPicks(function(prev){ var n = Object.assign({}, prev); items.forEach(function(it){ delete n[it.key]; }); return n; });
+        })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setBulkBusy(false); });
+    }
+    function saveOne(it){
+      var c = Number(picks[it.key] || it.suggestion);
+      if(!c){ props.fireToast('Chọn chương cho câu này trước khi lưu.', true); return; }
+      saveTags([{ key: it.key, examId: it.examId, idx: it.idx, chuong: c }]);
+    }
+    function saveAllPicked(){
+      var items = filteredUntagged.filter(function(it){ return picks[it.key]; })
+        .map(function(it){ return { key: it.key, examId: it.examId, idx: it.idx, chuong: Number(picks[it.key]) }; });
+      if(!items.length){ props.fireToast('Chưa chọn chương cho câu nào.', true); return; }
+      saveTags(items);
+    }
+    function applySuggestions(){
+      var items = filteredUntagged.filter(function(it){ return it.suggestion; })
+        .map(function(it){ return { key: it.key, examId: it.examId, idx: it.idx, chuong: it.suggestion }; });
+      if(!items.length){ props.fireToast('Không có câu nào có gợi ý chương từ "Chủ đề lớn".', true); return; }
+      if(!window.confirm('Gắn chương theo gợi ý (dựa trên tag "Chủ đề lớn" của câu) cho ' + items.length + ' câu hỏi?')) return;
+      saveTags(items);
+    }
+
+    var chapterName = function(n){ var c = CUR.getChapter(n); return c ? c.icon + ' Chương ' + n + ': ' + c.name : 'Chương ' + n; };
+    var pickedCount = filteredUntagged.filter(function(it){ return picks[it.key]; }).length;
+
+    return h('div', { className: 'card' },
+      h('div', { className: 'sm-toolbar' },
+        h('div', null, h('h3', null, '📚 Quản lý chương'),
+          h('p', { className: 'sm-sub' }, 'Dạy cuốn chiếu: học sinh chỉ luyện tập / thi thử với câu hỏi thuộc chương đã được mở. Cấu hình riêng của từng em ghi đè mặc định của lớp. Thay đổi có hiệu lực từ lần đăng nhập / tải lại trang tiếp theo của học sinh.'))
+      ),
+
+      // ---- Chương mặc định + mở/khoá cho cả lớp ----
+      h('div', { className: 'cp-chip-row' },
+        CUR.CHAPTERS.map(function(c){
+          var isDefault = defaultChapters.indexOf(c.num) > -1;
+          var q = bankInfo.perChapter[c.num];
+          return h('div', { key: c.num, className: 'cp-chapter-box' },
+            h('h4', null, chapterName(c.num)),
+            h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)' } },
+              'Ngân hàng: P.I ' + q.I + ' · P.II ' + q.II + ' · P.III ' + q.III + ' câu'),
+            h('label', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', marginTop: 6, cursor: 'pointer' } },
+              h('input', { type: 'checkbox', checked: isDefault, disabled: bulkBusy || !cur.loaded, onChange: function(){ toggleDefault(c.num); } }),
+              'Mở mặc định cho học sinh mới / theo lớp'),
+            h('div', null,
+              h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy, onClick: function(){ setChapterForClass(c.num, true); } }, '🔓 Mở chương ' + c.num + ' cho cả lớp'),
+              h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy, onClick: function(){ setChapterForClass(c.num, false); } }, '🔒 Khóa chương ' + c.num + ' cho cả lớp')
+            )
+          );
+        })
+      ),
+      !cur.data ? h('div', { className: 'banner info' }, h('span', null, 'ℹ️'),
+        h('div', null, 'Chưa có cấu hình settings/curriculum — đang dùng mặc định: mở Chương 1 và 2. Bấm vào một ô "Mở mặc định" hoặc nút Mở/Khoá cho cả lớp để lưu cấu hình.')) : null,
+
+      // ---- Bảng học sinh × 4 chương ----
+      h('div', { className: 'sm-table-wrap' },
+        h('table', { className: 'sm-table' },
+          h('thead', null, h('tr', null,
+            h('th', null, 'Học sinh'),
+            CUR.CHAPTERS.map(function(c){ return h('th', { key: c.num, style: { textAlign: 'center' } }, 'Chương ' + c.num + ' · ' + c.name); }),
+            h('th', null, 'Cấu hình')
+          )),
+          h('tbody', null,
+            students.length ? students.map(function(s){
+              var list = chaptersOf(s);
+              return h('tr', { key: s.id },
+                h('td', null, h('div', { style: { fontWeight: 700 } }, s.name || '(chưa đặt tên)'),
+                  h('div', { style: { fontSize: '0.75rem', color: 'var(--muted)' } }, (s.username ? '@' + s.username : '') + (s.status && s.status !== 'active' ? ' · Tạm khoá' : ''))),
+                CUR.CHAPTERS.map(function(c){
+                  var on = list.indexOf(c.num) > -1;
+                  return h('td', { key: c.num, style: { textAlign: 'center' } },
+                    h('button', {
+                      type: 'button', className: cx('cp-switch', on && 'on'),
+                      disabled: !!busy[s.id + '#' + c.num] || bulkBusy || !cur.loaded,
+                      title: (on ? 'Đang mở — bấm để khoá' : 'Đang khoá — bấm để mở') + ' Chương ' + c.num,
+                      'aria-pressed': on,
+                      onClick: function(){ toggleCell(s, c.num); }
+                    }));
+                }),
+                h('td', null, hasOwn(s)
+                  ? h('span', null, h('span', { style: { fontSize: '0.78rem', fontWeight: 700 } }, 'Riêng '),
+                      h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.72rem', padding: '4px 8px' }, disabled: !!busy[s.id + '#reset'] || bulkBusy, onClick: function(){ resetStudent(s); } }, '↺ Theo lớp'))
+                  : h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, 'Theo mặc định lớp'))
+              );
+            }) : h('tr', null, h('td', { colSpan: 6, style: { color: 'var(--muted)' } }, 'Chưa có học sinh nào.'))
+          )
+        )
+      ),
+
+      // ---- Câu hỏi chưa gắn chương ----
+      h('div', { style: { marginTop: '28px' } },
+        h('div', { className: 'sm-toolbar' },
+          h('div', null,
+            h('h3', null, '🏷️ Câu hỏi chưa gắn chương: ' + bankInfo.untagged.length + ' câu'),
+            h('p', { className: 'sm-sub' }, 'Câu chưa có trường "chuong" và không suy ra được từ mã kiến thức (nano-point / Bài) sẽ KHÔNG hiện với học sinh. Chọn chương cho từng câu rồi lưu, hoặc gắn theo gợi ý từ tag "Chủ đề lớn".')),
+          h('div', { className: 'sm-actions' },
+            h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy || !filteredUntagged.length, onClick: applySuggestions }, '✨ Gắn theo gợi ý'),
+            h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !pickedCount, onClick: saveAllPicked }, '💾 Lưu ' + pickedCount + ' câu đã chọn')
+          )
+        ),
+        bankInfo.untagged.length ? h('div', { className: 'sm-field', style: { marginTop: '12px', maxWidth: '360px' } },
+          h('input', { type: 'text', placeholder: 'Lọc theo tên đề / chủ đề / nội dung…', value: search, onChange: function(e){ setSearch(e.target.value); } })) : null,
+        bankInfo.untagged.length ? h('div', { className: 'sm-table-wrap' },
+          h('table', { className: 'sm-table' },
+            h('thead', null, h('tr', null,
+              h('th', null, 'Đề / Câu'), h('th', null, 'Chủ đề (tag)'), h('th', null, 'Nội dung'), h('th', null, 'Gắn chương'), h('th', null, '')
+            )),
+            h('tbody', null, visibleUntagged.map(function(it){
+              var val = picks[it.key] || '';
+              var stem = String(it.q.stem || '').replace(/\s+/g, ' ');
+              return h('tr', { key: it.key },
+                h('td', null, h('div', { style: { fontWeight: 700, fontSize: '0.82rem' } }, it.examTitle),
+                  h('div', { style: { fontSize: '0.75rem', color: 'var(--muted)' } }, 'Câu ' + (it.q.index || it.idx + 1) + ' · Phần ' + (it.q.part || 'I') + ' · ' + (it.q.level || ''))),
+                h('td', { style: { fontSize: '0.8rem' } }, (it.q.chuDeLon || '—') + (it.q.dangBai ? ' / ' + it.q.dangBai : '')),
+                h('td', null, h('div', { className: 'cp-stem' }, stem.length > 160 ? stem.slice(0, 160) + '…' : stem)),
+                h('td', null,
+                  h('select', { value: val, onChange: function(e){ var v = e.target.value; setPicks(function(prev){ var n = Object.assign({}, prev); if(v) n[it.key] = v; else delete n[it.key]; return n; }); } },
+                    h('option', { value: '' }, it.suggestion ? '— Gợi ý: Chương ' + it.suggestion + ' —' : '— Chọn chương —'),
+                    CUR.CHAPTERS.map(function(c){ return h('option', { key: c.num, value: String(c.num) }, 'Chương ' + c.num + ': ' + c.name); })
+                  )),
+                h('td', null, h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '5px 10px' }, disabled: bulkBusy || !(val || it.suggestion), onClick: function(){ saveOne(it); } }, 'Lưu'))
+              );
+            }))
+          )
+        ) : h('div', { className: 'banner info' }, h('span', null, '✅'), h('div', null, 'Mọi câu hỏi trong ngân hàng đề đều đã gắn chương.')),
+        !showAll && filteredUntagged.length > 50 ? h('button', { type: 'button', className: 'btn btn-secondary', style: { marginTop: '12px' }, onClick: function(){ setShowAll(true); } }, 'Xem tất cả ' + filteredUntagged.length + ' câu') : null
+      )
+    );
+  }
+
   // ================= Exam bank panel =================
   // THÊM 26/9/2026: examKind phân biệt đề nạp vào ngân hàng bình thường
   // ('nganHang' — mặc định, câu hỏi được tách rời để trộn cá nhân hoá cho
@@ -4742,7 +5040,7 @@
     // đánh dấu "Sở/Trường" (examKind==='soTruong'): những đề này phải được
     // giao NGUYÊN VẸN (xem handleGenerateFromSoTruong), không được phép bị
     // AI bóc câu ra trộn lẫn vào đề cá nhân hóa của học sinh khác.
-    var questionPool = React.useMemo(function(){
+    var allQuestionPool = React.useMemo(function(){
       var pool = [];
       exams.filter(function(exam){ return exam.examKind !== 'soTruong'; }).forEach(function(exam){
         (exam.questions || []).forEach(function(q){
@@ -4756,6 +5054,30 @@
       });
       return pool;
     }, [exams]);
+
+    // THÊM 28/9/2026 — KHOÁ/MỞ CHƯƠNG THEO HỌC SINH: đề cá nhân hoá chỉ lấy
+    // câu thuộc chương ĐÃ MỞ của học sinh đang chọn (unlockedChapters riêng,
+    // hoặc mặc định lớp trong settings/curriculum — xem curriculum.js). Câu
+    // chưa gắn chương bị loại hẳn, giống hệt phía trang học sinh.
+    var genCurState = React.useState(null); var genCur = genCurState[0], setGenCur = genCurState[1];
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.curriculum) return;
+      var unsub = OPCref.curriculum.subscribe(function(data){ setGenCur(data); },
+        function(err){ console.error('Lỗi tải settings/curriculum (Tạo đề cá nhân hóa):', err); });
+      return function(){ unsub(); };
+    }, []);
+    var selectedStudentChapters = React.useMemo(function(){
+      if(!window.OPC_CURRICULUM) return [];
+      var st = students.filter(function(s){ return s.id === selectedStudentId; })[0];
+      return window.OPC_CURRICULUM.getUnlockedChapters(st || null, genCur);
+    }, [students, selectedStudentId, genCur]);
+    var questionPool = React.useMemo(function(){
+      if(!window.OPC_CURRICULUM) return [];
+      return allQuestionPool.filter(function(q){
+        var c = window.OPC_CURRICULUM.inferChuong(q);
+        return !!c && selectedStudentChapters.indexOf(c) > -1;
+      });
+    }, [allQuestionPool, selectedStudentChapters.join(',')]);
 
     // Số câu hỏi khả dụng theo từng Phần, để hiện rõ cho giáo viên biết vì
     // sao đề tạo ra có thể thiếu Phần II/III (ví dụ ngân hàng đề chưa có
@@ -5142,7 +5464,8 @@
         examTitle: examTitle,
         examId: examId,
         baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
-        nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null
+        nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null,
+        chuong: window.OPC_CURRICULUM ? window.OPC_CURRICULUM.inferChuong(q) : null // THÊM 28/9/2026
       };
       if(q.type === 'choiceTF'){
         out.statements = (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; });
@@ -5246,12 +5569,19 @@
           )
         ),
 
+        sourceMode !== 'personalized' ? null : h('div',{className:'banner info', style:{marginTop:'10px'}}, h('span',null,'📚'),
+          h('div',null, 'Chỉ lấy câu thuộc chương đã mở của học sinh này: ',
+            h('b',null, selectedStudentChapters.length ? selectedStudentChapters.map(function(n){ var c = window.OPC_CURRICULUM && window.OPC_CURRICULUM.getChapter(n); return 'Chương ' + n + (c ? ' (' + c.name + ')' : ''); }).join(', ') : 'chưa mở chương nào'),
+            '. Câu chưa gắn chương không được dùng — đổi ở tab "📚 Quản lý chương".')),
+
         sourceMode !== 'personalized' ? null : (
           poolCounts.total === 0
             ? h('div',{className:'banner warn'}, h('span',null,'⚠️'),
                 h('div',null, selectedTopic !== 'Tất cả'
                   ? 'Ngân hàng đề chưa có câu hỏi nào thuộc chuyên đề "' + selectedTopic + '". Hãy chọn "Tất cả chuyên đề" hoặc nạp thêm đề cho chuyên đề này.'
-                  : 'Ngân hàng đề hiện chưa có câu hỏi nào — hãy nạp ít nhất 1 file .tex ở tab "Ngân hàng đề" trước khi tạo đề cá nhân hóa.'))
+                  : (allQuestionPool.length
+                      ? 'Chưa có câu hỏi nào thuộc chương đã mở của học sinh này (hoặc câu chưa được gắn chương) — mở thêm chương / gắn chương cho câu hỏi ở tab "📚 Quản lý chương".'
+                      : 'Ngân hàng đề hiện chưa có câu hỏi nào — hãy nạp ít nhất 1 file .tex ở tab "Ngân hàng đề" trước khi tạo đề cá nhân hóa.')))
             : h('div',{className:'gen-pool-counts', style:{fontSize:'0.78rem', color:'var(--ink-2)', background:'var(--surface-2)', borderRadius:'8px', padding:'8px 12px', margin:'10px 0'}},
                 h('b',null,'Số câu khả dụng trong ngân hàng'+(selectedTopic!=='Tất cả' ? ' (chuyên đề đã chọn)' : '')+': '),
                 'Phần I: ' + poolCounts.p1 + ' câu · Phần II: ' + poolCounts.p2 + ' câu · Phần III: ' + poolCounts.p3 + ' câu',
@@ -5368,7 +5698,7 @@
               ),
 
               h('div',{style:{marginTop:12, fontSize:'0.75rem', color:'var(--muted)', textAlign:'center'}},
-                'Ngân hàng hiện có ' + questionPool.length + ' câu hỏi bóc tách từ ' + exams.length + ' đề thi.'
+                'Ngân hàng hiện có ' + allQuestionPool.length + ' câu hỏi bóc tách từ ' + exams.length + ' đề thi — ' + questionPool.length + ' câu thuộc chương đã mở của học sinh này.'
               )
             ),
 
@@ -5937,14 +6267,17 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='prepscholar' && 'active'), onClick:function(){ setTab('prepscholar'); }}, '⚡ Giám sát thích ứng PrepScholar'),
         h('button',{type:'button', className:cx('tab-btn', tab==='exambank' && 'active'), onClick:function(){ setTab('exambank'); }}, 'Ngân hàng đề & câu hỏi'),
         h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='curriculum' && 'active'), onClick:function(){ setTab('curriculum'); }}, '📚 Quản lý chương'),
         h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ')
       ),
       tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
         tab === 'prepscholar' ? h(PrepScholarMonitoringPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
+            tab === 'curriculum' ? h(CurriculumPanel, {fireToast:fireToast}) : (
             tab === 'reports' ? h(ParentReportsPanel, {fireToast:fireToast}) : (
               tab === 'pricing' ? h(PricingPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast})
+            )
             )
           )
         )
