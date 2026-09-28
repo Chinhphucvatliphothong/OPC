@@ -76,6 +76,18 @@
     if(!q) return null;
     var explicit = toChuong(q.chuong);
     if(explicit) return explicit;
+    // SỬA 28/9/2026 (tối): đọc TAG CHỦ ĐỀ CỦA TỪNG CÂU trong file .tex
+    // (% [M2][Khí lí tưởng][Dạng bài] -> q.chuDeLon) TRƯỚC mã nano-point.
+    // Đề tổng hợp cuốn chiếu có câu của nhiều chương khác nhau; mỗi câu phải
+    // được xếp theo tag riêng của nó, KHÔNG theo nhãn "Chuyên đề" của cả đề.
+    // Bản trước bỏ qua tag này nên câu chỉ có tag chủ đề (chưa gắn nano)
+    // bị coi là "chưa gắn chương" và ẩn khỏi học sinh. Tag của thầy cũng
+    // đáng tin hơn mã nano do AI gợi ý, nên được ưu tiên hơn.
+    var N = window.OPC_NANO;
+    if(N && q.chuDeLon){
+      var cd = N.findChuDeByText(q.chuDeLon);
+      if(cd && TOPIC_TO_CHUONG[cd.key]) return TOPIC_TO_CHUONG[cd.key];
+    }
     var codes = [q.maKienThuc, q.maKT, q.knowledgeCode]
       .concat(Array.isArray(q.nanoPointIds) ? q.nanoPointIds : [])
       .concat([q.nanoBaiKey]);
