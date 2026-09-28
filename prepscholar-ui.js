@@ -1702,8 +1702,9 @@
         h('button', {
           type: 'button',
           className: 'ps-tab-btn ' + (tab === 'drill' ? 'active' : ''),
+          title: 'Luyện tập trọng tâm (Focused Drill): tự chọn 1 chuyên đề để luyện riêng, khác với Luyện tập thích ứng (hệ thống tự chọn câu).',
           onClick: function(){ setTab('drill'); setExamSession(null); }
-        }, '🎯 Luyện tập trọng tâm (Focused Drill)'),
+        }, '🎯 Luyện tập trọng tâm'),
         h('button', {
           type: 'button',
           className: 'ps-tab-btn ' + (tab === 'exam' ? 'active' : ''),
@@ -1712,9 +1713,10 @@
         h('button', {
           type: 'button',
           className: 'ps-tab-btn ' + (tab === 'mistakes' ? 'active' : ''),
+          title: 'Sổ tay câu sai (Mistake Review): ôn lại đúng những câu đã làm sai, theo chu kỳ lặp lại giãn cách.',
           onClick: function(){ setTab('mistakes'); setExamSession(null); }
         },
-          '🔄 Sổ tay câu sai (Mistake Review)',
+          '🔄 Sổ tay câu sai',
           // SỬA 25/9/2026: hiện số câu THẬT SỰ đến hạn ôn (dueNow), không
           // phải tổng số câu từng làm sai — đúng tinh thần "cần ôn ngay".
           h('span', { className: 'ps-tab-badge' }, mistakeLog.filter(function(m){ return m.dueNow; }).length)
@@ -1904,7 +1906,7 @@
                     h('div', { className: 'ps-short-input-row' },
                       h('input', {
                         type: 'text', className: 'ps-short-input', disabled: adaptiveChecked,
-                        placeholder: 'Ví dụ: 2.5', value: userAnswers[curQ.id] || '',
+                        placeholder: 'Ví dụ: 2.5 hoặc 2,5', value: userAnswers[curQ.id] || '',
                         onChange: function(e){ handleAnswerPart3(curQ.id, e.target.value); }
                       }),
                       curQ.unit ? h('span', { className: 'ps-short-unit' }, curQ.unit) : null
@@ -2051,7 +2053,7 @@
                       h('input', {
                         type: 'text',
                         className: 'ps-short-input',
-                        placeholder: 'Ví dụ: 2.5',
+                        placeholder: 'Ví dụ: 2.5 hoặc 2,5',
                         value: userAnswers[curQ.id] || '',
                         onChange: function(e){ handleAnswerPart3(curQ.id, e.target.value); }
                       }),

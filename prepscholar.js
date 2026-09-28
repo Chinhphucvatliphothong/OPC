@@ -125,8 +125,15 @@
         tStats.maxScore += maxPt;
         var rawVal = answers[q.id];
         var isRight = false;
-        if(rawVal !== undefined && rawVal !== '' && !isNaN(Number(rawVal))){
-          var num = Number(rawVal);
+        // SỬA 28/9/2026: học sinh Việt Nam quen viết số thập phân bằng dấu
+        // PHẨY (vd gõ "7,5") — trước đây chấm thẳng Number(rawVal) nên gặp
+        // dấu phẩy là ra NaN, bị chấm SAI oan dù đáp số đúng. correctAnswer
+        // phía admin đã tự quy đổi phẩy -> chấm khi nạp đề (xem
+        // opc-live-data.js), nay chấm bài phía học sinh cũng quy đổi y hệt
+        // để không phân biệt "," hay "." — coi cả 2 cách viết là một.
+        var normalizedVal = (typeof rawVal === 'string') ? rawVal.trim().replace(',', '.') : rawVal;
+        if(normalizedVal !== undefined && normalizedVal !== '' && !isNaN(Number(normalizedVal))){
+          var num = Number(normalizedVal);
           var tol = q.tolerance || 0.05;
           isRight = Math.abs(num - q.correctAnswer) <= tol;
         }
