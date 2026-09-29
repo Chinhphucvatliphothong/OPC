@@ -59,12 +59,21 @@ function buildUserPrompt(d){
   lines.push('Khoảng thời gian báo cáo: ' + d.periodLabel);
   lines.push('');
 
-  if(d.completedInPeriod != null) lines.push('Số đề/lượt luyện tập đã làm trong khoảng thời gian này: ' + d.completedInPeriod);
+  // SỬA 29/9/2026: số liệu RIÊNG của khoảng thời gian báo cáo (7 ngày qua)
+  // do admin tính từ lịch sử làm bài thật — tách bạch với số liệu cộng dồn.
+  if(d.completedInPeriod != null){
+    if(d.completedInPeriod === 0){
+      lines.push('Trong khoảng thời gian này em CHƯA làm bài nào trên hệ thống luyện tập. Hãy nói rõ điều này với phụ huynh một cách nhẹ nhàng, nhắc em duy trì luyện tập đều; các số liệu bên dưới là kết quả tích luỹ từ trước, không phải của tuần này.');
+    } else {
+      lines.push('Số bài/lượt luyện tập đã làm trong khoảng thời gian này: ' + d.completedInPeriod);
+      if(d.periodAvgScore != null) lines.push('Điểm trung bình các bài trong khoảng thời gian này: ' + d.periodAvgScore + '/10');
+    }
+  }
   if(d.recentAvgScore != null && d.priorAvgScore != null){
     lines.push('Điểm trung bình gần đây: ' + d.recentAvgScore + '/10 (giai đoạn trước đó: ' + d.priorAvgScore + '/10) — xu hướng: ' +
       (d.recentTrend === 'up' ? 'tăng' : d.recentTrend === 'down' ? 'giảm' : 'ổn định'));
   } else if(d.averageScore != null){
-    lines.push('Điểm trung bình hiện tại: ' + d.averageScore + '/10 (chưa đủ dữ liệu để so sánh xu hướng).');
+    lines.push('Điểm trung bình tích luỹ từ đầu: ' + d.averageScore + '/10 (chưa đủ dữ liệu để so sánh xu hướng).');
   }
   if(d.predicted != null) lines.push('Điểm dự báo tốt nghiệp hiện tại: ' + d.predicted + '/10' + (d.target != null ? ' (mục tiêu: ' + d.target + '/10)' : ''));
 
@@ -85,7 +94,7 @@ function buildUserPrompt(d){
   }
 
   if(d.mistakeCount != null) lines.push('');
-  if(d.mistakeCount != null) lines.push('Số câu đang chờ ôn lại (làm sai gần đây): ' + d.mistakeCount);
+  if(d.mistakeCount != null) lines.push('Tổng số câu em làm sai và chưa làm lại đúng: ' + d.mistakeCount);
 
   lines.push('');
   lines.push('Hãy viết báo cáo phụ huynh theo đúng hướng dẫn ở system instruction.');
@@ -116,6 +125,7 @@ export default async function handler(req, res){
     studentName: clampStr(body.studentName, 80) || 'học sinh',
     periodLabel: clampStr(body.periodLabel, 60) || '7 ngày qua',
     completedInPeriod: (body.completedInPeriod != null) ? Number(body.completedInPeriod) : null,
+    periodAvgScore: (body.periodAvgScore != null) ? Number(body.periodAvgScore) : null,
     averageScore: (body.averageScore != null) ? Number(body.averageScore) : null,
     recentAvgScore: (body.recentAvgScore != null) ? Number(body.recentAvgScore) : null,
     priorAvgScore: (body.priorAvgScore != null) ? Number(body.priorAvgScore) : null,
