@@ -495,7 +495,11 @@
         part: info.q.part || null, // THÊM để admin.html biết xếp câu ôn lại vào đúng Phần I/II/III khi trộn đề
         nanoId: info.q.nanoId
       };
-    }).sort(function(a, b){ return b.daysOverdue - a.daysOverdue; }).slice(0, 15);
+    }).sort(function(a, b){ return b.daysOverdue - a.daysOverdue; });
+    // THÊM 29/9/2026: tổng số câu sai CHƯA sửa (trước khi cắt còn 15 câu ưu
+    // tiên cho Sổ tay) — để admin hiện đúng con số thật thay vì luôn "15".
+    result.mistakeTotal = result.mistakeLog.length;
+    result.mistakeLog = result.mistakeLog.slice(0, 15);
 
     result.radar5 = computeRadar5(sorted);
     result.levelXp = computeLevelXP(sorted);

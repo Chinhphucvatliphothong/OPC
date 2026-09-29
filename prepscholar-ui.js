@@ -552,6 +552,7 @@
       if(stats.predicted != null) payload.predicted = stats.predicted;
       if(stats.nanoMastery) payload.nanoMastery = stats.nanoMastery;
       if(stats.mistakeLog) payload.mistakeCount = stats.mistakeLog.length;
+      if(stats.mistakeTotal != null) payload.mistakeTotal = stats.mistakeTotal; // THÊM 29/9/2026 — tổng thật, không bị cắt 15
       // radar5/levelXp: đẩy lên để (1) trang admin có thể xem thêm nếu cần,
       // và (2) mọi học sinh ĐÃ ĐĂNG NHẬP khác đọc được (student_stats yêu
       // cầu Auth thật từ 25/9/2026, không còn công khai) để tính đường

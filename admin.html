@@ -737,6 +737,14 @@
           // 2 bên hiển thị lệch nhau cho học sinh luyện tập nhiều.
           limit(100)
         ), onNext, onErr);
+      },
+      // THÊM 29/9/2026 — đọc 1 lần (không subscribe) 100 lượt gần nhất của 1
+      // học sinh: dùng khi Giao Drill thích ứng (tránh câu em vừa làm đúng,
+      // ưu tiên câu em làm sai) và khi soạn báo cáo phụ huynh (số bài/điểm
+      // TRONG 7 NGÀY QUA, không phải số liệu cộng dồn từ đầu).
+      loadForStudent: async function(studentId){
+        var snap = await getDocs(query(collection(db, 'students', studentId, 'attempts'), orderBy('createdAt', 'desc'), limit(100)));
+        return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); });
       }
     };
 
@@ -771,6 +779,22 @@
       save: function(studentId, reportId, data){
         var ref = reportId ? doc(db, 'students', studentId, 'parentReports', reportId) : doc(collection(db, 'students', studentId, 'parentReports'));
         return setDoc(ref, data, { merge: true }).then(function(){ return ref; });
+      }
+    };
+
+    // ================= Mẫu tin nhắn Zalo báo cáo phụ huynh ==================
+    // THÊM 29/9/2026 — doc đơn "settings/parent_report_template" { header,
+    // footer }: phần mở đầu/kết thư cố định thầy soạn 1 lần, ghép quanh nội
+    // dung AI soạn cho từng em. Không chứa dữ liệu cá nhân (chỉ có chỗ trống
+    // {ten}, {soBai}...) nên để chung "settings" (ghi chỉ admin) là đủ.
+    OPC.reportTemplate = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(doc(db, 'settings', 'parent_report_template'), function(snap){
+          onNext(snap.exists() ? snap.data() : null);
+        }, onErr);
+      },
+      save: function(data){
+        return setDoc(doc(db, 'settings', 'parent_report_template'), Object.assign({}, data, { updatedAt: serverTimestamp() }), { merge: true });
       }
     };
 
@@ -1959,6 +1983,41 @@
     return {name:'', username:'', password:'123', email:'', phone:'', school:'', parentName:'', parentPhone:'', parentEmail:'', targetScore:9.0};
   }
 
+  // THÊM 29/9/2026 — các chuyên đề có số liệu mastery THẬT của 1 học sinh,
+  // sắp từ yếu đến mạnh. Chấp nhận cả khoá cũ không gạch nối (tutruong,
+  // hatnhan). chuong: số chương SGK (1-4) hoặc null với 3 chuyên đề.
+  var KPI_TOPICS = [
+    { key:'nhiet', alt:[], name:'Vật lí nhiệt', chuong:1 },
+    { key:'khi', alt:[], name:'Khí lí tưởng', chuong:2 },
+    { key:'tu-truong', alt:['tutruong'], name:'Từ trường', chuong:3 },
+    { key:'hat-nhan', alt:['hatnhan'], name:'Vật lí hạt nhân', chuong:4 },
+    { key:'cd1-dxc', alt:[], name:'Dòng điện xoay chiều (CĐ)', chuong:null },
+    { key:'cd2-yhoc', alt:[], name:'Vật lí trong y học (CĐ)', chuong:null },
+    { key:'cd3-luongtu', alt:[], name:'Vật lí lượng tử (CĐ)', chuong:null }
+  ];
+  function realMasteryTopics(s){
+    var m = (s && s.mastery) || {};
+    var out = [];
+    KPI_TOPICS.forEach(function(t){
+      var keys = [t.key].concat(t.alt);
+      for(var i = 0; i < keys.length; i++){
+        if(m[keys[i]] != null && !isNaN(Number(m[keys[i]]))){
+          out.push({ key: t.key, name: t.name, chuong: t.chuong, val: Math.round(Number(m[keys[i]])) });
+          break;
+        }
+      }
+    });
+    return out.sort(function(a, b){ return a.val - b.val; });
+  }
+  // Số câu sai hiển thị: mistakeTotal (tổng thật, có từ 29/9/2026); dữ liệu
+  // cũ chỉ có mistakeCount bị cắt ở 15 -> hiện "≥15" cho khỏi hiểu nhầm.
+  function mistakeLabel(s){
+    if(!s) return 0;
+    if(s.mistakeTotal != null) return Number(s.mistakeTotal) || 0;
+    var c = Number(s.mistakeCount) || 0;
+    return c >= 15 ? '≥15' : c;
+  }
+
   function calculateStudentKPIs(s){
     s = s || {};
     // completed: TỔNG số lượt nộp bài thật (mọi loại — Kiểm tra đầu vào,
@@ -1996,35 +2055,17 @@
       rating = 'Mới nhập học';
     }
 
+    // SỬA 29/9/2026: CHỈ xét chuyên đề có số liệu THẬT. Bản trước gán số giả
+    // định cho chương chưa làm (Nhiệt 75, Khí 65, Từ trường 60, Hạt nhân 45)
+    // nên em nào chưa làm câu hạt nhân nào cũng bị báo "yếu nhất: Vật lí hạt
+    // nhân (45%)". Chưa có số liệu thật -> "Chưa xác định".
     var weakTopic = 'Chưa xác định';
-    if(s.mastery){
-      var tNhiet = s.mastery.nhiet !== undefined ? s.mastery.nhiet : 75;
-      var tKhi = s.mastery.khi !== undefined ? s.mastery.khi : 65;
-      var tTu = s.mastery.tutruong !== undefined ? s.mastery.tutruong : (s.mastery['tu-truong'] !== undefined ? s.mastery['tu-truong'] : 60);
-      var tHn = s.mastery.hatnhan !== undefined ? s.mastery.hatnhan : (s.mastery['hat-nhan'] !== undefined ? s.mastery['hat-nhan'] : 45);
-      var topics = [
-        { name: 'Vật lí nhiệt', val: tNhiet },
-        { name: 'Khí lí tưởng', val: tKhi },
-        { name: 'Từ trường & Cảm ứng', val: tTu },
-        { name: 'Vật lí hạt nhân', val: tHn }
-      ];
-      // THÊM 25/9/2026: thêm 3 chuyên đề mới vào danh sách xét "chủ đề yếu
-      // nhất" — CHỈ khi đã có số liệu thật cho chuyên đề đó (không gán mặc
-      // định như 4 chủ đề SGK ở trên, vì chuyên đề là nội dung mới, chưa
-      // chắc học sinh cũ nào cũng đã luyện — tránh báo "yếu" oan cho chuyên
-      // đề chỉ vì chưa từng làm câu nào).
-      ['cd1-dxc', 'cd2-yhoc', 'cd3-luongtu'].forEach(function(k){
-        if(s.mastery[k] !== undefined){
-          topics.push({ name: CHU_DE_LABEL[k], val: s.mastery[k] });
-        }
-      });
-      topics.sort(function(a, b){ return a.val - b.val; });
-      weakTopic = topics[0].name + ' (' + topics[0].val + '%)';
+    var realTopics = realMasteryTopics(s);
+    if(realTopics.length){
+      weakTopic = realTopics[0].name + ' (' + realTopics[0].val + '%)';
     }
-    // (Bỏ các nhánh suy đoán chuyên đề yếu từ mỗi điểm TB — không có căn cứ
-    // thật; nếu chưa có số liệu mastery theo chuyên đề thì để "Chưa xác định".)
 
-    var mistakes = Number(s.mistakeCount) || 0;
+    var mistakes = mistakeLabel(s);
 
     return {
       completed: completed,
@@ -2247,6 +2288,7 @@
         predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
         mastery: st.mastery || s.mastery,
         mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount,
+        mistakeTotal: st.mistakeTotal != null ? st.mistakeTotal : s.mistakeTotal,
         // nanoMastery/recentTrend/recentAvgScore/priorAvgScore: THÊM
         // 24/9/2026 — nguồn dữ liệu cho banner "Cảnh báo tự động" bên dưới
         // (xem computeStudentStatsFromAttempts trong prepscholar.js).
@@ -3178,6 +3220,9 @@
     'cd1-dxc': 'Dòng điện xoay chiều (Chuyên đề)', 'cd2-yhoc': 'Vật lí trong y học (Chuyên đề)', 'cd3-luongtu': 'Vật lí lượng tử (Chuyên đề)'
   };
   var REPORT_STALE_DAYS = 7;
+  // Mẫu tin nhắn Zalo gợi ý — THÊM 29/9/2026, thầy sửa lại trong panel.
+  var DEFAULT_REPORT_HEADER = 'Kính gửi Quý phụ huynh em {ten},\nThầy gửi báo cáo học tập môn Vật lí của em trong tuần {tuNgay} – {denNgay}.\n📊 Số bài đã làm: {soBai} · Điểm trung bình tuần: {diemTB}';
+  var DEFAULT_REPORT_FOOTER = 'Nếu cần trao đổi thêm, phụ huynh cứ nhắn thầy qua Zalo này. Trân trọng cảm ơn Quý phụ huynh!';
 
   function ParentReportsPanel(props){
     var OPCref = window.OPC;
@@ -3202,6 +3247,25 @@
       return function(){ unsub(); };
     }, []);
 
+    // THÊM 29/9/2026 — mẫu tin nhắn Zalo + cấu hình chương đang mở.
+    var tplState = React.useState(null); var tpl = tplState[0], setTpl = tplState[1];
+    var tplDraftState = React.useState(null); var tplDraft = tplDraftState[0], setTplDraft = tplDraftState[1];
+    var tplOpenState = React.useState(false); var tplOpen = tplOpenState[0], setTplOpen = tplOpenState[1];
+    var tplSavingState = React.useState(false); var tplSaving = tplSavingState[0], setTplSaving = tplSavingState[1];
+    var repCurState = React.useState(null); var repCur = repCurState[0], setRepCur = repCurState[1];
+    React.useEffect(function(){
+      if(!OPCref.reportTemplate) return;
+      var unsub = OPCref.reportTemplate.subscribe(function(data){ setTpl(data); }, function(err){ console.error('Lỗi tải mẫu báo cáo:', err); });
+      return function(){ unsub(); };
+    }, []);
+    React.useEffect(function(){
+      if(!OPCref.curriculum) return;
+      var unsub = OPCref.curriculum.subscribe(function(data){ setRepCur(data); }, function(err){ console.error(err); });
+      return function(){ unsub(); };
+    }, []);
+    var tplHeader = (tpl && tpl.header != null) ? tpl.header : DEFAULT_REPORT_HEADER;
+    var tplFooter = (tpl && tpl.footer != null) ? tpl.footer : DEFAULT_REPORT_FOOTER;
+
     var activeStudents = students.filter(function(s){ return s.status === 'active'; }).map(function(s){
       var st = statsById[s.id] || {};
       return Object.assign({}, s, {
@@ -3214,7 +3278,7 @@
         averageScore: st.averageScore != null ? st.averageScore : s.averageScore,
         recentTrend: st.recentTrend, recentAvgScore: st.recentAvgScore, priorAvgScore: st.priorAvgScore,
         assignedExamsCount: st.assignedExamsCount, assignedExamsCompletedCount: st.assignedExamsCompletedCount,
-        mistakeCount: st.mistakeCount
+        mistakeCount: st.mistakeCount, mistakeTotal: st.mistakeTotal
       });
     });
 
@@ -3243,9 +3307,20 @@
     // (xem SYSTEM_INSTRUCTION trong file đó — cấm dùng thuật ngữ nội bộ).
     // Học sinh mới học (chưa đủ 3 nano-point từng kiểm tra) vẫn dùng lại
     // mức chuyên đề như cũ, tránh AI viết báo cáo dựa trên quá ít dữ liệu.
-    function buildPromptData(s){
+    // SỬA 29/9/2026:
+    //  (1) Chỉ nêu phần kiến thức thuộc chương ĐANG MỞ với em (hoặc chuyên
+    //      đề) — không báo phụ huynh "em yếu Từ trường" khi lớp chưa học.
+    //  (2) Thêm số liệu THẬT CỦA 7 NGÀY QUA (số bài, điểm TB tuần) từ lịch sử
+    //      làm bài — bản trước ghi "7 ngày qua" nhưng gửi số liệu cộng dồn.
+    //  (3) Số câu sai dùng tổng thật (mistakeTotal), không phải số bị cắt 15.
+    function buildPromptData(s, week){
+      var CUR = window.OPC_CURRICULUM;
+      var unlocked = CUR ? CUR.getUnlockedChapters(s, repCur) : [1, 2, 3, 4];
+      function chuongOfTopic(key){ return CUR && CUR.TOPIC_TO_CHUONG[key] ? CUR.TOPIC_TO_CHUONG[key] : null; }
+      function topicAllowed(key){ var c = chuongOfTopic(key); return c == null || unlocked.indexOf(c) > -1; }
+
       var mastery = s.mastery || {};
-      var topics = Object.keys(CHU_DE_LABEL).filter(function(k){ return mastery[k] != null; })
+      var topics = Object.keys(CHU_DE_LABEL).filter(function(k){ return mastery[k] != null && topicAllowed(k); })
         .map(function(k){ return { name: CHU_DE_LABEL[k], pct: Math.round(mastery[k]) }; })
         .sort(function(a, b){ return b.pct - a.pct; });
 
@@ -3255,7 +3330,10 @@
           .filter(function(id){ return typeof s.nanoMastery[id] === 'number'; })
           .map(function(id){
             var nano = window.OPC_NANO.getNano(id);
-            return nano ? { name: nano.name, pct: Math.round(s.nanoMastery[id]) } : null;
+            if(!nano) return null;
+            var bai = window.OPC_NANO.getBai(nano.baiKey);
+            if(bai && !topicAllowed(bai.chuDeKey)) return null;
+            return { name: nano.name, pct: Math.round(s.nanoMastery[id]) };
           })
           .filter(Boolean)
           .sort(function(a, b){ return b.pct - a.pct; });
@@ -3263,18 +3341,21 @@
 
       var strong, weak;
       if(nanoRows.length >= 3){
-        strong = nanoRows.slice(0, 1).filter(function(t){ return t.pct >= 65; });
+        strong = nanoRows.slice(0, 2).filter(function(t){ return t.pct >= 65; });
         weak = nanoRows.slice(-2).filter(function(t){ return t.pct < 65; });
       } else {
         strong = topics.slice(0, 1).filter(function(t){ return t.pct >= 65; });
         weak = topics.slice(-2).filter(function(t){ return t.pct < 65; });
       }
+      var mistakes = s.mistakeTotal != null ? Number(s.mistakeTotal) : (s.mistakeCount != null ? Number(s.mistakeCount) : null);
       return {
         studentName: s.name,
-        periodLabel: '7 ngày qua',
-        averageScore: s.averageScore != null ? Number(s.averageScore.toFixed ? s.averageScore.toFixed(2) : s.averageScore) : null,
-        recentAvgScore: s.recentAvgScore != null ? Number(s.recentAvgScore.toFixed(2)) : null,
-        priorAvgScore: s.priorAvgScore != null ? Number(s.priorAvgScore.toFixed(2)) : null,
+        periodLabel: week ? week.label : '7 ngày qua',
+        completedInPeriod: week ? week.count : null,
+        periodAvgScore: week && week.avg != null ? week.avg : null,
+        averageScore: s.averageScore != null ? Number(Number(s.averageScore).toFixed(2)) : null,
+        recentAvgScore: s.recentAvgScore != null ? Number(Number(s.recentAvgScore).toFixed(2)) : null,
+        priorAvgScore: s.priorAvgScore != null ? Number(Number(s.priorAvgScore).toFixed(2)) : null,
         recentTrend: s.recentTrend || null,
         predicted: s.predicted != null ? Number(s.predicted) : null,
         target: s.targetScore != null ? Number(s.targetScore) : null,
@@ -3282,21 +3363,62 @@
         weakTopics: weak,
         assignedTotal: s.assignedExamsCount || null,
         assignedCompleted: s.assignedExamsCompletedCount || null,
-        mistakeCount: s.mistakeCount != null ? s.mistakeCount : null
+        mistakeCount: mistakes
       };
     }
 
-    function generateFor(s){
+    // Số liệu 7 ngày qua từ lịch sử làm bài thật (100 lượt gần nhất).
+    function fmtDM(d){ return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2); }
+    async function loadWeek(s){
+      var end = new Date(), start = new Date(Date.now() - 6 * 86400000);
+      var out = { label: 'tuần ' + fmtDM(start) + ' – ' + fmtDM(end), from: fmtDM(start), to: fmtDM(end), count: 0, avg: null };
+      try{
+        var list = await OPCref.attempts.loadForStudent(s.id);
+        var since = Date.now() - 7 * 86400000;
+        var inWeek = list.filter(function(a){
+          var t = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt).getTime();
+          return !isNaN(t) && t >= since;
+        });
+        out.count = inWeek.length;
+        var scores = inWeek.map(function(a){ return Number(a.scaledScore10); }).filter(function(v){ return !isNaN(v); });
+        if(scores.length) out.avg = Math.round(scores.reduce(function(x, y){ return x + y; }, 0) / scores.length * 100) / 100;
+      }catch(e){
+        console.error('Lỗi tải lịch sử làm bài (báo cáo phụ huynh):', e);
+        out.count = null; // không rõ — không nói bừa với phụ huynh
+      }
+      return out;
+    }
+
+    // Ghép mẫu tin nhắn: {ten} {tuNgay} {denNgay} {soBai} {diemTB}
+    function fillTemplate(text, s, week){
+      var avg = week && week.avg != null ? String(week.avg.toFixed ? week.avg.toFixed(1) : week.avg).replace('.', ',') + '/10' : 'chưa có';
+      return String(text || '')
+        .replace(/\{ten\}/g, s.name || '')
+        .replace(/\{tuNgay\}/g, week ? week.from : '')
+        .replace(/\{denNgay\}/g, week ? week.to : '')
+        .replace(/\{soBai\}/g, week && week.count != null ? String(week.count) : '—')
+        .replace(/\{diemTB\}/g, avg);
+    }
+    function composeMessage(body, s, week){
+      var parts = [];
+      var hd = fillTemplate(tplHeader, s, week).trim(); if(hd) parts.push(hd);
+      parts.push(String(body || '').trim());
+      var ft = fillTemplate(tplFooter, s, week).trim(); if(ft) parts.push(ft);
+      return parts.join('\n\n');
+    }
+
+    async function generateFor(s){
       setDrafts(function(prev){ var next = Object.assign({}, prev); next[s.id] = { text: (prev[s.id] && prev[s.id].text) || null, loading: true, error: null }; return next; });
+      var week = await loadWeek(s);
       return fetch('/api/ai-parent-report', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPromptData(s))
+        body: JSON.stringify(buildPromptData(s, week))
       }).then(function(res){ return res.json().then(function(data){ return { ok: res.ok, data: data }; }); })
         .then(function(result){
           setDrafts(function(prev){
             var next = Object.assign({}, prev);
             if(result.ok && result.data && result.data.report){
-              next[s.id] = { text: result.data.report, loading: false, error: null };
+              next[s.id] = { text: composeMessage(result.data.report, s, week), loading: false, error: null };
             } else {
               next[s.id] = { text: null, loading: false, error: (result.data && result.data.error) || 'OPC Learning AI đang bận, thử lại sau.' };
             }
@@ -3306,6 +3428,17 @@
         }).catch(function(){
           setDrafts(function(prev){ var next = Object.assign({}, prev); next[s.id] = { text: null, loading: false, error: 'Không kết nối được tới OPC Learning AI.' }; return next; });
         });
+    }
+
+    function handleSaveTemplate(){
+      if(!tplDraft) return;
+      setTplSaving(true);
+      OPCref.reportTemplate.save({ header: tplDraft.header, footer: tplDraft.footer }).then(function(){
+        props.fireToast('Đã lưu mẫu tin nhắn — áp dụng cho các báo cáo tạo từ bây giờ.');
+        setTplOpen(false);
+      }).catch(function(err){
+        props.fireToast('Lưu mẫu thất bại (' + (err && (err.code || err.message) || 'không rõ') + ').', true);
+      }).finally(function(){ setTplSaving(false); });
     }
 
     function handleGenerateOne(s){
@@ -3384,9 +3517,26 @@
             h('p', { className: 'sm-sub' }, 'AI soạn nháp từ dữ liệu luyện tập thật — thầy xem/sửa rồi Sao chép + gửi qua Zalo cá nhân.')),
           h('div', { className: 'sm-actions' },
             h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !staleStudents.length, onClick: handleGenerateAllMissing },
-              bulkBusy ? 'Đang tạo…' : '🪄 Tạo báo cáo cho ' + staleStudents.length + ' học sinh còn thiếu')
+              bulkBusy ? 'Đang tạo…' : '🪄 Tạo báo cáo cho ' + staleStudents.length + ' học sinh còn thiếu'),
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setTplDraft({ header: tplHeader, footer: tplFooter }); setTplOpen(!tplOpen); } }, '✉️ Mẫu tin nhắn Zalo')
           )
         ),
+        tplOpen && tplDraft ? h('div', { style: { marginTop: '14px', padding: '14px', border: '1px solid var(--line)', borderRadius: '12px', background: 'var(--surface-2)' } },
+          h('div', { style: { fontWeight: 700, fontSize: '0.9rem' } }, '✉️ Mẫu tin nhắn Zalo (soạn 1 lần, dùng cho mọi báo cáo)'),
+          h('p', { style: { fontSize: '0.78rem', color: 'var(--muted)', margin: '4px 0 10px' } },
+            'Tin nhắn gửi đi = Phần mở đầu + nội dung AI soạn riêng cho từng em + Phần kết. Chỗ trống tự điền: {ten} tên học sinh · {tuNgay} {denNgay} khoảng ngày của tuần · {soBai} số bài em làm trong 7 ngày · {diemTB} điểm trung bình tuần.'),
+          h('label', { style: { fontSize: '0.8rem', fontWeight: 600 } }, 'Phần mở đầu'),
+          h('textarea', { rows: 4, value: tplDraft.header, onChange: function(e){ setTplDraft(Object.assign({}, tplDraft, { header: e.target.value })); },
+            style: { width: '100%', boxSizing: 'border-box', margin: '4px 0 10px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--line)', fontFamily: 'inherit', fontSize: '0.86rem' } }),
+          h('label', { style: { fontSize: '0.8rem', fontWeight: 600 } }, 'Phần kết'),
+          h('textarea', { rows: 3, value: tplDraft.footer, onChange: function(e){ setTplDraft(Object.assign({}, tplDraft, { footer: e.target.value })); },
+            style: { width: '100%', boxSizing: 'border-box', margin: '4px 0 10px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--line)', fontFamily: 'inherit', fontSize: '0.86rem' } }),
+          h('div', { style: { display: 'flex', gap: '8px' } },
+            h('button', { type: 'button', className: 'btn btn-primary', disabled: tplSaving, onClick: handleSaveTemplate }, tplSaving ? 'Đang lưu…' : '💾 Lưu mẫu'),
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setTplDraft({ header: DEFAULT_REPORT_HEADER, footer: DEFAULT_REPORT_FOOTER }); } }, 'Khôi phục mẫu gợi ý'),
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setTplOpen(false); } }, 'Đóng')
+          )
+        ) : null,
         staleStudents.length ? h('div', { className: 'sm-alert-banner leads' },
           h('div', { className: 'sm-alert-banner-head' },
             h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
@@ -4935,6 +5085,65 @@
   }
 
   // ================= Personalized Exam Generator Panel =================
+  // CHUYỂN RA NGOÀI 29/9/2026 (trước nằm trong PersonalizedExamGeneratorPanel)
+  // để "Giao Drill thích ứng" (PrepScholarMonitoringPanel) dùng CHUNG đúng
+  // cách đổi định dạng câu hỏi + ảnh khi giao đề cho học sinh.
+  function normalizeImgNameLocal(name){
+    return String(name || '').trim().toLowerCase().replace(/^.*[\\/]/, '').replace(/\.[a-z0-9]+$/i, '');
+  }
+  function resolveQuestionImagesLocal(q, examImages){
+    var refs = q.images || [];
+    if(!refs.length || !examImages || !examImages.length) return [];
+    var out = [];
+    refs.forEach(function(ref){
+      var key = normalizeImgNameLocal(ref);
+      var found = examImages.filter(function(im){ return normalizeImgNameLocal(im.name) === key; })[0];
+      var url = found ? (found.url || found.dataUrl) : '';
+      if(url) out.push({ name: ref, url: url });
+    });
+    return out;
+  }
+  function toStudentQuestionShape(q, examId, examTitle, resolvedImages){
+    var NANO = window.OPC_NANO;
+    var chuDe = NANO ? NANO.findChuDeByText(q.chuDeLon) : null;
+    var bai = null;
+    if(NANO){
+      bai = (q.nanoBaiKey && NANO.getBai(q.nanoBaiKey)) || NANO.findBaiByText(q.dangBai, chuDe ? chuDe.key : null);
+    }
+    var topicKey = chuDe ? chuDe.key : (bai ? bai.chuDeKey : null);
+    var out = {
+      id: examId + '_q' + q.index,
+      topicKey: topicKey,
+      topicName: chuDe ? chuDe.name : (q.chuDeLon || 'Khác'),
+      subtopic: bai ? bai.name : (q.dangBai || ''),
+      part: q.part || 'I',
+      level: q.level || 'M2',
+      stem: q.stem || '',
+      loiGiai: q.loigiai || '',
+      images: resolveQuestionImagesLocal(q, resolvedImages),
+      groupPassage: q.groupPassage || null,
+      groupImages: resolveQuestionImagesLocal({ images: q.groupImages || [] }, resolvedImages),
+      examTitle: examTitle,
+      examId: examId,
+      baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
+      nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null,
+      chuong: window.OPC_CURRICULUM ? window.OPC_CURRICULUM.inferChuong(q) : null // THÊM 28/9/2026
+    };
+    if(q.type === 'choiceTF'){
+      out.statements = (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; });
+    } else if(q.type === 'shortans'){
+      var m = String(q.shortans || '').match(/-?\d+([.,]\d+)?/);
+      out.correctAnswer = m ? Number(m[0].replace(',', '.')) : null;
+      out.tolerance = 0.5;
+      out.unit = '';
+    } else {
+      out.options = (q.options || []).map(function(o){ return { key: o.key, text: o.text }; });
+      var correct = (q.options || []).filter(function(o){ return o.isTrue; })[0];
+      out.correctKey = correct ? correct.key : null;
+    }
+    return out;
+  }
+
   function PersonalizedExamGeneratorPanel(props){
     var OPCref = window.OPC;
     var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
@@ -5426,62 +5635,6 @@
     // Quan trọng: dùng ĐÚNG công thức id "<examId>_q<index>" như bên đó, để
     // sau này nếu câu hỏi này cũng trùng với câu trong QUESTION_BANK (vì cùng
     // nguồn de_thi), việc tra cứu theo id (vd trong "Sổ tay câu sai") vẫn khớp.
-    function normalizeImgNameLocal(name){
-      return String(name || '').trim().toLowerCase().replace(/^.*[\\/]/, '').replace(/\.[a-z0-9]+$/i, '');
-    }
-    function resolveQuestionImagesLocal(q, examImages){
-      var refs = q.images || [];
-      if(!refs.length || !examImages || !examImages.length) return [];
-      var out = [];
-      refs.forEach(function(ref){
-        var key = normalizeImgNameLocal(ref);
-        var found = examImages.filter(function(im){ return normalizeImgNameLocal(im.name) === key; })[0];
-        var url = found ? (found.url || found.dataUrl) : '';
-        if(url) out.push({ name: ref, url: url });
-      });
-      return out;
-    }
-    function toStudentQuestionShape(q, examId, examTitle, resolvedImages){
-      var NANO = window.OPC_NANO;
-      var chuDe = NANO ? NANO.findChuDeByText(q.chuDeLon) : null;
-      var bai = null;
-      if(NANO){
-        bai = (q.nanoBaiKey && NANO.getBai(q.nanoBaiKey)) || NANO.findBaiByText(q.dangBai, chuDe ? chuDe.key : null);
-      }
-      var topicKey = chuDe ? chuDe.key : (bai ? bai.chuDeKey : null);
-      var out = {
-        id: examId + '_q' + q.index,
-        topicKey: topicKey,
-        topicName: chuDe ? chuDe.name : (q.chuDeLon || 'Khác'),
-        subtopic: bai ? bai.name : (q.dangBai || ''),
-        part: q.part || 'I',
-        level: q.level || 'M2',
-        stem: q.stem || '',
-        loiGiai: q.loigiai || '',
-        images: resolveQuestionImagesLocal(q, resolvedImages),
-        groupPassage: q.groupPassage || null,
-        groupImages: resolveQuestionImagesLocal({ images: q.groupImages || [] }, resolvedImages),
-        examTitle: examTitle,
-        examId: examId,
-        baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
-        nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null,
-        chuong: window.OPC_CURRICULUM ? window.OPC_CURRICULUM.inferChuong(q) : null // THÊM 28/9/2026
-      };
-      if(q.type === 'choiceTF'){
-        out.statements = (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; });
-      } else if(q.type === 'shortans'){
-        var m = String(q.shortans || '').match(/-?\d+([.,]\d+)?/);
-        out.correctAnswer = m ? Number(m[0].replace(',', '.')) : null;
-        out.tolerance = 0.5;
-        out.unit = '';
-      } else {
-        out.options = (q.options || []).map(function(o){ return { key: o.key, text: o.text }; });
-        var correct = (q.options || []).filter(function(o){ return o.isTrue; })[0];
-        out.correctKey = correct ? correct.key : null;
-      }
-      return out;
-    }
-
     // Giao đề vừa tạo (generated) vào students/{id}/assignedExams để học sinh
     // làm trực tiếp trên trang cá nhân của mình, không cần tải file nào cả.
     async function handleAssignToStudent(){
@@ -5831,6 +5984,24 @@
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
     var loadErrState = React.useState(null); var loadErr = loadErrState[0], setLoadErr = loadErrState[1];
     var drillModalState = React.useState(null); var drillModal = drillModalState[0], setDrillModal = drillModalState[1];
+    // THÊM 29/9/2026 — dữ liệu để GIAO DRILL THẬT (bản trước chỉ hiện toast).
+    var drillExamsState = React.useState([]); var drillExams = drillExamsState[0], setDrillExams = drillExamsState[1];
+    var drillCurState = React.useState(null); var drillCur = drillCurState[0], setDrillCur = drillCurState[1];
+    var drillPickState = React.useState(null); var drillPick = drillPickState[0], setDrillPick = drillPickState[1]; // số chương đang chọn trong modal
+    var drillBusyState = React.useState(false); var drillBusy = drillBusyState[0], setDrillBusy = drillBusyState[1];
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.examBank) return;
+      var unsub = OPCref.examBank.subscribe(function(snap){
+        setDrillExams(snap.docs.map(function(d){ return Object.assign({}, d.data() || {}, { id: d.id }); }));
+      }, function(err){ console.error('Lỗi tải ngân hàng đề (Giao Drill):', err); });
+      return function(){ unsub(); };
+    }, []);
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.curriculum) return;
+      var unsub = OPCref.curriculum.subscribe(function(data){ setDrillCur(data); },
+        function(err){ console.error('Lỗi tải settings/curriculum (Giao Drill):', err); });
+      return function(){ unsub(); };
+    }, []);
 
     React.useEffect(function(){
       if(!OPCref || !OPCref.students) return;
@@ -5864,8 +6035,10 @@
       if(!st) return s;
       return Object.assign({}, s, {
         mastery: st.mastery || s.mastery,
+        nanoMastery: st.nanoMastery || s.nanoMastery, // THÊM 29/9/2026 — ưu tiên câu thuộc nano-point em yếu khi Giao Drill
         predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
         mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount,
+        mistakeTotal: st.mistakeTotal != null ? st.mistakeTotal : s.mistakeTotal,
         // completedExamsCount/averageScore/highestScore/assignedExams...:
         // THÊM 23/9/2026 để "Xuất CSV & KPI" ở panel này cũng xuất đúng số
         // liệu thật, đồng bộ với bảng "Danh sách học sinh" — xem
@@ -5880,6 +6053,71 @@
 
     function handleAssignDrill(stu){
       setDrillModal(stu);
+      var opts = drillChapterOptions(stu);
+      var firstTested = opts.filter(function(o){ return o.unlocked && o.val != null; })[0];
+      var firstOpen = opts.filter(function(o){ return o.unlocked; })[0];
+      setDrillPick(firstTested ? firstTested.num : (firstOpen ? firstOpen.num : null));
+    }
+
+    // Các chương SGK (1-4) cho modal Giao Drill: mastery THẬT (null = chưa làm)
+    // + đang mở hay khoá với em đó. Sắp: chương mở có số liệu (yếu -> mạnh),
+    // rồi chương mở chưa làm, cuối cùng chương khoá.
+    function drillChapterOptions(stu){
+      var CUR = window.OPC_CURRICULUM;
+      var unlocked = CUR ? CUR.getUnlockedChapters(stu, drillCur) : [1, 2, 3, 4];
+      var real = realMasteryTopics(stu);
+      var opts = [1, 2, 3, 4].map(function(num){
+        var t = KPI_TOPICS.filter(function(x){ return x.chuong === num; })[0];
+        var r = real.filter(function(x){ return x.chuong === num; })[0];
+        return { num: num, name: t.name, topicKey: t.key, val: r ? r.val : null, unlocked: unlocked.indexOf(num) > -1 };
+      });
+      function rank(o){ return !o.unlocked ? 2 : (o.val == null ? 1 : 0); }
+      return opts.sort(function(a, b){ return rank(a) - rank(b) || (a.val || 0) - (b.val || 0); });
+    }
+
+    // Bốc câu cho Drill: đúng chương đã chọn, bỏ đề Sở/Trường (giao nguyên
+    // vẹn), bỏ câu em đã làm ĐÚNG trong 14 ngày gần đây. Điểm ưu tiên: câu
+    // em từng làm sai (+4), nano-point em yếu <65% (+3), nano-point em chưa
+    // từng làm (+1), mức M2-M3 (+2), M1 (+1), M4 (0). Mỗi nano-point tối đa 2
+    // câu để bài Drill phủ nhiều lỗ hổng, không dồn vào 1 dạng.
+    function pickDrillQuestions(stu, chuong, count, attempts){
+      var CUR = window.OPC_CURRICULUM;
+      var nano = stu.nanoMastery || {};
+      var now = Date.now();
+      var recentRight = {}, everWrong = {};
+      (attempts || []).forEach(function(a){
+        var t = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt).getTime();
+        (a.wrongQuestions || []).forEach(function(q){ everWrong[q.qId] = true; });
+        if(!isNaN(t) && now - t < 14 * 86400000){
+          (a.rightQuestions || []).forEach(function(q){ recentRight[q.qId] = true; });
+        }
+      });
+      var pool = [];
+      drillExams.filter(function(ex){ return ex.examKind !== 'soTruong'; }).forEach(function(ex){
+        (ex.questions || []).forEach(function(q){
+          if(!CUR || CUR.inferChuong(q) !== chuong) return;
+          var qid = ex.id + '_q' + q.index;
+          if(recentRight[qid]) return;
+          var nid = (q.nanoPointIds && q.nanoPointIds[0]) || null;
+          var score = 0;
+          if(everWrong[qid]) score += 4;
+          if(nid && typeof nano[nid] === 'number' && nano[nid] < 65) score += 3;
+          if(nid && nano[nid] == null) score += 1;
+          if(q.level === 'M2' || q.level === 'M3') score += 2; else if(q.level === 'M1') score += 1;
+          pool.push({ q: Object.assign({}, q, { examId: ex.id, examTitle: ex.title, examImages: ex.images }), nid: nid, score: score + Math.random() });
+        });
+      });
+      pool.sort(function(a, b){ return b.score - a.score; });
+      var picked = [], perNano = {}, rest = [];
+      pool.forEach(function(it){
+        var k = it.nid || '_none';
+        if(picked.length < count && (perNano[k] || 0) < 2){ picked.push(it); perNano[k] = (perNano[k] || 0) + 1; }
+        else rest.push(it);
+      });
+      for(var i = 0; i < rest.length && picked.length < count; i++) picked.push(rest[i]);
+      // Xếp lại theo Phần I -> II -> III cho giống đề thật.
+      var order = { I: 0, II: 1, III: 2 };
+      return picked.map(function(it){ return it.q; }).sort(function(a, b){ return (order[a.part] || 0) - (order[b.part] || 0); });
     }
 
     // Đọc 1 giá trị mastery của học sinh, chấp nhận cả 2 kiểu đặt tên khoá
@@ -5931,12 +6169,56 @@
       classAvgPredicted = (sumPredicted / studentsWithPredicted.length).toFixed(1);
     }
 
-    var drillKpi = drillModal ? calculateStudentKPIs(drillModal) : null;
-    var drillWeakTopicName = drillKpi ? drillKpi.weakTopic.split(' (')[0] : '';
 
-    function confirmAssignDrill(stu, topic, count){
-      props.fireToast('Đã giao thành công bài Drill ' + count + ' câu chuyên đề ' + topic + ' cho em ' + stu.name + '!');
-      setDrillModal(null);
+    async function confirmAssignDrill(stu, chuong, count){
+      if(drillBusy || !chuong) return;
+      var opt = drillChapterOptions(stu).filter(function(o){ return o.num === chuong; })[0];
+      if(opt && !opt.unlocked && !window.confirm('Chương ' + chuong + ' đang KHOÁ với em ' + stu.name + ' (lớp chưa học). Vẫn giao?')) return;
+      setDrillBusy(true);
+      try{
+        var attempts = [];
+        try{ attempts = await OPCref.attempts.loadForStudent(stu.id); }
+        catch(e){ console.error('Lỗi tải lịch sử làm bài (Giao Drill) — vẫn giao, chỉ không lọc câu đã làm đúng:', e); }
+        var picked = pickDrillQuestions(stu, chuong, count, attempts);
+        if(!picked.length){
+          props.fireToast('Chương ' + chuong + ' chưa có câu phù hợp trong ngân hàng đề (hoặc em đã làm đúng hết gần đây).', true);
+          return;
+        }
+        if(picked.length < count && !window.confirm('Chỉ tìm được ' + picked.length + '/' + count + ' câu phù hợp. Vẫn giao ' + picked.length + ' câu?')) return;
+
+        // Ảnh minh hoạ: tải theo từng đề gốc (giống Giao đề cá nhân hoá).
+        var imgByExam = {};
+        var examIds = Array.from(new Set(picked.map(function(q){ return q.examId; })));
+        for(var i = 0; i < examIds.length; i++){
+          var src = picked.filter(function(q){ return q.examId === examIds[i]; })[0];
+          try{ imgByExam[examIds[i]] = await OPCref.examBank.loadExamImages(examIds[i], src.examImages); }
+          catch(e){ console.error('Lỗi tải ảnh đề ' + examIds[i] + ':', e); imgByExam[examIds[i]] = []; }
+        }
+        var transformed = picked.map(function(q){ return toStudentQuestionShape(q, q.examId, q.examTitle || '', imgByExam[q.examId] || []); });
+
+        var seq = 1;
+        try{ seq = (await OPCref.assignedExams.countForStudent(stu.id)) + 1; }catch(e){ console.error(e); }
+        var name = opt ? opt.name : ('Chương ' + chuong);
+        function cnt(pred){ return picked.filter(pred).length; }
+        await OPCref.assignedExams.save(stu.id, {
+          seq: seq,
+          title: 'Drill thích ứng — ' + name + ' (' + transformed.length + ' câu)',
+          sourceType: 'drill',
+          chuDeFilter: name,
+          chuong: chuong,
+          totalQuestions: transformed.length,
+          partCounts: { p1: cnt(function(q){ return (q.part || 'I') === 'I'; }), p2: cnt(function(q){ return q.part === 'II'; }), p3: cnt(function(q){ return q.part === 'III'; }) },
+          levelCounts: { m1: cnt(function(q){ return q.level === 'M1'; }), m2: cnt(function(q){ return q.level === 'M2'; }), m3: cnt(function(q){ return q.level === 'M3'; }), m4: cnt(function(q){ return q.level === 'M4'; }) },
+          questions: transformed
+        });
+        props.fireToast('Đã giao "Đề số ' + seq + '": Drill ' + transformed.length + ' câu ' + name + ' cho ' + stu.name + ' — em làm được ngay ở mục đề được giao.');
+        setDrillModal(null);
+      }catch(err){
+        console.error('Lỗi giao Drill:', err);
+        props.fireToast('Giao Drill thất bại: ' + (err && (err.code || err.message) || err), true);
+      }finally{
+        setDrillBusy(false);
+      }
     }
 
     function handleExportKPI(){
@@ -6036,22 +6318,34 @@
       props.fireToast('Đã xuất file CSV báo cáo KPI toàn bộ ' + dataToExport.length + ' học sinh.');
     }
 
-    var assignModal = drillModal ? h('div',{className:'sm-overlay', onClick:function(){ setDrillModal(null); }},
+    var drillOpts = drillModal ? drillChapterOptions(drillModal) : [];
+    var drillHasReal = drillOpts.some(function(o){ return o.unlocked && o.val != null; });
+    var assignModal = drillModal ? h('div',{className:'sm-overlay', onClick:function(){ if(!drillBusy) setDrillModal(null); }},
       h('div',{className:'sm-modal', onClick:function(e){ e.stopPropagation(); }},
         h('div',{className:'sm-modal-head'},
-          h('h3',null,'🎯 Giao bài Focused Drill thích ứng'),
-          h('button',{type:'button', className:'sm-modal-close', onClick:function(){ setDrillModal(null); }}, h(IconClose))
+          h('h3',null,'🎯 Giao bài Drill thích ứng'),
+          h('button',{type:'button', className:'sm-modal-close', disabled: drillBusy, onClick:function(){ setDrillModal(null); }}, h(IconClose))
         ),
         h('p',{style:{fontSize:'0.86rem', color:'var(--ink-2)', lineHeight:1.6}},
-          'Giao bài luyện tập trực tiếp cho học sinh ', h('b',null, drillModal.name), ' theo đúng chuyên đề em đang yếu nhất.'
+          'Giao bài luyện tập cho ', h('b',null, drillModal.name), '. Câu được ưu tiên: câu em từng làm sai, câu thuộc phần kiến thức em yếu, mức M2–M3; bỏ câu em vừa làm đúng trong 14 ngày.'
         ),
-        h('div',{style:{marginTop:14, padding:12, background:'var(--surface-2)', borderRadius:8, fontSize:'0.84rem'}},
-          h('div',null, h('b',null,'Chuyên đề yếu nhất: '), h('span',{style:{color:'var(--critical)', fontWeight:700}}, drillKpi ? drillKpi.weakTopic : 'Chưa xác định')),
-          h('div',{style:{marginTop:4, color:'var(--muted)'}}, 'Khuyến nghị: Drill 5 câu M2-M3 để củng cố kiến thức nền.')
+        !drillHasReal ? h('div',{className:'banner info', style:{marginTop:10}}, h('span',null,'ℹ️'),
+          h('div',null,'Em chưa có số liệu ở chương nào đang mở — nên cho em làm Kiểm tra chẩn đoán trước để biết chính xác phần yếu. Vẫn có thể chọn chương để giao Drill.')) : null,
+        h('div',{style:{marginTop:12, display:'flex', flexDirection:'column', gap:6}},
+          drillOpts.map(function(o, i){
+            var isWeakest = drillHasReal && i === 0 && o.unlocked && o.val != null;
+            return h('label',{key:o.num, style:{display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:8, cursor:'pointer', fontSize:'0.86rem',
+                border:'1px solid ' + (drillPick === o.num ? 'var(--accent-strong)' : 'var(--line)'), opacity: o.unlocked ? 1 : 0.55}},
+              h('input',{type:'radio', name:'drill-chuong', checked: drillPick === o.num, onChange:function(){ setDrillPick(o.num); }}),
+              h('span',{style:{flex:1}}, 'Chương ' + o.num + '. ' + o.name, isWeakest ? h('b',{style:{color:'var(--critical)', marginLeft:6}}, '· yếu nhất') : null),
+              h('span',{style:{fontFamily:'IBM Plex Mono, monospace', fontWeight:700, color: o.val != null ? masteryColor(o.val) : 'var(--muted)'}},
+                !o.unlocked ? '🔒 khoá' : (o.val != null ? o.val + '%' : 'chưa làm'))
+            );
+          })
         ),
         h('div',{style:{display:'flex', gap:10, marginTop:18}},
-          h('button',{type:'button', className:'btn btn-primary', style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, drillWeakTopicName, 5); }}, 'Giao Drill 5 câu'),
-          h('button',{type:'button', className:'btn btn-secondary', style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, drillWeakTopicName, 10); }}, 'Giao Drill 10 câu')
+          h('button',{type:'button', className:'btn btn-primary', disabled: drillBusy || !drillPick, style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, drillPick, 5); }}, drillBusy ? 'Đang giao…' : 'Giao Drill 5 câu'),
+          h('button',{type:'button', className:'btn btn-secondary', disabled: drillBusy || !drillPick, style:{flex:1, justifyContent:'center'}, onClick:function(){ confirmAssignDrill(drillModal, drillPick, 10); }}, 'Giao Drill 10 câu')
         )
       )
     ) : null;
@@ -6140,7 +6434,7 @@
               var vCd3 = studentMasteryVal(stu, ['cd3-luongtu']);
               var pScore = stu.predictedScore != null ? Number(stu.predictedScore).toFixed(1) : (stu.averageScore ? (stu.averageScore * 0.95).toFixed(1) : null);
               var tScore = stu.targetScore != null ? stu.targetScore : 9.0;
-              var mCount = stu.mistakeCount != null ? stu.mistakeCount : null;
+              var mCount = (stu.mistakeTotal != null || stu.mistakeCount != null) ? mistakeLabel(stu) : null;
 
               function pill(val){
                 var color = masteryColor(val);
