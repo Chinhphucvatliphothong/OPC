@@ -127,13 +127,51 @@ service cloud.firestore {
     // không còn công khai cho người lạ như trước.
     match /student_stats/{studentId} {
       allow read: if isSignedIn();
-      allow write: if isOpcAdmin() || isSelf(studentId);
+      // THÊM 30/9/2026 — kết quả luyện đề HSG/Olympic (tự chấm) của chính em
+      // đó; admin xem để theo dõi. Tách riêng khỏi "attempts" để không lẫn
+      // vào số liệu luyện thi Vật lí 12 (mastery, điểm dự đoán...).
+      match /specialAttempts/{attemptId} {
+        allow read, write: if isOpcAdmin() || isSelf(studentId);
+      }
+
+      // SỬA 30/9/2026: BỎ dòng "allow write: if isOpcAdmin() || isSelf(studentId)"
+      // ở đây — nó cho phép học sinh tự ghi đè hồ sơ của chính mình (trạng
+      // thái tài khoản, chương được mở, quyền HSG/Olympic...) bằng công cụ
+      // dev của trình duyệt. Trang học sinh không hề ghi vào hồ sơ này (chỉ
+      // đọc), nên chỉ giữ "allow write: if isOpcAdmin()" ở trên.
     }
 
     // Ngân hàng đề (kể cả đáp án): từ 25/9/2026 CHỈ đọc được khi đã đăng
     // nhập thật (học sinh hoặc admin) — không còn công khai cho bất kỳ ai
     // ghé trang mà chưa có tài khoản. Ghi vẫn chỉ admin (nạp/sửa/xoá đề qua
     // admin.html) — không đổi.
+    // THÊM 30/9/2026 — NGÂN HÀNG ĐỀ RIÊNG cho HSG cấp tỉnh/TP và đội tuyển
+    // Olympic: 2 collection TÁCH HẲN khỏi "de_thi" (luyện thi Vật lí 12) nên
+    // không bao giờ lẫn vào luyện tập/thi thử thường. Học sinh chỉ đọc được
+    // khi thầy đã mở khoá cho em đó: students/{uid}.specialAccess chứa
+    // 'hsg' hoặc 'olympic' (admin bật/tắt trong tab "🏆 HSG & Olympic").
+    function hasSpecialAccess(track) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/students/$(request.auth.uid)) &&
+        track in get(/databases/$(database)/documents/students/$(request.auth.uid)).data.get('specialAccess', []);
+    }
+    match /de_thi_hsg/{examId} {
+      allow read: if isOpcAdmin() || hasSpecialAccess('hsg');
+      allow write: if isOpcAdmin();
+      match /images/{imageId} {
+        allow read: if isOpcAdmin() || hasSpecialAccess('hsg');
+        allow write: if isOpcAdmin();
+      }
+    }
+    match /de_thi_olympic/{examId} {
+      allow read: if isOpcAdmin() || hasSpecialAccess('olympic');
+      allow write: if isOpcAdmin();
+      match /images/{imageId} {
+        allow read: if isOpcAdmin() || hasSpecialAccess('olympic');
+        allow write: if isOpcAdmin();
+      }
+    }
+
     match /de_thi/{examId} {
       allow read: if isSignedIn();
       allow write: if isOpcAdmin();

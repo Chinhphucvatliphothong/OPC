@@ -264,11 +264,13 @@ async function loadPeerRadar5(){
 // lấy đúng dữ liệu ảnh (dataURL đã nén) hiển thị cho học sinh.
 // Nếu đề có nhiều ảnh/dung lượng lớn, saveExamDoc (admin.html) đã tách ảnh
 // sang subcollection "images" — cần tải riêng trước khi khớp tên.
-async function loadExamImages(examId, imagesMeta){
+// col (THÊM 30/9/2026): collection chứa đề — mặc định 'de_thi'; ngân hàng
+// HSG/Olympic dùng 'de_thi_hsg' / 'de_thi_olympic'.
+async function loadExamImages(examId, imagesMeta, col){
   if(!imagesMeta || !imagesMeta.length) return [];
   if(imagesMeta[0] && (imagesMeta[0].url || imagesMeta[0].dataUrl)) return imagesMeta;
   try{
-    var snap = await getDocs(collection(db, 'de_thi', examId, 'images'));
+    var snap = await getDocs(collection(db, col || 'de_thi', examId, 'images'));
     var map = {};
     snap.forEach(function(d){ map[d.id] = d.data(); });
     return imagesMeta.map(function(im, idx){
@@ -373,6 +375,65 @@ async function loadRealQuestionBank(){
   }
 }
 
+// ================= Đề HSG tỉnh/TP & đội tuyển Olympic =================
+// THÊM 30/9/2026 — 2 ngân hàng RIÊNG, KHÔNG đi qua loadRealQuestionBank
+// (nên không bao giờ lẫn vào luyện tập/thi thử Vật lí 12). firestore.rules
+// chỉ cho đọc khi hồ sơ học sinh có specialAccess chứa track tương ứng —
+// chưa được mở thì trả { ok:false, locked:true }.
+var SPECIAL_COLLECTIONS = { hsg: 'de_thi_hsg', olympic: 'de_thi_olympic' };
+
+// Chỉ tải DANH SÁCH đề (tiêu đề, số câu) — chưa tải ảnh cho nhẹ.
+async function loadSpecialExamList(track){
+  var col = SPECIAL_COLLECTIONS[track];
+  if(!col) return { ok: false, error: 'Mục không tồn tại.' };
+  try{
+    var snap = await getDocs(query(collection(db, col), orderBy('createdAt', 'desc')));
+    var list = [];
+    snap.forEach(function(d){
+      var ex = d.data() || {};
+      var qs = ex.questions || [];
+      list.push({ id: d.id, title: ex.title || 'Đề không tên', bai: ex.bai || '', chuDe: ex.chuDe || '',
+        total: qs.length, essayCount: qs.filter(function(q){ return q.type === 'essay'; }).length,
+        images: ex.images || [], questions: qs });
+    });
+    return { ok: true, list: list };
+  }catch(e){
+    if(e && e.code === 'permission-denied') return { ok: false, locked: true };
+    console.error('Lỗi tải đề ' + track + ':', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+
+// Chuẩn bị 1 đề để làm: tải ảnh + đổi từng câu sang dạng hiển thị.
+async function loadSpecialExam(track, exam){
+  var imgs = await loadExamImages(exam.id, exam.images, SPECIAL_COLLECTIONS[track]);
+  return (exam.questions || []).map(function(q){
+    return {
+      index: q.index, part: q.part || 'I', type: q.type || 'choice', level: q.level || '',
+      stem: q.stem || '', loiGiai: q.loigiai || '',
+      options: q.type === 'essay' ? [] : (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; }),
+      shortans: q.shortans || null,
+      images: resolveQuestionImages(q, imgs),
+      groupPassage: q.groupPassage || null,
+      groupImages: resolveQuestionImages({ images: q.groupImages || [] }, imgs)
+    };
+  });
+}
+
+// Lưu kết quả tự chấm — subcollection RIÊNG specialAttempts (không đụng
+// attempts/student_stats của luyện thi Vật lí 12).
+async function saveSpecialAttempt(studentId, data){
+  if(!studentId) return { ok: false };
+  try{
+    var ref = doc(collection(db, 'students', studentId, 'specialAttempts'));
+    await setDoc(ref, Object.assign({}, data, { createdAt: new Date().toISOString() }));
+    return { ok: true };
+  }catch(e){
+    console.error('Lỗi lưu kết quả HSG/Olympic:', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+
 // ================= Cấu hình Gói dịch vụ (giá/tính năng/ẩn-hiện) =============
 // Đọc doc đơn "settings/pricing" do admin quản lý (panel "💰 Gói dịch vụ"
 // trong admin.html) để trang chủ hiển thị đúng giá/tính năng hiện hành, và
@@ -418,6 +479,9 @@ window.OPC_LIVE = {
   submitRegistration: submitRegistration,
   saveStudentStats: saveStudentStats,
   loadPeerRadar5: loadPeerRadar5,
-  loadPricingPlans: loadPricingPlans
+  loadPricingPlans: loadPricingPlans,
+  loadSpecialExamList: loadSpecialExamList,
+  loadSpecialExam: loadSpecialExam,
+  saveSpecialAttempt: saveSpecialAttempt
 };
 try{ window.dispatchEvent(new CustomEvent('opc-live-ready')); }catch(e){}

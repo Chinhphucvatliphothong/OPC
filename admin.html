@@ -570,122 +570,134 @@
       }
     };
 
-    OPC.examBank = {
-      subscribe: function(onNext, onErr){
-        return onSnapshot(query(collection(db, "de_thi"), orderBy("createdAt", "desc")), onNext, onErr);
-      },
-      newRef: function(){ return doc(collection(db, "de_thi")); },
-      save: function(refDoc, data){
-        return setDoc(refDoc, Object.assign({}, data, { createdAt: serverTimestamp() }));
-      },
-      // Lưu toàn bộ dữ liệu đề thi, nội dung .tex gốc và ảnh minh họa trực tiếp vào Firestore
-      // Tự động phân tách sang subcollection nếu dữ liệu ảnh lớn để không bao giờ chạm trần 1MB của Firestore
-      saveExamDoc: async function(refDoc, examData){
-        var images = examData.images || [];
-        var docToSave = Object.assign({}, examData, {
-          createdAt: serverTimestamp()
-        });
-
-        var payloadSize = JSON.stringify(docToSave).length;
-        // Nếu toàn bộ dữ liệu < 650KB, lưu trực tiếp vào document cha cho tốc độ tức thì
-        if(payloadSize < 650000){
-          return setDoc(refDoc, docToSave);
-        }
-
-        // Nếu ảnh nhiều hoặc dung lượng lớn, lưu ảnh vào subcollection "images" của đề thi
-        docToSave.images = images.map(function(im, idx){
-          return {
-            name: im.name,
-            size: im.size,
-            width: im.width,
-            height: im.height,
-            subdocId: 'img_' + idx
-          };
-        });
-
-        await setDoc(refDoc, docToSave);
-        for(var i = 0; i < images.length; i++){
-          var subRef = doc(collection(db, 'de_thi', refDoc.id, 'images'), 'img_' + i);
-          await setDoc(subRef, images[i]);
-        }
-      },
-      loadExamImages: async function(examId, imagesMeta){
-        if(!imagesMeta || !imagesMeta.length) return [];
-        if(imagesMeta[0] && imagesMeta[0].url) return imagesMeta;
-        try{
-          var snap = await getDocs(collection(db, 'de_thi', examId, 'images'));
-          var map = {};
-          snap.forEach(function(d){ map[d.id] = d.data(); });
-          return imagesMeta.map(function(im, idx){
-            var full = map['img_' + idx] || map[im.subdocId];
-            return full ? Object.assign({}, im, full) : im;
+    // SỬA 30/9/2026: đổi thành "nhà máy" makeExamBankApi(COL) để dùng CHUNG
+    // toàn bộ quy trình nạp/sửa/xoá đề cho 3 ngân hàng TÁCH BIỆT:
+    //   de_thi          — Luyện thi Vật lí 12 (như cũ)
+    //   de_thi_hsg      — Đề HSG cấp tỉnh/thành phố
+    //   de_thi_olympic  — Đề đội tuyển Olympic
+    // Mỗi ngân hàng là 1 collection riêng nên câu HSG/Olympic không bao giờ
+    // lẫn vào luyện tập/thi thử Vật lí 12 (trang học sinh chỉ đọc "de_thi").
+    function makeExamBankApi(COL){
+      return {
+        subscribe: function(onNext, onErr){
+          return onSnapshot(query(collection(db, COL), orderBy("createdAt", "desc")), onNext, onErr);
+        },
+        newRef: function(){ return doc(collection(db, COL)); },
+        save: function(refDoc, data){
+          return setDoc(refDoc, Object.assign({}, data, { createdAt: serverTimestamp() }));
+        },
+        // Lưu toàn bộ dữ liệu đề thi, nội dung .tex gốc và ảnh minh họa trực tiếp vào Firestore
+        // Tự động phân tách sang subcollection nếu dữ liệu ảnh lớn để không bao giờ chạm trần 1MB của Firestore
+        saveExamDoc: async function(refDoc, examData){
+          var images = examData.images || [];
+          var docToSave = Object.assign({}, examData, {
+            createdAt: serverTimestamp()
           });
-        }catch(e){
-          console.warn('Lỗi load subcollection images:', e);
-          return imagesMeta;
-        }
-      },
-      remove: async function(id){
-        try{
-          var snap = await getDocs(collection(db, 'de_thi', id, 'images')).catch(function(){ return {docs:[]}; });
-          if(snap && snap.docs){
-            for(var i = 0; i < snap.docs.length; i++){
-              await deleteDoc(snap.docs[i].ref).catch(function(){});
-            }
+  
+          var payloadSize = JSON.stringify(docToSave).length;
+          // Nếu toàn bộ dữ liệu < 650KB, lưu trực tiếp vào document cha cho tốc độ tức thì
+          if(payloadSize < 650000){
+            return setDoc(refDoc, docToSave);
           }
-        }catch(e){}
-        return deleteDoc(doc(db, "de_thi", id));
-      },
-      // Cập nhật lại mảng câu hỏi của 1 đề (VD sau khi thầy sửa đáp án đúng của
-      // 1 câu vì phát hiện sai sót trong file gốc) — không đụng tới các trường
-      // khác của đề (tex gốc, hình ảnh, thống kê...).
-      updateQuestions: function(examId, questions){
-        return updateDoc(doc(db, "de_thi", examId), { questions: questions });
-      },
-      uploadFile: function(examId, file, kind, onProgress){
-        return new Promise(function(resolve, reject){
+  
+          // Nếu ảnh nhiều hoặc dung lượng lớn, lưu ảnh vào subcollection "images" của đề thi
+          docToSave.images = images.map(function(im, idx){
+            return {
+              name: im.name,
+              size: im.size,
+              width: im.width,
+              height: im.height,
+              subdocId: 'img_' + idx
+            };
+          });
+  
+          await setDoc(refDoc, docToSave);
+          for(var i = 0; i < images.length; i++){
+            var subRef = doc(collection(db, COL, refDoc.id, 'images'), 'img_' + i);
+            await setDoc(subRef, images[i]);
+          }
+        },
+        loadExamImages: async function(examId, imagesMeta){
+          if(!imagesMeta || !imagesMeta.length) return [];
+          if(imagesMeta[0] && imagesMeta[0].url) return imagesMeta;
           try{
-            var safeName = file.name.replace(/[^\w.\-]+/g, "_");
-            var path = "de-thi/" + examId + "/" + kind + "-" + Date.now() + "-" + safeName;
-            var storageRef = ref(storage, path);
-            var task = uploadBytesResumable(storageRef, file);
-            var settled = false;
-            var TIMEOUT_MS = 6000;
-            var timer = setTimeout(function(){
-              if(settled) return;
-              settled = true;
-              try{ task.cancel(); }catch(e){}
-              // Không block mà trả về thông tin file cục bộ
-              resolve({ url: '', path: path, name: file.name, size: file.size, localOnly: true });
-            }, TIMEOUT_MS);
-            task.on("state_changed", function(snap){
-              if(settled) return;
-              if(onProgress && snap.totalBytes) onProgress(snap.bytesTransferred / snap.totalBytes);
-            }, function(err){
-              if(settled) return;
-              settled = true;
-              clearTimeout(timer);
-              resolve({ url: '', path: path, name: file.name, size: file.size, localOnly: true });
-            }, function(){
-              if(settled) return;
-              settled = true;
-              clearTimeout(timer);
-              getDownloadURL(task.snapshot.ref).then(function(url){
-                resolve({ url: url, path: path, name: file.name, size: file.size });
-              }).catch(function(){
-                resolve({ url: '', path: path, name: file.name, size: file.size, localOnly: true });
-              });
+            var snap = await getDocs(collection(db, COL, examId, 'images'));
+            var map = {};
+            snap.forEach(function(d){ map[d.id] = d.data(); });
+            return imagesMeta.map(function(im, idx){
+              var full = map['img_' + idx] || map[im.subdocId];
+              return full ? Object.assign({}, im, full) : im;
             });
           }catch(e){
-            resolve({ url: '', path: '', name: file.name, size: file.size, localOnly: true });
+            console.warn('Lỗi load subcollection images:', e);
+            return imagesMeta;
           }
-        });
-      },
-      deleteStorageFile: function(path){
-        if(!path) return Promise.resolve();
-        try{ return deleteObject(ref(storage, path)).catch(function(){}); }catch(e){ return Promise.resolve(); }
-      }
-    };
+        },
+        remove: async function(id){
+          try{
+            var snap = await getDocs(collection(db, COL, id, 'images')).catch(function(){ return {docs:[]}; });
+            if(snap && snap.docs){
+              for(var i = 0; i < snap.docs.length; i++){
+                await deleteDoc(snap.docs[i].ref).catch(function(){});
+              }
+            }
+          }catch(e){}
+          return deleteDoc(doc(db, COL, id));
+        },
+        // Cập nhật lại mảng câu hỏi của 1 đề (VD sau khi thầy sửa đáp án đúng của
+        // 1 câu vì phát hiện sai sót trong file gốc) — không đụng tới các trường
+        // khác của đề (tex gốc, hình ảnh, thống kê...).
+        updateQuestions: function(examId, questions){
+          return updateDoc(doc(db, COL, examId), { questions: questions });
+        },
+        uploadFile: function(examId, file, kind, onProgress){
+          return new Promise(function(resolve, reject){
+            try{
+              var safeName = file.name.replace(/[^\w.\-]+/g, "_");
+              var path = "de-thi/" + examId + "/" + kind + "-" + Date.now() + "-" + safeName;
+              var storageRef = ref(storage, path);
+              var task = uploadBytesResumable(storageRef, file);
+              var settled = false;
+              var TIMEOUT_MS = 6000;
+              var timer = setTimeout(function(){
+                if(settled) return;
+                settled = true;
+                try{ task.cancel(); }catch(e){}
+                // Không block mà trả về thông tin file cục bộ
+                resolve({ url: '', path: path, name: file.name, size: file.size, localOnly: true });
+              }, TIMEOUT_MS);
+              task.on("state_changed", function(snap){
+                if(settled) return;
+                if(onProgress && snap.totalBytes) onProgress(snap.bytesTransferred / snap.totalBytes);
+              }, function(err){
+                if(settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve({ url: '', path: path, name: file.name, size: file.size, localOnly: true });
+              }, function(){
+                if(settled) return;
+                settled = true;
+                clearTimeout(timer);
+                getDownloadURL(task.snapshot.ref).then(function(url){
+                  resolve({ url: url, path: path, name: file.name, size: file.size });
+                }).catch(function(){
+                  resolve({ url: '', path: path, name: file.name, size: file.size, localOnly: true });
+                });
+              });
+            }catch(e){
+              resolve({ url: '', path: '', name: file.name, size: file.size, localOnly: true });
+            }
+          });
+        },
+        deleteStorageFile: function(path){
+          if(!path) return Promise.resolve();
+          try{ return deleteObject(ref(storage, path)).catch(function(){}); }catch(e){ return Promise.resolve(); }
+        }
+      };
+    }
+    OPC.examBank = makeExamBankApi('de_thi');
+    OPC.hsgBank = makeExamBankApi('de_thi_hsg');
+    OPC.olympicBank = makeExamBankApi('de_thi_olympic');
 
     // ================= Đề cá nhân hóa ĐÃ GIAO cho học sinh =================
     // Lưu dưới subcollection students/{studentId}/assignedExams — khi thầy
@@ -1686,7 +1698,11 @@
     return out;
   }
 
-  function parseTexBank(content, filename){
+  // opts.allowEssay (THÊM 30/9/2026, chỉ ngân hàng HSG/Olympic): câu không có
+  // \\choice / \\choiceTF / \\shortans được nhận là câu TỰ LUẬN (type
+  // 'essay') thay vì câu trắc nghiệm rỗng. Ngân hàng Vật lí 12 giữ nguyên.
+  function parseTexBank(content, filename, opts){
+    var allowEssay = !!(opts && opts.allowEssay);
     // THÊM 25/9/2026: gỡ trước cú pháp \immini{ \begin{ex}...\end{ex} }{hình}
     // (1 hình cho đúng 1 câu) — xem giải thích đầy đủ ở unwrapSingleQuestionImmini.
     content = unwrapSingleQuestionImmini(content);
@@ -1764,6 +1780,7 @@
           var qType = 'choice';
           if(/\\choiceTF/i.test(full)) qType = 'choiceTF';
           else if(/\\shortans/i.test(full)) qType = 'shortans';
+          else if(allowEssay && !/\\choice/i.test(full)) qType = 'essay';
 
           // Bóc tách nội dung câu hỏi (bỏ bớt cú pháp bao bọc)
           var stemRaw = full.replace(/^[\s\S]*?\\begin\{ex\}/, '').replace(/\\end\{ex\}[\s\S]*?$/, '');
@@ -3998,6 +4015,11 @@
 
   function ExamBankPanel(props){
     var OPCref = window.OPC;
+    // THÊM 30/9/2026 — dùng lại nguyên panel này cho ngân hàng HSG/Olympic:
+    // props.bankApi (OPC.hsgBank / OPC.olympicBank) + props.specialMode.
+    // Không truyền gì -> đúng ngân hàng Luyện thi Vật lí 12 như trước.
+    var bankApi = props.bankApi || OPCref.examBank;
+    var specialMode = props.specialMode || null; // null | 'hsg' | 'olympic'
     var examsState = React.useState([]); var exams = examsState[0], setExams = examsState[1];
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
     var errState = React.useState(null); var loadErr = errState[0], setLoadErr = errState[1];
@@ -4087,7 +4109,7 @@
           }
           return updated;
         });
-        await OPCref.examBank.updateQuestions(selected.id, newQuestions);
+        await bankApi.updateQuestions(selected.id, newQuestions);
         setSelected(function(prev){ return prev ? Object.assign({}, prev, { questions: newQuestions }) : prev; });
         setEditingQIndex(null);
         setEditDraft(null);
@@ -4270,7 +4292,7 @@
       if(!form.title.trim()){ props.fireToast('Vui lòng nhập tiêu đề đề thi trước khi nạp riêng 1 câu.', true); return; }
       setImportingRows(function(prev){ return Object.assign({}, prev, { [idx]: true }); });
       try{
-        var examRef = OPCref.examBank.newRef();
+        var examRef = bankApi.newRef();
         var images = [];
         for(var i = 0; i < imgFiles.length; i++){
           images.push(await compressImage(imgFiles[i], 1200, 0.82));
@@ -4278,7 +4300,7 @@
         var row = nanoRows[idx] || { baiKey:'', nanoIds:[] };
         var singleQ = Object.assign({}, q, { index: 1, nanoBaiKey: row.baiKey || '', nanoPointIds: row.nanoIds || [] });
         var texContent = texFile ? await texFile.text() : '';
-        await OPCref.examBank.saveExamDoc(examRef, {
+        await bankApi.saveExamDoc(examRef, {
           title: form.title.trim() + ' — Câu ' + (idx + 1),
           chuDe: form.chuDe,
           bai: form.bai.trim(),
@@ -4422,7 +4444,7 @@
     }
 
     React.useEffect(function(){
-      var unsub = OPCref.examBank.subscribe(function(snap){
+      var unsub = bankApi.subscribe(function(snap){
         var rows = snap.docs.map(function(d){ var data = d.data() || {}; return Object.assign({}, data, {id: d.id}); });
         setExams(rows); setLoading(false);
       }, function(err){ setLoadErr(err); setLoading(false); });
@@ -4432,7 +4454,7 @@
     // Tải ảnh từ subcollection nếu đề lưu dưới dạng phân mảnh subdoc
     React.useEffect(function(){
       if(selected && selected.images && selected.images.length && !selected.images[0].url && selected.images[0].subdocId){
-        OPCref.examBank.loadExamImages(selected.id, selected.images).then(function(imgs){
+        bankApi.loadExamImages(selected.id, selected.images).then(function(imgs){
           setSelected(function(prev){
             if(!prev || prev.id !== selected.id) return prev;
             return Object.assign({}, prev, { images: imgs });
@@ -4495,7 +4517,7 @@
       setFormErr(''); setTexFile(f);
       try{
         var txt = await f.text();
-        var analysis = parseTexBank(txt, f.name);
+        var analysis = parseTexBank(txt, f.name, { allowEssay: !!specialMode });
         setParsedAnalysis(analysis);
 
         // Gợi ý sẵn "Bài" khớp nhất cho từng câu (dựa trên tag đã ghi trong .tex),
@@ -4540,9 +4562,9 @@
 
       setUploading(true); setProgress(8); setUploadMsg('Đang đọc và phân tích cấu trúc .tex...');
       try{
-        var examRef = OPCref.examBank.newRef();
+        var examRef = bankApi.newRef();
         var texContent = await texFile.text();
-        var analysis = parsedAnalysis || parseTexBank(texContent, texFile.name);
+        var analysis = parsedAnalysis || parseTexBank(texContent, texFile.name, { allowEssay: !!specialMode });
 
         setProgress(25);
         setUploadMsg('Đang nén và tối ưu hóa ' + (imgFiles.length ? imgFiles.length + ' hình ảnh minh họa...' : 'dữ liệu...'));
@@ -4568,7 +4590,7 @@
           });
         });
 
-        await OPCref.examBank.saveExamDoc(examRef, {
+        await bankApi.saveExamDoc(examRef, {
           title: form.title.trim(),
           chuDe: form.chuDe,
           bai: form.bai.trim(),
@@ -4603,8 +4625,8 @@
         var filesToDelete = [];
         if(exam.tex && exam.tex.path) filesToDelete.push(exam.tex.path);
         (exam.images||[]).forEach(function(im){ if(im.path) filesToDelete.push(im.path); });
-        await Promise.all(filesToDelete.map(function(p){ return OPCref.examBank.deleteStorageFile(p).catch(function(){}); }));
-        await OPCref.examBank.remove(exam.id);
+        await Promise.all(filesToDelete.map(function(p){ return bankApi.deleteStorageFile(p).catch(function(){}); }));
+        await bankApi.remove(exam.id);
         setSelected(null);
         props.fireToast('Đã xoá đề "' + exam.title + '".');
       }catch(err){
@@ -4619,10 +4641,12 @@
     }
 
     var toolbar = h('div',{className:'sm-toolbar'},
-      h('div',null, h('h3',null,'Ngân hàng đề & câu hỏi'),
-        h('p',{className:'sm-sub'}, 'Nạp file .tex chuẩn Bộ GD kèm tag % [Mức độ][Chủ đề lớn][Dạng bài] (M1: Nhận biết, M2: Thông hiểu, M3: Vận dụng, M4: Vận dụng cao) để tạo đề theo lộ trình cá nhân hóa.')),
+      h('div',null, h('h3',null, props.title || 'Ngân hàng đề & câu hỏi'),
+        h('p',{className:'sm-sub'}, specialMode
+          ? 'Ngân hàng RIÊNG — không lẫn vào Luyện thi Vật lí 12. Nạp file .tex như bình thường; câu tự luận (không có \\choice/\\choiceTF/\\shortans) được nhận là câu tự luận, học sinh làm ra giấy rồi xem lời giải \\loigiai. Chỉ học sinh được thầy mở khoá mới thấy.'
+          : 'Nạp file .tex chuẩn Bộ GD kèm tag % [Mức độ][Chủ đề lớn][Dạng bài] (M1: Nhận biết, M2: Thông hiểu, M3: Vận dụng, M4: Vận dụng cao) để tạo đề theo lộ trình cá nhân hóa.')),
       h('div',{className:'sm-actions'},
-        props.onGoToGenerator ? h('button',{type:'button', className:'btn btn-secondary', onClick:props.onGoToGenerator}, '🎯 Tạo đề cá nhân hóa') : null,
+        (props.onGoToGenerator && !specialMode) ? h('button',{type:'button', className:'btn btn-secondary', onClick:props.onGoToGenerator}, '🎯 Tạo đề cá nhân hóa') : null,
         h('button',{type:'button', className:'btn btn-primary', onClick:function(){ resetForm(); setAddOpen(true); }}, '+ Nạp đề .tex mới')
       )
     );
@@ -4877,7 +4901,7 @@
 
     var addModal = addOpen ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget && !uploading) setAddOpen(false); }},
       h('div',{className:'sm-modal sm-modal-wide', role:'dialog', 'aria-modal':'true', 'aria-label':'Nạp đề mới'},
-        h('div',{className:'sm-modal-head'}, h('h3',null,'Nạp đề mới theo cấu trúc chuẩn Bộ Giáo Dục'),
+        h('div',{className:'sm-modal-head'}, h('h3',null, specialMode === 'hsg' ? 'Nạp đề thi HSG cấp tỉnh/thành phố' : (specialMode === 'olympic' ? 'Nạp đề thi đội tuyển Olympic' : 'Nạp đề mới theo cấu trúc chuẩn Bộ Giáo Dục')),
           h('button',{type:'button', className:'sm-modal-close', onClick:function(){ if(!uploading) setAddOpen(false); }}, h(IconClose))),
         h('form',{onSubmit:handleUpload},
           h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-title'},'Tiêu đề đề thi *'),
@@ -4893,7 +4917,7 @@
           h('div',{className:'sm-field', style:{marginTop:12}}, h('label',{htmlFor:'eb-bai'},'Bài (tuỳ chọn)'),
             h('input',{id:'eb-bai', type:'text', value:form.bai, placeholder:'Bài 2: Định luật Boyle (hoặc để trống / ghi "Tổng hợp Chương 1-2" nếu là đề tổng hợp nhiều bài)', onChange:function(e){ setField('bai', e.target.value); }})),
           h('div',{className:'eb-hint', style:{marginTop:-6}}, '"Chuyên đề chính", "Mức độ tổng quan" và "Bài" chỉ là nhãn để thầy dễ tìm/lọc lại đề trong danh sách — không ảnh hưởng đến việc phân loại từng câu hỏi cho học sinh (phần đó luôn lấy đúng theo tag trong file). Nếu đề có nhiều chuyên đề/mức độ trộn lẫn, cứ chọn "Tổng hợp nhiều chuyên đề" / "Đa mức" — hệ thống đã tự động chọn sẵn gợi ý phù hợp khi thầy chọn file ở dưới.'),
-          h('div',{className:'sm-field', style:{marginTop:10}},
+          specialMode ? null : h('div',{className:'sm-field', style:{marginTop:10}},
             h('label',{style:{display:'flex', alignItems:'center', gap:'7px', fontWeight:600}},
               h('input',{type:'checkbox', checked: form.examKind === 'soTruong', onChange:function(e){ setField('examKind', e.target.checked ? 'soTruong' : 'nganHang'); }}),
               '🏫 Đây là đề Sở/Trường (đề thi thử thật, giữ nguyên cả đề)'),
@@ -4933,7 +4957,7 @@
               ) : null,
 
               // ===== Gắn nano-point cho từng câu (phân rã kiến thức mức nhỏ nhất) =====
-              window.OPC_NANO ? h('div',{className:'eb-nano-panel'},
+              (!specialMode && window.OPC_NANO) ? h('div',{className:'eb-nano-panel'},
                 h('div',{className:'eb-nano-panel-title'}, '🧬 Gắn nano-point cho từng câu (mô hình Squirrel AI)'),
                 h('p',{className:'eb-nano-panel-sub'}, 'Điểm yếu của học sinh sẽ hiện đúng tới từng nano-point này thay vì chung chung theo cả chương — giúp việc chẩn đoán không còn phụ thuộc vào kinh nghiệm chấm bài của một giáo viên giỏi. Hệ thống tự gợi ý "Bài" khớp gần nhất theo tag đã ghi trong .tex; bấm "🪄 AI gợi ý" ở từng câu để AI đọc thẳng nội dung câu hỏi và đề xuất chính xác hơn. Thầy luôn xem lại / chọn tay lại được nếu chưa đúng ý.'),
 
@@ -5085,6 +5109,98 @@
   }
 
   // ================= Personalized Exam Generator Panel =================
+  // ================= HSG cấp tỉnh/TP & Đội tuyển Olympic =================
+  // THÊM 30/9/2026 — 2 ngân hàng đề RIÊNG (collection de_thi_hsg /
+  // de_thi_olympic), tách hẳn khỏi Luyện thi Vật lí 12. Học sinh chỉ thấy
+  // mục này dạng KHOÁ, trừ khi thầy mở cho em đó (students/{id}.specialAccess
+  // = ['hsg'] / ['olympic'] / cả hai) — firestore.rules chặn đọc đề ở phía
+  // máy chủ, không chỉ ẩn trên giao diện.
+  var SPECIAL_TRACKS = [
+    { key:'hsg', label:'🏅 Đề HSG cấp tỉnh/TP', short:'HSG tỉnh/TP' },
+    { key:'olympic', label:'🏆 Đề đội tuyển Olympic', short:'Olympic' }
+  ];
+  function SpecialBankPanel(props){
+    var OPCref = window.OPC;
+    var subState = React.useState('hsg'); var sub = subState[0], setSub = subState[1];
+    var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var busyState = React.useState({}); var busy = busyState[0], setBusy = busyState[1];
+    var qState = React.useState(''); var q = qState[0], setQ = qState[1];
+    React.useEffect(function(){
+      var unsub = OPCref.students.subscribe(function(snap){
+        setStudents(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); }));
+      }, function(err){ console.error(err); });
+      return function(){ unsub(); };
+    }, []);
+
+    function toggleAccess(stu, track){
+      var cur = Array.isArray(stu.specialAccess) ? stu.specialAccess : [];
+      var on = cur.indexOf(track) > -1;
+      var next = on ? cur.filter(function(k){ return k !== track; }) : cur.concat([track]);
+      setBusy(function(p){ var n = Object.assign({}, p); n[stu.id] = true; return n; });
+      OPCref.students.update(stu.id, { specialAccess: next }).then(function(){
+        props.fireToast((on ? 'Đã khoá ' : 'Đã mở ') + (track === 'hsg' ? 'đề HSG tỉnh/TP' : 'đề Olympic') + ' cho ' + (stu.name || 'học sinh') + '.');
+      }).catch(function(err){
+        props.fireToast('Lỗi: ' + (err && (err.code || err.message) || 'không rõ'), true);
+      }).finally(function(){
+        setBusy(function(p){ var n = Object.assign({}, p); delete n[stu.id]; return n; });
+      });
+    }
+
+    var subTabs = h('div', { style: { display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 } },
+      SPECIAL_TRACKS.concat([{ key:'access', label:'🔑 Mở khoá cho học sinh' }]).map(function(t){
+        return h('button', { key:t.key, type:'button', className: cx('btn', sub === t.key ? 'btn-primary' : 'btn-secondary'), onClick:function(){ setSub(t.key); } }, t.label);
+      })
+    );
+
+    if(sub !== 'access'){
+      var tr = SPECIAL_TRACKS.filter(function(t){ return t.key === sub; })[0];
+      return h('div', null, subTabs,
+        h(ExamBankPanel, { key: sub, fireToast: props.fireToast, specialMode: sub, title: tr.label,
+          bankApi: sub === 'hsg' ? OPCref.hsgBank : OPCref.olympicBank }));
+    }
+
+    var term = q.trim().toLowerCase();
+    var list = students.filter(function(s){ return !term || String(s.name || '').toLowerCase().indexOf(term) > -1 || String(s.gmail || s.email || '').toLowerCase().indexOf(term) > -1; })
+      .sort(function(a, b){
+        var ka = (a.specialAccess || []).length, kb = (b.specialAccess || []).length;
+        return kb - ka || String(a.name || '').localeCompare(String(b.name || ''), 'vi');
+      });
+    var counts = SPECIAL_TRACKS.map(function(t){ return students.filter(function(s){ return (s.specialAccess || []).indexOf(t.key) > -1; }).length; });
+
+    return h('div', null, subTabs,
+      h('div', { className:'card' },
+        h('div', { className:'sm-toolbar' },
+          h('div', null, h('h3', null, '🔑 Mở khoá luyện đề HSG / Olympic'),
+            h('p', { className:'sm-sub' }, 'Mặc định mọi học sinh chỉ luyện thi Vật lí 12; mục HSG/Olympic hiện ở trang học sinh dạng KHOÁ kèm lời nhắn \"liên hệ thầy\". Em nào có nhu cầu, thầy bật ở đây — em tải lại trang là luyện được. Đang mở: HSG ' + counts[0] + ' em · Olympic ' + counts[1] + ' em.')),
+          h('input', { type:'search', placeholder:'Tìm tên / Gmail…', value:q, onChange:function(e){ setQ(e.target.value); },
+            style:{ padding:'8px 12px', borderRadius:8, border:'1px solid var(--line)', minWidth:200 } })
+        ),
+        h('div', { className:'sm-table-wrap' },
+          h('table', { className:'sm-table' },
+            h('thead', null, h('tr', null, h('th', null, 'Học sinh'),
+              SPECIAL_TRACKS.map(function(t){ return h('th', { key:t.key, style:{ textAlign:'center' } }, t.short); }))),
+            h('tbody', null,
+              !list.length ? h('tr', null, h('td', { colSpan:3, style:{ color:'var(--muted)' } }, 'Không có học sinh phù hợp.')) :
+              list.map(function(stu){
+                var acc = Array.isArray(stu.specialAccess) ? stu.specialAccess : [];
+                return h('tr', { key: stu.id },
+                  h('td', null, h('b', null, stu.name || '(chưa đặt tên)'), h('div', { style:{ fontSize:'0.76rem', color:'var(--muted)' } }, stu.gmail || stu.email || '')),
+                  SPECIAL_TRACKS.map(function(t){
+                    var on = acc.indexOf(t.key) > -1;
+                    return h('td', { key:t.key, style:{ textAlign:'center' } },
+                      h('button', { type:'button', disabled: !!busy[stu.id], onClick:function(){ toggleAccess(stu, t.key); },
+                        className: cx('btn', on ? 'btn-primary' : 'btn-secondary'), style:{ fontSize:'0.78rem', padding:'5px 12px' } },
+                        on ? '🔓 Đang mở' : '🔒 Khoá'));
+                  })
+                );
+              })
+            )
+          )
+        )
+      )
+    );
+  }
+
   // CHUYỂN RA NGOÀI 29/9/2026 (trước nằm trong PersonalizedExamGeneratorPanel)
   // để "Giao Drill thích ứng" (PrepScholarMonitoringPanel) dùng CHUNG đúng
   // cách đổi định dạng câu hỏi + ảnh khi giao đề cho học sinh.
@@ -6563,14 +6679,16 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa'),
         h('button',{type:'button', className:cx('tab-btn', tab==='curriculum' && 'active'), onClick:function(){ setTab('curriculum'); }}, '📚 Quản lý chương'),
         h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
-        h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ')
+        h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG & Olympic')
       ),
       tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
         tab === 'prepscholar' ? h(PrepScholarMonitoringPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
             tab === 'curriculum' ? h(CurriculumPanel, {fireToast:fireToast}) : (
             tab === 'reports' ? h(ParentReportsPanel, {fireToast:fireToast}) : (
-              tab === 'pricing' ? h(PricingPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast})
+              tab === 'pricing' ? h(PricingPanel, {fireToast:fireToast}) : (
+                tab === 'special' ? h(SpecialBankPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast}))
             )
             )
           )

@@ -51,6 +51,9 @@
       // THÊM 28/9/2026 — danh sách chương admin mở RIÊNG cho em này (ghi đè
       // mặc định của lớp trong settings/curriculum). null = theo mặc định lớp.
       unlockedChapters: Array.isArray(real.unlockedChapters) ? real.unlockedChapters : null,
+      // THÊM 30/9/2026 — mục luyện đề HSG tỉnh/TP ('hsg') / Olympic
+      // ('olympic') thầy đã mở riêng cho em này (admin tab "🏆 HSG & Olympic").
+      specialAccess: Array.isArray(real.specialAccess) ? real.specialAccess : [],
       isLive: true
     };
   }
@@ -747,6 +750,151 @@
     var tabState = React.useState('home'); // home | map | drill | exam | mistakes
     var tab = tabState[0];
     var setTab = tabState[1];
+
+    // ===== THÊM 30/9/2026 — MỤC LUYỆN ĐỀ HSG TỈNH/TP & ĐỘI TUYỂN OLYMPIC =====
+    // Ngân hàng RIÊNG (de_thi_hsg / de_thi_olympic), không đi qua
+    // PrepScholarEngine nên không lẫn vào luyện thi Vật lí 12, không tính vào
+    // mastery/điểm dự đoán. Chưa được thầy mở khoá -> hiện dạng KHOÁ.
+    var SPECIAL_META = {
+      hsg: { title: '🏅 Đề thi HSG cấp tỉnh/thành phố', minutes: 180, maxScore: 20 },
+      olympic: { title: '🏆 Đề thi đội tuyển Olympic', minutes: 180, maxScore: 20 }
+    };
+    var spListsState = React.useState({}); var spLists = spListsState[0], setSpLists = spListsState[1]; // track -> {loading, list, locked, error}
+    var spExamState = React.useState(null); var spExam = spExamState[0], setSpExam = spExamState[1]; // {track, meta, questions, phase, startedAt, loading}
+    var spNowState = React.useState(Date.now()); var spNow = spNowState[0], setSpNow = spNowState[1];
+    var spScoreState = React.useState(''); var spScore = spScoreState[0], setSpScore = spScoreState[1];
+    var spSavedState = React.useState(false); var spSaved = spSavedState[0], setSpSaved = spSavedState[1];
+
+    function hasSpecial(track){ return !!(student && (student.specialAccess || []).indexOf(track) > -1); }
+
+    // Đổi tài khoản (đăng xuất / đăng nhập em khác) -> bỏ danh sách đề đã tải.
+    React.useEffect(function(){ setSpLists({ _sid: student ? student.id : null }); setSpExam(null); }, [student && student.id]);
+
+    React.useEffect(function(){
+      if(tab !== 'special' || !student || !window.OPC_LIVE || !window.OPC_LIVE.loadSpecialExamList) return;
+      ['hsg', 'olympic'].forEach(function(track){
+        if(!hasSpecial(track) || (spLists._sid === student.id && spLists[track])) return;
+        setSpLists(function(p){ var n = Object.assign({}, p, { _sid: student.id }); n[track] = { loading: true }; return n; });
+        window.OPC_LIVE.loadSpecialExamList(track).then(function(res){
+          setSpLists(function(p){ var n = Object.assign({}, p); n[track] = res.ok ? { list: res.list } : { locked: !!res.locked, error: res.error }; return n; });
+        });
+      });
+    }, [tab, student && student.id, student && (student.specialAccess || []).join(',')]);
+
+    React.useEffect(function(){
+      if(!spExam || spExam.phase !== 'doing') return;
+      var t = setInterval(function(){ setSpNow(Date.now()); }, 1000);
+      return function(){ clearInterval(t); };
+    }, [spExam && spExam.phase]);
+
+    function openSpecialExam(track, exam){
+      setSpScore(''); setSpSaved(false);
+      setSpExam({ track: track, meta: exam, loading: true, phase: 'doing', startedAt: Date.now(), questions: [] });
+      window.OPC_LIVE.loadSpecialExam(track, exam).then(function(qs){
+        setSpExam(function(p){ return p && p.meta.id === exam.id ? Object.assign({}, p, { loading: false, questions: qs, startedAt: Date.now() }) : p; });
+        try{ window.scrollTo(0, 0); }catch(e){}
+      }).catch(function(err){
+        console.error(err);
+        alert('Không tải được đề — thử lại sau.');
+        setSpExam(null);
+      });
+    }
+    function submitSpecialExam(){
+      if(!window.confirm('Nộp bài và xem đáp án, lời giải chi tiết?')) return;
+      setSpExam(function(p){ return Object.assign({}, p, { phase: 'review', finishedAt: Date.now() }); });
+      try{ window.scrollTo(0, 0); }catch(e){}
+    }
+    function saveSpecialScore(){
+      var meta = SPECIAL_META[spExam.track];
+      var v = Number(String(spScore).replace(',', '.'));
+      if(isNaN(v) || v < 0 || v > meta.maxScore){ alert('Nhập điểm từ 0 đến ' + meta.maxScore + '.'); return; }
+      window.OPC_LIVE.saveSpecialAttempt(student.id, {
+        track: spExam.track, examId: spExam.meta.id, examTitle: spExam.meta.title,
+        selfScore: v, maxScore: meta.maxScore,
+        minutesUsed: Math.round(((spExam.finishedAt || Date.now()) - spExam.startedAt) / 60000)
+      }).then(function(res){
+        if(res.ok) setSpSaved(true); else alert('Chưa lưu được kết quả — thử lại.');
+      });
+    }
+
+    function renderSpecialQuestion(q, idx, review){
+      var isEssay = q.type === 'essay';
+      return h('div', { key: idx, className: 'ps-topic-card', style: { display: 'block', marginBottom: '14px' } },
+        h('div', { style: { fontWeight: 700, marginBottom: '6px' } }, 'Câu ' + (idx + 1),
+          isEssay ? h('span', { style: { marginLeft: '8px', fontSize: '0.74rem', fontWeight: 600, color: 'var(--muted)' } }, '· Tự luận') : null),
+        q.groupPassage ? h('div', { style: { padding: '8px 12px', borderLeft: '3px solid var(--line)', margin: '0 0 8px', fontSize: '0.92rem' } },
+          renderLatexText(q.groupPassage), renderQuestionImages({ images: q.groupImages })) : null,
+        h('div', { style: { lineHeight: 1.7 } }, renderLatexText(q.stem)),
+        renderQuestionImages(q),
+        (q.options || []).length ? h('div', { style: { marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' } },
+          q.options.map(function(o){
+            var mark = review && o.isTrue;
+            return h('div', { key: o.key, style: { padding: '4px 8px', borderRadius: '6px', background: mark ? 'color-mix(in srgb, var(--good, #16a34a) 14%, transparent)' : 'transparent' } },
+              h('b', null, o.key + (q.type === 'choiceTF' ? ') ' : '. ')), renderLatexText(o.text),
+              review && q.type === 'choiceTF' ? h('b', { style: { marginLeft: '6px', color: o.isTrue ? 'var(--good, #16a34a)' : 'var(--critical, #dc2626)' } }, o.isTrue ? '— Đúng' : '— Sai') : null,
+              mark && q.type !== 'choiceTF' ? h('b', { style: { marginLeft: '6px', color: 'var(--good, #16a34a)' } }, '✓') : null);
+          })) : null,
+        review && q.shortans ? h('div', { style: { marginTop: '8px' } }, h('b', null, 'Đáp số: '), renderLatexText(q.shortans)) : null,
+        review ? h('div', { style: { marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: 'var(--surface-2, #f8fafc)' } },
+          h('b', null, '📖 Lời giải: '), q.loiGiai ? renderLatexText(q.loiGiai) : h('span', { style: { color: 'var(--muted)' } }, 'Thầy chưa nạp lời giải cho câu này.')) : null
+      );
+    }
+
+    function renderSpecialTab(){
+      if(spExam){
+        var meta = SPECIAL_META[spExam.track];
+        if(spExam.loading) return h('p', { style: { color: 'var(--muted)' } }, 'Đang tải đề…');
+        var review = spExam.phase === 'review';
+        var left = Math.max(0, meta.minutes * 60 - Math.floor((spNow - spExam.startedAt) / 1000));
+        return h('div', null,
+          h('div', { className: 'ps-topic-card', style: { display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 5, marginBottom: '14px' } },
+            h('div', null, h('div', { style: { fontWeight: 700 } }, spExam.meta.title),
+              h('div', { style: { fontSize: '0.8rem', color: 'var(--muted)' } }, review ? 'Đáp án & lời giải chi tiết' : ('Làm bài ra giấy như thi thật · ' + spExam.questions.length + ' câu'))),
+            !review ? h('div', { style: { fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, fontSize: '1.1rem', color: left < 600 ? 'var(--critical, #dc2626)' : 'inherit' } }, '⏱ ' + formatTime(left)) : null,
+            h('div', { style: { display: 'flex', gap: '8px' } },
+              !review ? h('button', { type: 'button', className: 'btn btn-primary', onClick: submitSpecialExam }, 'Nộp bài & xem lời giải') : null,
+              h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ if(review || window.confirm('Thoát khỏi đề đang làm?')) setSpExam(null); } }, review ? '← Về danh sách đề' : 'Thoát')
+            )
+          ),
+          review ? h('div', { className: 'ps-topic-card', style: { display: 'block', marginBottom: '14px' } },
+            h('div', { style: { fontWeight: 700, marginBottom: '6px' } }, '✍️ Tự chấm bài theo lời giải'),
+            spSaved ? h('div', { style: { color: 'var(--good, #16a34a)', fontWeight: 600 } }, '✓ Đã lưu kết quả ' + spScore + '/' + meta.maxScore + ' — thầy xem được trong hồ sơ của em.')
+              : h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' } },
+                  h('span', { style: { fontSize: '0.88rem' } }, 'Đối chiếu lời giải bên dưới, em tự chấm được:'),
+                  h('input', { type: 'text', inputMode: 'decimal', value: spScore, placeholder: '0', onChange: function(e){ setSpScore(e.target.value); },
+                    style: { width: '80px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line, #e2e8f0)' } }),
+                  h('span', null, '/ ' + meta.maxScore + ' điểm'),
+                  h('button', { type: 'button', className: 'btn btn-primary', onClick: saveSpecialScore }, 'Lưu kết quả'))
+          ) : null,
+          spExam.questions.map(function(q, i){ return renderSpecialQuestion(q, i, review); })
+        );
+      }
+
+      return h('div', null,
+        h('p', { style: { fontSize: '0.88rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: 0 } },
+          'Mục luyện đề chuyên sâu dành cho học sinh ôn thi học sinh giỏi. Đề ở đây tách riêng, không tính vào điểm luyện thi Tốt nghiệp của em.'),
+        ['hsg', 'olympic'].map(function(track){
+          var meta = SPECIAL_META[track];
+          var st = spLists[track] || {};
+          var open = hasSpecial(track) && !st.locked;
+          return h('div', { key: track, className: 'ps-topic-card', style: { display: 'block', marginBottom: '14px', opacity: open ? 1 : 0.75 } },
+            h('div', { className: 'ps-topic-title' }, (open ? '' : '🔒 ') + meta.title),
+            !open ? h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: '8px' } },
+                'Mục này đang khoá. Nếu em có nhu cầu ôn luyện ' + (track === 'hsg' ? 'thi học sinh giỏi cấp tỉnh/thành phố' : 'đội tuyển Olympic') + ', hãy liên hệ thầy để được mở khoá.')
+            : st.loading ? h('p', { style: { color: 'var(--muted)', fontSize: '0.86rem' } }, 'Đang tải danh sách đề…')
+            : st.error ? h('p', { style: { color: 'var(--critical, #dc2626)', fontSize: '0.86rem' } }, 'Không tải được danh sách đề (' + st.error + ').')
+            : !(st.list || []).length ? h('p', { style: { color: 'var(--muted)', fontSize: '0.86rem' } }, 'Thầy đang cập nhật đề — em quay lại sau nhé.')
+            : h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' } },
+                st.list.map(function(ex){
+                  return h('div', { key: ex.id, style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '10px 12px', border: '1px solid var(--line, #e2e8f0)', borderRadius: '10px' } },
+                    h('div', null, h('div', { style: { fontWeight: 600 } }, ex.title),
+                      h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, ex.total + ' câu' + (ex.essayCount ? ' · ' + ex.essayCount + ' câu tự luận' : '') + ' · ' + meta.minutes + ' phút')),
+                    h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ openSpecialExam(track, ex); } }, 'Làm đề ➔'));
+                }))
+          );
+        })
+      );
+    }
 
     // Trạng thái bài thi hiện tại
     var examSessionState = React.useState(null);
@@ -1784,7 +1932,13 @@
           '📋 Đề được giao',
           pendingAssignedCount ? h('span', { className: 'ps-tab-badge pending-pulse' }, pendingAssignedCount) :
             (assignedExams.length ? h('span', { className: 'ps-tab-badge' }, assignedExams.length) : null)
-        )
+        ),
+        h('button', {
+          type: 'button',
+          className: 'ps-tab-btn ' + (tab === 'special' ? 'active' : ''),
+          title: 'Luyện đề thi học sinh giỏi cấp tỉnh/thành phố và đội tuyển Olympic — thầy mở khoá theo nhu cầu.',
+          onClick: function(){ setTab('special'); setExamSession(null); }
+        }, (hasSpecial('hsg') || hasSpecial('olympic')) ? '🏆 HSG & Olympic' : '🔒 HSG & Olympic')
       )
       ), // đóng div "chrome" (Hồ sơ + Chỉ số + Điều hướng, ẩn khi lockedMode)
 
@@ -2593,6 +2747,8 @@
                 })
               )
             );
+          } else if(tab === 'special'){
+            return renderSpecialTab();
           } else {
             // TAB "TRANG CHỦ" (Personal Dashboard) — đúng luồng giáo viên yêu
             // cầu: [Diagnostic Test] -> [Chấm điểm & cập nhật Tag] -> [Phân
