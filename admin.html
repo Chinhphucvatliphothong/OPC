@@ -567,6 +567,12 @@
     OPC.studentStats = {
       subscribe: function(onNext, onErr){
         return onSnapshot(collection(db, "student_stats"), onNext, onErr);
+      },
+      // THÊM 1/10/2026 — thầy bấm "Đã hỗ trợ" để gỡ 1 mục "cần thầy hỗ trợ"
+      // (học sinh luyện tương tự 3 lượt vẫn chưa đạt — xem prepscholar-ui.js).
+      clearHelp: function(studentId, key){
+        var upd = {}; upd['helpNeeded.' + key] = deleteField();
+        return updateDoc(doc(db, 'student_stats', studentId), upd);
       }
     };
 
@@ -6152,6 +6158,7 @@
       return Object.assign({}, s, {
         mastery: st.mastery || s.mastery,
         nanoMastery: st.nanoMastery || s.nanoMastery, // THÊM 29/9/2026 — ưu tiên câu thuộc nano-point em yếu khi Giao Drill
+        helpNeeded: st.helpNeeded || null, // THÊM 1/10/2026 — dạng bài em cần thầy hỗ trợ
         predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
         mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount,
         mistakeTotal: st.mistakeTotal != null ? st.mistakeTotal : s.mistakeTotal,
@@ -6563,7 +6570,26 @@
                     h('div',{className:'sm-avatar'}, initials(stu.name || 'H')),
                     h('div',null,
                       h('div',{className:'sm-student-name'}, stu.name || 'Học sinh'),
-                      h('div',{className:'sm-student-email'}, stu.email || '')
+                      h('div',{className:'sm-student-email'}, stu.email || ''),
+                      // THÊM 1/10/2026 — "🆘 Cần thầy hỗ trợ": dạng bài em đã luyện
+                      // tương tự 3 lượt vẫn chưa đạt. Thầy hỗ trợ xong bấm ✓ để gỡ.
+                      (function(){
+                        var hn = stu.helpNeeded || {};
+                        var keys = Object.keys(hn).filter(function(k){ return hn[k]; });
+                        if(!keys.length) return null;
+                        return h('div',{style:{marginTop:6, display:'flex', flexDirection:'column', gap:4}},
+                          keys.map(function(k){
+                            var it = hn[k] || {};
+                            var when = it.at ? new Date(it.at) : null;
+                            return h('div',{key:k, style:{display:'flex', alignItems:'center', gap:6, fontSize:'0.74rem', padding:'3px 8px', borderRadius:8, color:'var(--critical)', background:'color-mix(in srgb, var(--critical) 10%, transparent)'}},
+                              h('span',{style:{flex:1}}, '🆘 Cần hỗ trợ: ' + (it.name || k) + (it.part ? ' (Phần ' + it.part + ')' : '') + (when && !isNaN(when) ? ' · ' + when.getDate() + '/' + (when.getMonth() + 1) : '')),
+                              h('button',{type:'button', title:'Đã hỗ trợ xong — gỡ khỏi danh sách', style:{border:'none', background:'transparent', cursor:'pointer', fontWeight:700, color:'var(--good)'},
+                                onClick:function(){
+                                  OPCref.studentStats.clearHelp(stu.id, k).then(function(){ props.fireToast('Đã gỡ "' + (it.name || k) + '" của ' + stu.name + '.'); })
+                                    .catch(function(err){ props.fireToast('Lỗi: ' + (err && (err.code || err.message) || 'không rõ'), true); });
+                                }}, '✓ Đã hỗ trợ'));
+                          }));
+                      })()
                     )
                   )
                 ),

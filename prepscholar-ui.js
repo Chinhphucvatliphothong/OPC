@@ -1215,40 +1215,105 @@
     // luyện tương tự, để học sinh quay lại đúng bài vừa làm, tiếp tục với các
     // câu sai còn lại (vd sai câu 3, 6, 10: luyện xong câu 3 -> quay lại ->
     // luyện câu 6 -> quay lại -> câu 10). Câu nào đã luyện được đánh dấu ✓.
+    // SỬA 1/10/2026 — \"LUYỆN ĐẾN KHI THÀNH THẠO\" (tinh thần IXL/Squirrel AI):
+    //  - Số câu mỗi lượt theo dạng đề: Phần I 3 câu (đoán bừa vẫn 25% nên cần
+    //    nhiều bằng chứng hơn), Phần II 1 câu (4 ý Đ/S), Phần III 1 câu (không
+    //    đoán được) — xem SIMILAR_COUNT.
+    //  - Đạt: Phần I đúng ≥ 2/3 câu; Phần II/III đúng hoàn toàn câu đó.
+    //  - Chưa đạt: đọc lời giải -> \"Làm thêm 1 lượt\" (câu MỚI), tối đa
+    //    MAX_SIMILAR_TRIES lượt cho mỗi câu sai gốc. Hết lượt vẫn chưa đạt ->
+    //    dừng, ghi \"cần thầy hỗ trợ\" vào student_stats.helpNeeded để thầy
+    //    thấy ngay trong bảng theo dõi (phần 30% con người của mô hình).
+    // parentReview giữ màn kết quả GỐC + trạng thái từng câu sai:
+    //   status[qid]: 'pass' | 'fail' | 'help'; tries[qid]: số lượt đã làm;
+    //   used[qid]: id câu đã dùng (lượt sau ra câu mới).
+    var SIMILAR_COUNT = { I: 3, II: 1, III: 1 };
+    var MAX_SIMILAR_TRIES = 3;
     var parentReviewState = React.useState(null); var parentReview = parentReviewState[0], setParentReview = parentReviewState[1];
+    var similarRecordedRef = React.useRef(null);
 
-    function startSimilarDrill(q){
-      var questions = window.PrepScholarEngine.createSimilarDrill(q, 3);
+    function similarCountFor(q){ return SIMILAR_COUNT[q && q.part] || 1; }
+
+    // origin: câu sai GỐC trong bài vừa làm (luôn quy về câu gốc, kể cả khi
+    // bấm \"Làm thêm 1 lượt\" từ kết quả của 1 lượt luyện tương tự).
+    function startSimilarDrill(origin){
+      var fromSimilar = !!(examSession && examSession.isSimilarDrill);
+      var pr;
+      if(fromSimilar && parentReview){
+        pr = parentReview;
+      } else {
+        var samePrev = parentReview && parentReview.session === examSession;
+        pr = samePrev ? parentReview : { session: examSession, scoreResult: scoreResult, masteryImpact: masteryImpact, status: {}, tries: {}, used: {} };
+      }
+      var oid = origin.id;
+      var tries = pr.tries[oid] || 0;
+      // Đã đạt mà muốn luyện thêm -> bắt đầu chu kỳ mới; đang 'help' -> chặn.
+      if(pr.status[oid] === 'help'){ alert('Dạng này thầy sẽ hỗ trợ trực tiếp — em luyện các câu sai khác trước nhé.'); return; }
+      if(pr.status[oid] === 'pass') tries = 0;
+      if(tries >= MAX_SIMILAR_TRIES){ return; }
+
+      var questions = window.PrepScholarEngine.createSimilarDrill(origin, similarCountFor(origin), pr.used[oid] || []);
       if(!questions.length){
-        alert('Ngân hàng đề chưa có câu cùng dạng với câu này — thầy cô đang nạp thêm.');
+        alert('Ngân hàng đề chưa có câu cùng Phần và cùng dạng với câu này — thầy cô đang nạp thêm.');
         return;
       }
-      // Đang ở màn kết quả của chính 1 bài luyện tương tự -> giữ nguyên bài
-      // GỐC làm điểm quay về (không lồng nhiều tầng khó hiểu).
-      if(!(examSession && examSession.isSimilarDrill)){
-        var samePrev = parentReview && parentReview.session === examSession;
-        var practiced = Object.assign({}, samePrev ? parentReview.practiced : {});
-        practiced[q.id] = true;
-        setParentReview({ session: examSession, scoreResult: scoreResult, masteryImpact: masteryImpact, practiced: practiced, focusId: q.id });
-      } else if(parentReview){
-        setParentReview(Object.assign({}, parentReview, { focusId: parentReview.focusId }));
-      }
-      var srcIdx = scoreResult && scoreResult.perQuestionResults ? scoreResult.perQuestionResults.filter(function(it){ return it.question && it.question.id === q.id; })[0] : null;
+      var nextTries = Object.assign({}, pr.tries); nextTries[oid] = tries + 1;
+      var nextUsed = Object.assign({}, pr.used); nextUsed[oid] = (pr.used[oid] || []).concat(questions.map(function(q){ return q.id; }));
+      var nextStatus = Object.assign({}, pr.status); if(nextStatus[oid] === 'pass') delete nextStatus[oid];
+      setParentReview(Object.assign({}, pr, { tries: nextTries, used: nextUsed, status: nextStatus, focusId: oid }));
+
+      var srcItem = pr.scoreResult && pr.scoreResult.perQuestionResults ? pr.scoreResult.perQuestionResults.filter(function(it){ return it.question && it.question.id === oid; })[0] : null;
+      var kind = origin.part === 'II' ? 'câu Đúng/Sai' : (origin.part === 'III' ? 'câu trả lời ngắn' : 'câu trắc nghiệm');
       var session = {
-        type: 'drill', isSimilarDrill: true,
-        sourceLabel: (examSession && examSession.isSimilarDrill && parentReview) ? (parentReview.sourceLabel || '') : ('Câu ' + (srcIdx ? srcIdx.idx : '') + ' của bài vừa làm'),
-        title: 'Luyện tương tự: ' + (q.subtopic || q.topicName || 'cùng dạng'),
-        questions: questions, isSubmitted: false, initialTimeSec: questions.length * 120
+        type: 'drill', isSimilarDrill: true, originQ: origin, round: tries + 1,
+        sourceLabel: 'Câu ' + (srcItem ? srcItem.idx : '') + ' của bài vừa làm',
+        title: 'Luyện tương tự (lượt ' + (tries + 1) + '/' + MAX_SIMILAR_TRIES + '): ' + questions.length + ' ' + kind + ' — ' + (origin.subtopic || origin.topicName || 'cùng dạng'),
+        questions: questions, isSubmitted: false, initialTimeSec: questions.length * (origin.part === 'I' ? 120 : 240)
       };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
       setCurQIdx(0);
-      setTimeLeft(questions.length * 120);
+      setTimeLeft(session.initialTimeSec);
       setScoreResult(null);
       setMasteryImpact(null);
       try{ window.scrollTo(0, 0); }catch(e){}
     }
+
+    // Kết quả 1 lượt luyện tương tự: đạt / chưa đạt / cần thầy hỗ trợ.
+    function similarOutcome(session, result){
+      if(!session || !result) return null;
+      var total = result.totalQuestions || 0, right = result.correctCount || 0;
+      var pass = total <= 1 ? (total === 1 && right === 1) : right >= Math.ceil(total * 2 / 3);
+      if(pass) return 'pass';
+      return (session.round || 1) >= MAX_SIMILAR_TRIES ? 'help' : 'fail';
+    }
+
+    // Ghi nhận kết quả ngay khi 1 lượt luyện tương tự được chấm xong (1 lần).
+    React.useEffect(function(){
+      if(!examSession || !examSession.isSimilarDrill || !examSession.isSubmitted || !scoreResult) return;
+      if(similarRecordedRef.current === examSession) return;
+      similarRecordedRef.current = examSession;
+      var outcome = similarOutcome(examSession, scoreResult);
+      var origin = examSession.originQ;
+      if(!origin) return;
+      setParentReview(function(pr){
+        if(!pr) return pr;
+        var st = Object.assign({}, pr.status); st[origin.id] = outcome;
+        return Object.assign({}, pr, { status: st });
+      });
+      if(outcome === 'help' && student && student.id && window.OPC_LIVE && window.OPC_LIVE.saveStudentStats){
+        var key = String(origin.nanoId || origin.baiKey || origin.id).replace(/[.\/~*\[\]]/g, '_');
+        var entry = {};
+        entry[key] = {
+          name: origin.subtopic || origin.topicName || 'Dạng bài',
+          topicName: origin.topicName || '', part: origin.part || '',
+          nanoId: origin.nanoId || null, questionId: origin.id,
+          tries: MAX_SIMILAR_TRIES, at: new Date().toISOString()
+        };
+        window.OPC_LIVE.saveStudentStats(student.id, { helpNeeded: entry });
+      }
+    }, [scoreResult, examSession]);
 
     function returnToParentReview(){
       if(!parentReview) return;
@@ -1257,7 +1322,6 @@
       setExamSession(parentReview.session);
       setScoreResult(parentReview.scoreResult);
       setMasteryImpact(parentReview.masteryImpact);
-      // Cuộn tới đúng câu vừa luyện để học sinh thấy ngay câu sai kế tiếp.
       setTimeout(function(){
         try{
           var el = document.getElementById('ps-sol-' + focus);
@@ -1265,10 +1329,12 @@
         }catch(e){}
       }, 80);
     }
+    // Câu sai gốc chưa \"xong\" (chưa đạt và chưa chuyển cho thầy).
     function remainingWrongCount(){
       if(!parentReview || !parentReview.scoreResult) return 0;
       return parentReview.scoreResult.perQuestionResults.filter(function(it){
-        return !it.isFullCorrect && it.question && !parentReview.practiced[it.question.id];
+        var st = it.question && parentReview.status[it.question.id];
+        return !it.isFullCorrect && it.question && st !== 'pass' && st !== 'help';
       }).length;
     }
 
@@ -2025,9 +2091,25 @@
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
               (parentReview && parentReview.session === examSession) ? (function(){
                 var wrongs = scoreResult.perQuestionResults.filter(function(it){ return !it.isFullCorrect; });
-                var done = wrongs.filter(function(it){ return it.question && parentReview.practiced[it.question.id]; }).length;
+                var passN = wrongs.filter(function(it){ return it.question && parentReview.status[it.question.id] === 'pass'; }).length;
+                var helpN = wrongs.filter(function(it){ return it.question && parentReview.status[it.question.id] === 'help'; }).length;
+                var left = wrongs.length - passN - helpN;
                 return wrongs.length ? h('div', { className: 'ps-impact-pill', style: { marginTop: '8px' } },
-                  '🔁 Đã luyện tương tự ' + done + '/' + wrongs.length + ' câu sai' + (done < wrongs.length ? ' — kéo xuống các câu sai còn lại để luyện tiếp' : ' — hoàn thành!')) : null;
+                  '🔁 Đã luyện đạt ' + passN + '/' + wrongs.length + ' câu sai' + (helpN ? ' · ' + helpN + ' câu chờ thầy hỗ trợ' : '') +
+                  (left ? ' — kéo xuống các câu sai còn lại để luyện tiếp' : ' — hoàn thành!')) : null;
+              })() : null,
+              // Kết quả 1 lượt luyện tương tự: đạt / làm thêm lượt / chuyển thầy.
+              (examSession.isSimilarDrill && examSession.originQ) ? (function(){
+                var oc = similarOutcome(examSession, scoreResult);
+                var round = examSession.round || 1;
+                if(oc === 'pass') return h('div', { style: { marginTop: '12px', padding: '10px 14px', borderRadius: '10px', fontWeight: 700, color: 'var(--good)', background: 'color-mix(in srgb, var(--good) 12%, var(--surface))' } },
+                  '✅ Đạt! Em đã làm đúng dạng này.' + (parentReview ? ' Quay lại để luyện các câu sai còn lại.' : ''));
+                if(oc === 'help') return h('div', { style: { marginTop: '12px', padding: '10px 14px', borderRadius: '10px', fontWeight: 600, color: 'var(--critical)', background: 'color-mix(in srgb, var(--critical) 10%, var(--surface))', lineHeight: 1.55 } },
+                  '🆘 Em đã luyện ' + MAX_SIMILAR_TRIES + ' lượt mà dạng này vẫn chưa vững — thầy đã nhận được thông báo và sẽ hỗ trợ em trực tiếp. Em đọc kỹ lời giải bên dưới rồi quay lại luyện các câu sai khác nhé.');
+                return h('div', { style: { marginTop: '12px', padding: '10px 14px', borderRadius: '10px', background: 'var(--surface-2)', lineHeight: 1.55 } },
+                  h('div', { style: { fontWeight: 600, marginBottom: '8px' } }, 'Chưa đạt ở lượt ' + round + '/' + MAX_SIMILAR_TRIES + '. Em đọc kỹ lời giải bên dưới, hiểu chỗ sai rồi làm thêm 1 lượt với câu mới.'),
+                  h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ startSimilarDrill(examSession.originQ); } },
+                    '🔁 Làm thêm 1 lượt (' + (round + 1) + '/' + MAX_SIMILAR_TRIES + ')'));
               })() : null,
               h('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' } },
                 examSession.reviewOnly ? h('button', {
@@ -2101,15 +2183,22 @@
                   // THÊM 30/9/2026 — sai thì luyện lại NGAY đúng dạng đó (kiểu
                   // IXL), thay vì chỉ đọc lời giải rồi bỏ qua. Chỉ hiện khi
                   // ngân hàng thật sự còn câu cùng dạng (khỏi bấm vào nút rỗng).
-                  (!item.isFullCorrect && !examSession.reviewOnly && window.PrepScholarEngine.countSimilar(q) > 0) ? h('div', { style: { marginTop: '12px' } },
+                  (!item.isFullCorrect && !examSession.reviewOnly && !examSession.isSimilarDrill && window.PrepScholarEngine.countSimilar(q) > 0) ? h('div', { style: { marginTop: '12px' } },
                     (function(){
-                      var done = !!(parentReview && parentReview.session === examSession && parentReview.practiced[q.id]);
-                      var n = Math.min(3, window.PrepScholarEngine.countSimilar(q));
+                      var mine = parentReview && parentReview.session === examSession;
+                      var st = mine ? parentReview.status[q.id] : null;
+                      var tries = mine ? (parentReview.tries[q.id] || 0) : 0;
+                      var n = Math.min(similarCountFor(q), window.PrepScholarEngine.countSimilar(q));
+                      var kind = q.part === 'II' ? ' Đúng/Sai' : (q.part === 'III' ? ' trả lời ngắn' : ' trắc nghiệm');
+                      if(st === 'help') return h('span', { style: { fontSize: '0.84rem', fontWeight: 700, color: 'var(--critical)' } }, '🆘 Đã luyện ' + MAX_SIMILAR_TRIES + ' lượt — thầy sẽ hỗ trợ em dạng này');
+                      if(st === 'pass') return [
+                        h('span', { key: 's', style: { fontSize: '0.84rem', fontWeight: 700, color: 'var(--good)', marginRight: '10px' } }, '✅ Đã luyện đạt'),
+                        h('button', { key: 'b', type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ startSimilarDrill(q); } }, 'Luyện thêm')
+                      ];
+                      var label = tries ? ('🔁 Làm tiếp lượt ' + (tries + 1) + '/' + MAX_SIMILAR_TRIES) : ('🔁 Luyện ' + n + ' câu' + kind + ' tương tự');
                       return [
-                        h('button', { key: 'b', type: 'button', className: done ? 'btn btn-secondary' : 'btn btn-primary', style: { fontSize: '0.86rem' }, onClick: function(){ startSimilarDrill(q); } },
-                          done ? '🔁 Luyện thêm ' + n + ' câu khác' : '🔁 Luyện thêm ' + n + ' câu tương tự'),
-                        h('span', { key: 's', style: { marginLeft: '10px', fontSize: '0.78rem', color: done ? 'var(--good)' : 'var(--muted)', fontWeight: done ? 700 : 400 } },
-                          done ? '✓ Đã luyện tương tự câu này' : 'Làm lại ngay khi vừa hiểu lời giải để nhớ lâu hơn')
+                        h('button', { key: 'b', type: 'button', className: 'btn btn-primary', style: { fontSize: '0.86rem' }, onClick: function(){ startSimilarDrill(q); } }, label),
+                        h('span', { key: 's', style: { marginLeft: '10px', fontSize: '0.78rem', color: 'var(--muted)' } }, tries ? 'Lượt trước chưa đạt — làm lại với câu mới' : 'Làm lại ngay khi vừa hiểu lời giải để nhớ lâu hơn')
                       ];
                     })()
                   ) : null

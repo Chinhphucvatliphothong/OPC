@@ -90,6 +90,13 @@ service cloud.firestore {
       match /parentReports/{reportId} {
         allow read, write: if isOpcAdmin();
       }
+
+      // Kết quả luyện đề HSG/Olympic (tự chấm) của chính em đó — tách khỏi
+      // "attempts" để không lẫn vào số liệu luyện thi Vật lí 12. (SỬA 1/10/2026:
+      // bản 30/9 đặt nhầm khối này vào student_stats nên không lưu được.)
+      match /specialAttempts/{attemptId} {
+        allow read, write: if isOpcAdmin() || isSelf(studentId);
+      }
     }
 
     // Đăng ký lớp thử nghiệm từ trang giới thiệu công khai (index.html) —
@@ -127,18 +134,11 @@ service cloud.firestore {
     // không còn công khai cho người lạ như trước.
     match /student_stats/{studentId} {
       allow read: if isSignedIn();
-      // THÊM 30/9/2026 — kết quả luyện đề HSG/Olympic (tự chấm) của chính em
-      // đó; admin xem để theo dõi. Tách riêng khỏi "attempts" để không lẫn
-      // vào số liệu luyện thi Vật lí 12 (mastery, điểm dự đoán...).
-      match /specialAttempts/{attemptId} {
-        allow read, write: if isOpcAdmin() || isSelf(studentId);
-      }
-
-      // SỬA 30/9/2026: BỎ dòng "allow write: if isOpcAdmin() || isSelf(studentId)"
-      // ở đây — nó cho phép học sinh tự ghi đè hồ sơ của chính mình (trạng
-      // thái tài khoản, chương được mở, quyền HSG/Olympic...) bằng công cụ
-      // dev của trình duyệt. Trang học sinh không hề ghi vào hồ sơ này (chỉ
-      // đọc), nên chỉ giữ "allow write: if isOpcAdmin()" ở trên.
+      // SỬA 1/10/2026 — KHÔI PHỤC: học sinh ghi số liệu học tập của CHÍNH
+      // MÌNH (mastery, điểm dự đoán, sổ câu sai, "cần thầy hỗ trợ"...) sau mỗi
+      // lần nộp bài. Bản 30/9 xoá nhầm dòng này (tưởng là hồ sơ học sinh) nên
+      // số liệu học tập không cập nhật được từ khi publish bản đó.
+      allow write: if isOpcAdmin() || isSelf(studentId);
     }
 
     // Ngân hàng đề (kể cả đáp án): từ 25/9/2026 CHỈ đọc được khi đã đăng

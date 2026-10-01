@@ -764,23 +764,44 @@
     // câu cùng Bài; bỏ chính câu vừa sai; xáo trộn để mỗi lần bấm ra câu khác
     // (createNanoDrill cũ luôn trả đúng mấy câu đầu tiên). QUESTION_BANK đã
     // lọc theo chương đang mở nên không ra câu chương chưa học.
-    createSimilarDrill: function(question, count){
+    // SỬA 1/10/2026: câu tương tự phải CÙNG DẠNG ĐỀ (cùng Phần): sai câu
+    // Phần II (Đúng/Sai) thì luyện 3 câu Phần II, sai Phần III (trả lời
+    // ngắn) thì 3 câu Phần III. Thứ tự ưu tiên, luôn trong cùng Phần:
+    // cùng nano-point -> cùng Bài -> cùng Chủ đề. Không bao giờ bù câu khác Phần.
+    // excludeIds (THÊM 1/10/2026): id các câu đã dùng ở lượt luyện trước cho
+    // cùng câu sai gốc — lượt sau ra câu MỚI, chỉ lặp lại khi hết câu mới.
+    createSimilarDrill: function(question, count, excludeIds){
       if(!question) return [];
       count = count || 3;
+      var excl = {}; (excludeIds || []).forEach(function(id){ excl[id] = true; });
       function shuf(a){ a = a.slice(0); for(var i = a.length - 1; i > 0; i--){ var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
-      var sameNano = question.nanoId ? shuf(QUESTION_BANK.filter(function(q){ return q.nanoId === question.nanoId && q.id !== question.id; })) : [];
-      var picked = sameNano.slice(0, count);
-      if(picked.length < count && question.baiKey){
-        var ids = {}; picked.forEach(function(q){ ids[q.id] = true; });
-        var sameBai = shuf(QUESTION_BANK.filter(function(q){ return q.baiKey === question.baiKey && q.id !== question.id && !ids[q.id]; }));
-        picked = picked.concat(sameBai.slice(0, count - picked.length));
+      var part = question.part;
+      var base = QUESTION_BANK.filter(function(q){ return q.id !== question.id && q.part === part; });
+      var tiers = [
+        question.nanoId ? function(q){ return q.nanoId === question.nanoId; } : null,
+        question.baiKey ? function(q){ return q.baiKey === question.baiKey; } : null,
+        question.topicKey ? function(q){ return q.topicKey === question.topicKey; } : null
+      ];
+      var picked = [], ids = {};
+      function fill(allowUsed){
+        tiers.forEach(function(test){
+          if(!test || picked.length >= count) return;
+          shuf(base.filter(function(q){ return !ids[q.id] && (allowUsed || !excl[q.id]) && test(q); })).forEach(function(q){
+            if(picked.length < count){ picked.push(q); ids[q.id] = true; }
+          });
+        });
       }
+      fill(false);
+      if(picked.length < count) fill(true); // hết câu mới thì mới cho gặp lại câu cũ
       return picked;
     },
     countSimilar: function(question){
       if(!question) return 0;
       return QUESTION_BANK.filter(function(q){
-        return q.id !== question.id && ((question.nanoId && q.nanoId === question.nanoId) || (question.baiKey && q.baiKey === question.baiKey));
+        return q.id !== question.id && q.part === question.part && (
+          (question.nanoId && q.nanoId === question.nanoId) ||
+          (question.baiKey && q.baiKey === question.baiKey) ||
+          (question.topicKey && q.topicKey === question.topicKey));
       }).length;
     },
     // Luyện lại cả 1 "Bài" (gộp các Tag con) — dùng cho nút "Luyện bài này"
