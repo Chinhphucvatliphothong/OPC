@@ -961,6 +961,36 @@
     var remediation = remediationState[0];
     var setRemediation = remediationState[1];
 
+    // THÊM 1/10/2026 — VIDEO CHỮA ĐỀ GẮN MỐC THỜI GIAN (video-walkthrough.js).
+    // Dưới lời giải mỗi câu hiện nút "🎥 Thầy chữa câu này…" nếu đề gốc của câu
+    // đó có videoWalkthrough và câu đó có mốc. Tra theo mã câu hỏi (examId +
+    // '_q' + index) NGAY LÚC HIỂN THỊ nên đúng ở mọi chế độ (thích ứng, Drill,
+    // chẩn đoán, thi thử, luyện tương tự, sổ tay câu sai, đề được giao — kể cả
+    // đề giao trước khi có video). Nút này đứng TRÊN các nút video khác.
+    var wtModalState = React.useState(null);
+    var wtModal = wtModalState[0];
+    var setWtModal = wtModalState[1];
+    React.useEffect(function(){
+      if(!wtModal) return;
+      function onKey(e){ if(e.key === 'Escape') setWtModal(null); }
+      document.addEventListener('keydown', onKey);
+      return function(){ document.removeEventListener('keydown', onKey); };
+    }, [wtModal]);
+    // wrong=true -> nút nổi bật (câu làm sai); false -> nút phụ (câu đúng, xem nếu muốn).
+    function renderWalkthroughButton(q, wrong){
+      var WT = window.OPC_WALKTHROUGH;
+      var info = WT ? WT.forQuestion(q) : null;
+      if(!info) return null;
+      return h('div', { className: 'ps-wt-row', style: { margin: '0 0 12px' } },
+        h('button', {
+          type: 'button',
+          className: 'btn ' + (wrong ? 'btn-primary' : 'btn-secondary'),
+          style: { fontSize: '0.86rem', textAlign: 'left', lineHeight: 1.45, whiteSpace: 'normal' },
+          onClick: function(){ setWtModal(info); }
+        }, info.buttonText)
+      );
+    }
+
     // Sổ tay câu sai (Mistake Log) — giai đoạn thật: bắt đầu trống, chỉ nạp
     // từ lịch sử làm bài thật của học sinh sau khi đăng nhập (hydrateAndEnter).
     var mistakeLogState = React.useState([]);
@@ -2174,6 +2204,7 @@
                 renderAnswerReview(item, q),
 
                 h('div', { className: 'ps-solution-body' },
+                  renderWalkthroughButton(q, !item.isFullCorrect),
                   h('div', { style: { fontWeight: 700, color: 'var(--accent-strong)', marginBottom: '6px' } }, '💡 Lời giải chi tiết:'),
                   h('div', { style: { whiteSpace: 'pre-wrap' } }, renderLatexText(q.loiGiai)),
                   q.trapTip ? h('div', { className: 'ps-trap-tip' },
@@ -2304,6 +2335,7 @@
                     adaptiveLastResult.isFullCorrect ? '✓ Chính xác!' : '✗ Chưa chính xác'
                   ),
                   h('div', { className: 'ps-solution-body' },
+                    renderWalkthroughButton(curQ, !adaptiveLastResult.isFullCorrect),
                     h('div', { style: { fontWeight: 700, color: 'var(--accent-strong)', marginBottom: '6px' } }, '💡 Lời giải chi tiết:'),
                     h('div', { style: { whiteSpace: 'pre-wrap' } }, renderLatexText(curQ.loiGiai))
                   )
@@ -2772,6 +2804,7 @@
                 h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace', marginBottom: '10px' } },
                   'Chu kỳ giãn cách: ' + item.intervalDays + ' ngày'
                 ),
+                renderWalkthroughButton({ id: item.qId, examTitle: item.question && item.question.examTitle }, true),
                 h('button', {
                   type: 'button',
                   className: 'ps-ai-tutor-trigger' + ((ai && ai.loading) ? ' loading' : ''),
@@ -3119,7 +3152,9 @@
           }
         })()
       )
-      ) // đóng ternary "remediation ? renderRemediationStep(...) : ( examSession ? ... )"
+      ), // đóng ternary "remediation ? renderRemediationStep(...) : ( examSession ? ... )"
+      // Modal phát đoạn video chữa đề (xem renderWalkthroughButton).
+      (wtModal && window.OPC_WALKTHROUGH) ? window.OPC_WALKTHROUGH.renderModal(h, wtModal, function(){ setWtModal(null); }) : null
     );
   }
 

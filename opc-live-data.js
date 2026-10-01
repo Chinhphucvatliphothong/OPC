@@ -367,6 +367,11 @@ async function loadRealQuestionBank(){
       (exam.questions || []).forEach(function(q){
         all.push(transformQuestion(q, meta));
       });
+      // THÊM 1/10/2026 — VIDEO CHỮA ĐỀ: ghi lại mốc video của đề này vào bảng
+      // tra OPC_WALKTHROUGH (theo examId). Giao diện tra theo mã câu hỏi
+      // (examId + '_q' + index) LÚC HIỂN THỊ — nên đề đã giao trước khi thêm
+      // video, hay câu bị bốc/xáo ở chế độ nào, đều tìm đúng đoạn.
+      if(window.OPC_WALKTHROUGH) window.OPC_WALKTHROUGH.register(d.id, exam.title || '', exam.videoWalkthrough || null);
     }
     return all;
   }catch(e){

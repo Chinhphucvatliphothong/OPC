@@ -656,6 +656,11 @@
         updateQuestions: function(examId, questions){
           return updateDoc(doc(db, COL, examId), { questions: questions });
         },
+        // THÊM 1/10/2026 — Video chữa đề: ghi { url, videoId, marks, updatedAt }
+        // (hoặc null để gỡ) vào chính doc đề. Chỉ đụng đúng trường này.
+        updateVideoWalkthrough: function(examId, vw){
+          return updateDoc(doc(db, COL, examId), { videoWalkthrough: vw });
+        },
         uploadFile: function(examId, file, kind, onProgress){
           return new Promise(function(resolve, reject){
             try{
@@ -870,6 +875,9 @@
 <!-- curriculum.js: THÊM 28/9/2026 — khoá/mở chương theo học sinh, dùng
      chung với trang học sinh (suy chương của câu hỏi, chương đã mở). -->
 <script src="curriculum.js"></script>
+<!-- video-walkthrough.js: THÊM 1/10/2026 — Video chữa đề gắn mốc thời gian (đọc mốc kiểu mô tả YouTube,
+     tính đoạn từng câu, modal xem thử). Dùng chung với trang học sinh. -->
+<script src="video-walkthrough.js"></script>
 <!-- prepscholar.js: THÊM 25/9/2026 — admin.html trước đây không nạp file này
      (chỉ prepscholar-ui.js/trang luyện tập của học sinh mới dùng). Nay cần
      dùng chung hàm computeStudentStatsFromAttempts (tính "Sổ tay câu sai" +
@@ -4019,6 +4027,118 @@
   // field này không có examKind -> mọi chỗ đọc phải coi thiếu field = 'nganHang'.
   function blankExamForm(){ return {title:'', chuDe: CHU_DE_LIST[0], bai:'', mucDo: 2, examKind: 'nganHang'}; }
 
+  // ================= VIDEO CHỮA ĐỀ GẮN MỐC THỜI GIAN =================
+  // THÊM 1/10/2026 — khối trong "Chi tiết đề" (tab Tổng quan). Thầy dán link
+  // YouTube (chế độ "Không công khai") + danh sách mốc kiểu mô tả YouTube
+  // ("0:00 Câu 1", "1:25 Câu 2"...). Tự nhận số câu, báo câu thiếu mốc,
+  // xem thử từng đoạn. Lưu vào chính doc đề: videoWalkthrough { url, videoId,
+  // marks:{ '<q.index>': giâyBắtĐầu }, updatedAt }. Học sinh tra theo mã câu
+  // (examId + '_q' + index) lúc hiển thị — xem video-walkthrough.js.
+  function VideoWalkthroughBlock(props){
+    var WT = window.OPC_WALKTHROUGH;
+    var exam = props.exam;
+    var existing = exam.videoWalkthrough || null;
+    function marksToText(vw){
+      if(!vw || !vw.marks) return '';
+      return Object.keys(vw.marks).map(Number).sort(function(a, b){ return a - b; }).map(function(k){
+        return WT.fmtClock(vw.marks[String(k)]) + ' Câu ' + k;
+      }).join('\n');
+    }
+    var urlState = React.useState(existing ? (existing.url || '') : ''); var url = urlState[0], setUrl = urlState[1];
+    var textState = React.useState(marksToText(existing)); var text = textState[0], setText = textState[1];
+    var previewState = React.useState(null); var preview = previewState[0], setPreview = previewState[1];
+    var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
+
+    if(!WT) return h('div', { className: 'sm-info-block', style: { marginTop: '14px' } }, 'Thiếu file video-walkthrough.js — tải file này lên cùng thư mục với admin.html.');
+
+    var indexes = (exam.questions || []).map(function(q){ return q.index; }).filter(function(n){ return n != null; });
+    var videoId = WT.parseYouTubeId(url);
+    var parsed = WT.parseMarks(text);
+    var check = WT.checkMarks(parsed.marks, indexes);
+    var markCount = Object.keys(parsed.marks).length;
+    var matched = indexes.length - check.missing.length;
+    var vwNow = { videoId: videoId, marks: parsed.marks };
+    var dirty = !existing || (existing.url || '') !== url.trim() || marksToText(existing) !== marksToText(vwNow);
+
+    async function save(){
+      if(!videoId){ props.fireToast('Link YouTube chưa đúng — dán lại link video.', true); return; }
+      if(!matched){ props.fireToast('Chưa có mốc nào khớp với câu của đề này.', true); return; }
+      if(check.missing.length && !window.confirm('Còn ' + check.missing.length + ' câu chưa có mốc (câu ' + check.missing.join(', ') + ') — các câu này sẽ KHÔNG hiện nút video cho học sinh. Vẫn lưu?')) return;
+      setSaving(true);
+      try{
+        var vw = { url: url.trim(), videoId: videoId, marks: parsed.marks, updatedAt: new Date().toISOString() };
+        await props.bankApi.updateVideoWalkthrough(exam.id, vw);
+        props.onSaved(vw);
+        props.fireToast('Đã lưu video chữa đề (' + matched + '/' + indexes.length + ' câu có mốc).');
+      }catch(err){
+        console.error('Lỗi lưu video chữa đề:', err);
+        props.fireToast('Lưu video chữa đề thất bại — thử lại.', true);
+      }finally{ setSaving(false); }
+    }
+    async function remove(){
+      if(!window.confirm('Gỡ video chữa đề khỏi đề này? Học sinh sẽ không còn thấy nút video.')) return;
+      setSaving(true);
+      try{
+        await props.bankApi.updateVideoWalkthrough(exam.id, null);
+        props.onSaved(null);
+        setUrl(''); setText('');
+        props.fireToast('Đã gỡ video chữa đề.');
+      }catch(err){
+        console.error('Lỗi gỡ video chữa đề:', err);
+        props.fireToast('Gỡ video thất bại — thử lại.', true);
+      }finally{ setSaving(false); }
+    }
+
+    var chip = function(txt, kind){
+      var col = kind === 'bad' ? '#b91c1c' : (kind === 'warn' ? '#b45309' : '#15803d');
+      return h('span', { style: { display: 'inline-block', fontSize: '0.78rem', fontWeight: 700, color: col, border: '1px solid ' + col, borderRadius: '999px', padding: '2px 10px', marginRight: '6px', marginBottom: '4px' } }, txt);
+    };
+    var sortedIdx = indexes.slice().sort(function(a, b){ return a - b; });
+
+    return h('div', { className: 'sm-info-block', style: { marginTop: '16px' } },
+      h('div', { style: { fontWeight: 700, fontSize: '0.92rem', marginBottom: '4px' } }, '🎥 Video chữa đề'),
+      h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', margin: '0 0 10px', lineHeight: 1.5 } },
+        'Đăng video lên YouTube ở chế độ "Không công khai" (Unlisted), để cho phép nhúng. Dán link và danh sách mốc như trong phần mô tả YouTube. Đoạn của mỗi câu chạy tới mốc của câu kế tiếp.'),
+      h('input', { type: 'url', value: url, placeholder: 'https://youtu.be/...', onChange: function(e){ setUrl(e.target.value); },
+        style: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '8px', fontSize: '0.88rem', marginBottom: '6px' } }),
+      url.trim() && !videoId ? h('div', { style: { fontSize: '0.78rem', color: '#b91c1c', marginBottom: '6px' } }, '⚠ Chưa nhận ra link YouTube.') : null,
+      h('textarea', { value: text, rows: 7, placeholder: '0:00 Câu 1\n1:25 Câu 2\n3:10 Câu 3', onChange: function(e){ setText(e.target.value); },
+        style: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '8px', fontSize: '0.86rem', fontFamily: '"IBM Plex Mono",monospace', resize: 'vertical' } }),
+
+      h('div', { style: { marginTop: '8px' } },
+        chip('Khớp ' + matched + '/' + indexes.length + ' câu', matched === indexes.length && indexes.length ? 'ok' : 'warn'),
+        check.missing.length ? chip('Thiếu mốc: câu ' + check.missing.join(', '), 'bad') : null,
+        check.extra.length ? chip('Mốc thừa (đề không có): câu ' + check.extra.join(', '), 'warn') : null
+      ),
+      check.order.length ? h('div', { style: { fontSize: '0.78rem', color: '#b45309', margin: '4px 0' } }, check.order.map(function(t, i){ return h('div', { key: i }, '⚠ ' + t); })) : null,
+      parsed.problems.length ? h('div', { style: { fontSize: '0.78rem', color: '#b91c1c', margin: '4px 0' } }, parsed.problems.map(function(t, i){ return h('div', { key: i }, '⚠ ' + t); })) : null,
+      parsed.ignored.length ? h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', margin: '4px 0' } }, parsed.ignored.map(function(t, i){ return h('div', { key: i }, 'ℹ ' + t); })) : null,
+
+      markCount ? h('div', { style: { marginTop: '10px', maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px' } },
+        h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' } },
+          h('tbody', null, sortedIdx.map(function(n){
+            var seg = WT.getSegment(vwNow, n);
+            return h('tr', { key: n, style: { borderBottom: '1px solid var(--line)' } },
+              h('td', { style: { padding: '5px 10px', fontWeight: 700 } }, 'Câu ' + n),
+              h('td', { style: { padding: '5px 10px', fontFamily: '"IBM Plex Mono",monospace' } },
+                seg ? (WT.fmtClock(seg.start) + ' → ' + (seg.end != null ? WT.fmtClock(seg.end) : 'hết video')) : h('span', { style: { color: '#b91c1c' } }, 'thiếu mốc')),
+              h('td', { style: { padding: '5px 10px', textAlign: 'right' } },
+                h('button', { type: 'button', className: 'sm-link-btn', disabled: !seg || !videoId,
+                  onClick: function(){ setPreview({ videoId: videoId, index: n, examTitle: exam.title, start: seg.start, end: seg.end }); } }, '▶ Xem thử'))
+            );
+          })))
+      ) : null,
+
+      h('div', { style: { marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+        h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.85rem' }, disabled: saving || !videoId || !matched || !dirty, onClick: save },
+          saving ? 'Đang lưu…' : (existing ? '💾 Cập nhật video' : '💾 Lưu video chữa đề')),
+        existing ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, disabled: saving, onClick: remove }, '🗑 Gỡ video') : null,
+        existing && !dirty ? h('span', { style: { fontSize: '0.78rem', color: '#15803d', fontWeight: 700 } }, '✓ Đã lưu') : null
+      ),
+      preview ? WT.renderModal(h, preview, function(){ setPreview(null); }) : null
+    );
+  }
+
   function ExamBankPanel(props){
     var OPCref = window.OPC;
     // THÊM 30/9/2026 — dùng lại nguyên panel này cho ngân hàng HSG/Olympic:
@@ -4779,6 +4899,12 @@
                   h('div',{className:'eb-matrix-lbl'}, 'M4 · Vận dụng cao'))
               )
             ),
+
+            // THÊM 1/10/2026 — Video chữa đề gắn mốc thời gian (chỉ đề Luyện thi Vật lí 12).
+            !specialMode ? h(VideoWalkthroughBlock, {
+              key: selected.id, exam: selected, bankApi: bankApi, fireToast: props.fireToast,
+              onSaved: function(vw){ setSelected(function(prev){ return prev ? Object.assign({}, prev, { videoWalkthrough: vw }) : prev; }); }
+            }) : null,
 
             selected.tex ? h('div',{style:{marginTop:'16px', display:'flex', alignItems:'center', gap:'10px'}},
               h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.85rem'}, onClick:function(){ downloadTexFile(selected.tex, selected.title); }},
