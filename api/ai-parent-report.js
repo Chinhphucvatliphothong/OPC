@@ -1,4 +1,4 @@
-// ================= OPC Learning AI — Báo cáo phụ huynh (co-pilot) =========
+// ================= FaradayAI — Báo cáo phụ huynh (co-pilot) =========
 // Vercel Serverless Function song song với api/ai-tutor.js / ai-suggest.js /
 // ai-adaptive-priority.js, dùng CHUNG GEMINI_API_KEY / GEMINI_MODEL (không
 // cần cấu hình thêm gì trên Vercel).
@@ -17,7 +17,7 @@
 // thuật "nano-point"/"Tag"/"mastery" mà học sinh/hệ thống hay dùng nội bộ.
 
 var SYSTEM_INSTRUCTION = [
-  'Bạn là "OPC Learning AI" — trợ lý soạn báo cáo tiến độ học tập gửi PHỤ',
+  'Bạn là "FaradayAI" — trợ lý soạn báo cáo tiến độ học tập gửi PHỤ',
   'HUYNH, giúp một giáo viên Vật Lí lớp 12 (chương trình GDPT 2018, luyện',
   'thi Tốt nghiệp THPT) đang dạy và quản lý học sinh MỘT MÌNH (không có trợ',
   'giảng) tiết kiệm thời gian viết báo cáo hàng tuần.',
@@ -166,7 +166,7 @@ export default async function handler(req, res){
 
     if(!upstream.ok){
       console.error('Lỗi gọi Gemini (ai-parent-report):', data);
-      res.status(502).json({ error: (data && data.error && data.error.message) || 'OPC Learning AI đang bận, thử lại sau.' });
+      res.status(502).json({ error: (data && data.error && data.error.message) || 'FaradayAI đang bận, thử lại sau.' });
       return;
     }
 
@@ -178,13 +178,13 @@ export default async function handler(req, res){
     }catch(e){ text = ''; }
 
     if(!text){
-      res.status(502).json({ error: 'OPC Learning AI chưa soạn được báo cáo — thử lại sau.' });
+      res.status(502).json({ error: 'FaradayAI chưa soạn được báo cáo — thử lại sau.' });
       return;
     }
 
     res.status(200).json({ report: text });
   }catch(err){
     console.error('Lỗi kết nối Gemini (ai-parent-report):', err);
-    res.status(502).json({ error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng hoặc thử lại sau.' });
+    res.status(502).json({ error: 'Không kết nối được tới FaradayAI — kiểm tra mạng hoặc thử lại sau.' });
   }
 }

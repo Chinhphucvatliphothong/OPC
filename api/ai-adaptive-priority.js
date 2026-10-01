@@ -1,4 +1,4 @@
-// ========= OPC Learning AI — Ưu tiên thích ứng (Adaptive Priority) =========
+// ========= FaradayAI — Ưu tiên thích ứng (Adaptive Priority) =========
 // Vercel Serverless Function, dùng CHUNG GEMINI_API_KEY/GEMINI_MODEL với
 // api/ai-tutor.js và api/ai-suggest.js — không cần cấu hình thêm gì trên
 // Vercel.
@@ -22,8 +22,8 @@
 // chục triệu học sinh).
 
 var SYSTEM_INSTRUCTION = [
-  'Bạn là "OPC Learning AI" — bộ não hoạch định lộ trình luyện tập thích',
-  'ứng của OPC Luyện Thi Vật Lí, môn Vật Lí lớp 12 (chương trình GDPT 2018).',
+  'Bạn là "FaradayAI" — bộ não hoạch định lộ trình luyện tập thích',
+  'ứng của FaradayAI Luyện Thi Vật Lí, môn Vật Lí lớp 12 (chương trình GDPT 2018).',
   '',
   'Bạn sẽ được đưa một danh sách các nano-point (đơn vị kiến thức nhỏ nhất)',
   'mà một học sinh đang còn yếu, kèm % mức thành thạo hiện tại, tên chuyên',
@@ -136,7 +136,7 @@ export default async function handler(req, res){
 
     if(!upstream.ok){
       console.error('Lỗi gọi Gemini (ai-adaptive-priority):', data);
-      res.status(502).json({ error: (data && data.error && data.error.message) || 'OPC Learning AI đang bận, thử lại sau.' });
+      res.status(502).json({ error: (data && data.error && data.error.message) || 'FaradayAI đang bận, thử lại sau.' });
       return;
     }
 
@@ -161,7 +161,7 @@ export default async function handler(req, res){
     candidates.forEach(function(c){ if(!seen[c.id]) priority.push(c.id); });
 
     if(!priority.length){
-      res.status(502).json({ error: 'OPC Learning AI chưa đưa ra được thứ tự ưu tiên — thử lại sau.' });
+      res.status(502).json({ error: 'FaradayAI chưa đưa ra được thứ tự ưu tiên — thử lại sau.' });
       return;
     }
 
@@ -171,7 +171,7 @@ export default async function handler(req, res){
     });
   }catch(err){
     console.error('Lỗi kết nối Gemini (ai-adaptive-priority):', err);
-    res.status(502).json({ error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng hoặc thử lại sau.' });
+    res.status(502).json({ error: 'Không kết nối được tới FaradayAI — kiểm tra mạng hoặc thử lại sau.' });
   }
 }
 

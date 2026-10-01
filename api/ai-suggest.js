@@ -1,4 +1,4 @@
-// ================= OPC Learning AI — Gợi ý học tập hôm nay =================
+// ================= FaradayAI — Gợi ý học tập hôm nay =================
 // Vercel Serverless Function song song với api/ai-tutor.js, dùng CHUNG biến
 // môi trường GEMINI_API_KEY / GEMINI_MODEL (không cần cấu hình thêm gì trên
 // Vercel). Khác với ai-tutor.js (giải thích 1 CÂU sai cụ thể), hàm này nhận
@@ -8,15 +8,15 @@
 // gọn nhẹ cho việc phải tự xây + huấn luyện một mô hình học máy chuyên
 // dụng (kiểu Large Adaptive Model của Squirrel AI, cần dữ liệu hàng chục
 // triệu học sinh mới huấn luyện được). Học sinh bấm "🔄 Gợi ý mới" ở thẻ
-// "OPC Learning AI gợi ý hôm nay" trên Trang chủ (xem askAiSuggest trong
+// "FaradayAI gợi ý hôm nay" trên Trang chủ (xem askAiSuggest trong
 // prepscholar-ui.js) sẽ gọi POST /api/ai-suggest.
 //
 // ⚙️ Không cần cấu hình thêm trên Vercel — dùng chung GEMINI_API_KEY /
 // GEMINI_MODEL đã khai báo cho api/ai-tutor.js.
 
 var SYSTEM_INSTRUCTION = [
-  'Bạn là "OPC Learning AI" — gia sư ảo lập kế hoạch học tập cá nhân hoá của',
-  'OPC Luyện Thi Vật Lí, chuyên Vật Lí lớp 12 (chương trình GDPT 2018, thi',
+  'Bạn là "FaradayAI" — gia sư ảo lập kế hoạch học tập cá nhân hoá của',
+  'FaradayAI Luyện Thi Vật Lí, chuyên Vật Lí lớp 12 (chương trình GDPT 2018, thi',
   'Tốt nghiệp THPT), thân thiện, nói tiếng Việt tự nhiên, đúng thuật ngữ Vật',
   'Lí phổ thông Việt Nam.',
   '',
@@ -149,7 +149,7 @@ export default async function handler(req, res){
 
     if(!upstream.ok){
       console.error('Lỗi gọi Gemini (ai-suggest):', data);
-      res.status(502).json({ error: (data && data.error && data.error.message) || 'OPC Learning AI đang bận, thử lại sau.' });
+      res.status(502).json({ error: (data && data.error && data.error.message) || 'FaradayAI đang bận, thử lại sau.' });
       return;
     }
 
@@ -161,14 +161,14 @@ export default async function handler(req, res){
     }catch(e){ text = ''; }
 
     if(!text){
-      res.status(502).json({ error: 'OPC Learning AI chưa đưa ra được gợi ý — thử lại sau.' });
+      res.status(502).json({ error: 'FaradayAI chưa đưa ra được gợi ý — thử lại sau.' });
       return;
     }
 
     res.status(200).json({ suggestion: text });
   }catch(err){
     console.error('Lỗi kết nối Gemini (ai-suggest):', err);
-    res.status(502).json({ error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng hoặc thử lại sau.' });
+    res.status(502).json({ error: 'Không kết nối được tới FaradayAI — kiểm tra mạng hoặc thử lại sau.' });
   }
 }
 

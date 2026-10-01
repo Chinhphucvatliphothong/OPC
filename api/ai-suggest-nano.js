@@ -1,4 +1,4 @@
-// ========= OPC Learning AI — Gợi ý nano-point cho câu hỏi vừa nạp =========
+// ========= FaradayAI — Gợi ý nano-point cho câu hỏi vừa nạp =========
 // Vercel Serverless Function, dùng CHUNG GEMINI_API_KEY/GEMINI_MODEL với
 // api/ai-tutor.js, api/ai-suggest.js, api/ai-adaptive-priority.js — không
 // cần cấu hình thêm gì trên Vercel.
@@ -20,7 +20,7 @@
 var SYSTEM_INSTRUCTION = [
   'Bạn là hệ thống phân loại câu hỏi Vật Lí lớp 12 (chương trình GDPT 2018,',
   'thi Tốt nghiệp THPT — gồm cả sách giáo khoa và sách Chuyên đề học tập)',
-  'theo danh mục "nano-point" chuẩn của OPC Luyện Thi Vật Lí.',
+  'theo danh mục "nano-point" chuẩn của FaradayAI Luyện Thi Vật Lí.',
   '',
   'Bạn sẽ được đưa: (1) TOÀN BỘ danh mục chuẩn, có cấu trúc Chủ đề > Bài >',
   'nano-point, mỗi bài/nano-point kèm mã (key/id) riêng; (2) nội dung THẬT',
@@ -183,7 +183,7 @@ export default async function handler(req, res){
 
     if(!upstream.ok){
       console.error('Lỗi gọi Gemini (ai-suggest-nano):', data);
-      res.status(502).json({ error: (data && data.error && data.error.message) || 'OPC Learning AI đang bận, thử lại sau.' });
+      res.status(502).json({ error: (data && data.error && data.error.message) || 'FaradayAI đang bận, thử lại sau.' });
       return;
     }
 
@@ -200,7 +200,7 @@ export default async function handler(req, res){
     // Bảo vệ: chỉ chấp nhận baiKey/nanoIds thật sự có trong danh mục gửi
     // lên — id lạ do AI bịa ra sẽ bị loại bỏ để không làm hỏng dữ liệu.
     if(!baiKey || !validBai[baiKey]){
-      res.status(502).json({ error: 'OPC Learning AI chưa chọn được Bài phù hợp trong danh mục — thử lại hoặc chọn tay.' });
+      res.status(502).json({ error: 'FaradayAI chưa chọn được Bài phù hợp trong danh mục — thử lại hoặc chọn tay.' });
       return;
     }
     var allowedNano = nanoByBai[baiKey] || {};
@@ -213,6 +213,6 @@ export default async function handler(req, res){
     });
   }catch(err){
     console.error('Lỗi kết nối Gemini (ai-suggest-nano):', err);
-    res.status(502).json({ error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng hoặc thử lại sau.' });
+    res.status(502).json({ error: 'Không kết nối được tới FaradayAI — kiểm tra mạng hoặc thử lại sau.' });
   }
 }
