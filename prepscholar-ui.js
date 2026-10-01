@@ -1211,13 +1211,35 @@
     }
 
     // THÊM 30/9/2026 — nút "Luyện thêm 3 câu tương tự" dưới lời giải câu sai.
+    // SỬA 1/10/2026: GHI NHỚ màn hình kết quả gốc (parentReview) trước khi vào
+    // luyện tương tự, để học sinh quay lại đúng bài vừa làm, tiếp tục với các
+    // câu sai còn lại (vd sai câu 3, 6, 10: luyện xong câu 3 -> quay lại ->
+    // luyện câu 6 -> quay lại -> câu 10). Câu nào đã luyện được đánh dấu ✓.
+    var parentReviewState = React.useState(null); var parentReview = parentReviewState[0], setParentReview = parentReviewState[1];
+
     function startSimilarDrill(q){
       var questions = window.PrepScholarEngine.createSimilarDrill(q, 3);
       if(!questions.length){
         alert('Ngân hàng đề chưa có câu cùng dạng với câu này — thầy cô đang nạp thêm.');
         return;
       }
-      var session = { type: 'drill', title: 'Luyện tương tự: ' + (q.subtopic || q.topicName || 'cùng dạng'), questions: questions, isSubmitted: false, initialTimeSec: questions.length * 120 };
+      // Đang ở màn kết quả của chính 1 bài luyện tương tự -> giữ nguyên bài
+      // GỐC làm điểm quay về (không lồng nhiều tầng khó hiểu).
+      if(!(examSession && examSession.isSimilarDrill)){
+        var samePrev = parentReview && parentReview.session === examSession;
+        var practiced = Object.assign({}, samePrev ? parentReview.practiced : {});
+        practiced[q.id] = true;
+        setParentReview({ session: examSession, scoreResult: scoreResult, masteryImpact: masteryImpact, practiced: practiced, focusId: q.id });
+      } else if(parentReview){
+        setParentReview(Object.assign({}, parentReview, { focusId: parentReview.focusId }));
+      }
+      var srcIdx = scoreResult && scoreResult.perQuestionResults ? scoreResult.perQuestionResults.filter(function(it){ return it.question && it.question.id === q.id; })[0] : null;
+      var session = {
+        type: 'drill', isSimilarDrill: true,
+        sourceLabel: (examSession && examSession.isSimilarDrill && parentReview) ? (parentReview.sourceLabel || '') : ('Câu ' + (srcIdx ? srcIdx.idx : '') + ' của bài vừa làm'),
+        title: 'Luyện tương tự: ' + (q.subtopic || q.topicName || 'cùng dạng'),
+        questions: questions, isSubmitted: false, initialTimeSec: questions.length * 120
+      };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
@@ -1226,6 +1248,28 @@
       setScoreResult(null);
       setMasteryImpact(null);
       try{ window.scrollTo(0, 0); }catch(e){}
+    }
+
+    function returnToParentReview(){
+      if(!parentReview) return;
+      if(examSession && !examSession.isSubmitted && !window.confirm('Bài luyện tương tự chưa nộp sẽ bị bỏ dở. Quay lại kết quả bài trước?')) return;
+      var focus = parentReview.focusId;
+      setExamSession(parentReview.session);
+      setScoreResult(parentReview.scoreResult);
+      setMasteryImpact(parentReview.masteryImpact);
+      // Cuộn tới đúng câu vừa luyện để học sinh thấy ngay câu sai kế tiếp.
+      setTimeout(function(){
+        try{
+          var el = document.getElementById('ps-sol-' + focus);
+          if(el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo(0, 0);
+        }catch(e){}
+      }, 80);
+    }
+    function remainingWrongCount(){
+      if(!parentReview || !parentReview.scoreResult) return 0;
+      return parentReview.scoreResult.perQuestionResults.filter(function(it){
+        return !it.isFullCorrect && it.question && !parentReview.practiced[it.question.id];
+      }).length;
     }
 
     // Bắt đầu làm 1 đề cá nhân hóa mà GIÁO VIÊN đã giao (từ admin.html) —
@@ -1979,6 +2023,12 @@
                 'Điểm đạt được: ' + scoreResult.totalEarnedScore.toFixed(2) + ' / ' + scoreResult.totalMaxScore.toFixed(2)
               ),
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
+              (parentReview && parentReview.session === examSession) ? (function(){
+                var wrongs = scoreResult.perQuestionResults.filter(function(it){ return !it.isFullCorrect; });
+                var done = wrongs.filter(function(it){ return it.question && parentReview.practiced[it.question.id]; }).length;
+                return wrongs.length ? h('div', { className: 'ps-impact-pill', style: { marginTop: '8px' } },
+                  '🔁 Đã luyện tương tự ' + done + '/' + wrongs.length + ' câu sai' + (done < wrongs.length ? ' — kéo xuống các câu sai còn lại để luyện tiếp' : ' — hoàn thành!')) : null;
+              })() : null,
               h('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' } },
                 examSession.reviewOnly ? h('button', {
                   type: 'button',
@@ -1990,6 +2040,11 @@
                     }
                   }
                 }, '🔁 Làm lại đề này') :
+                (examSession && examSession.isSimilarDrill && parentReview) ? h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  onClick: returnToParentReview
+                }, '← Quay lại kết quả bài trước' + (remainingWrongCount() ? ' (còn ' + remainingWrongCount() + ' câu sai chưa luyện)' : '')) :
                 (examSession && (examSession.type === 'diagnostic' || examSession.type === 'adaptive' || examSession.fromRemediation)) ? h('button', {
                   type: 'button',
                   className: 'btn btn-primary',
@@ -2016,7 +2071,7 @@
             // Danh sách lời giải chi tiết
             scoreResult.perQuestionResults.map(function(item, idx){
               var q = item.question;
-              return h('div', { key: idx, className: 'ps-solution-card ' + (item.isFullCorrect ? 'correct' : 'wrong') },
+              return h('div', { key: idx, id: 'ps-sol-' + q.id, className: 'ps-solution-card ' + (item.isFullCorrect ? 'correct' : 'wrong') },
                 h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' } },
                   h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
                     h('b', { style: { fontFamily: 'IBM Plex Mono, monospace', fontSize: '0.95rem' } }, 'Câu ' + item.idx + ':'),
@@ -2047,9 +2102,16 @@
                   // IXL), thay vì chỉ đọc lời giải rồi bỏ qua. Chỉ hiện khi
                   // ngân hàng thật sự còn câu cùng dạng (khỏi bấm vào nút rỗng).
                   (!item.isFullCorrect && !examSession.reviewOnly && window.PrepScholarEngine.countSimilar(q) > 0) ? h('div', { style: { marginTop: '12px' } },
-                    h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.86rem' }, onClick: function(){ startSimilarDrill(q); } },
-                      '🔁 Luyện thêm ' + Math.min(3, window.PrepScholarEngine.countSimilar(q)) + ' câu tương tự'),
-                    h('span', { style: { marginLeft: '10px', fontSize: '0.78rem', color: 'var(--muted)' } }, 'Làm lại ngay khi vừa hiểu lời giải để nhớ lâu hơn')
+                    (function(){
+                      var done = !!(parentReview && parentReview.session === examSession && parentReview.practiced[q.id]);
+                      var n = Math.min(3, window.PrepScholarEngine.countSimilar(q));
+                      return [
+                        h('button', { key: 'b', type: 'button', className: done ? 'btn btn-secondary' : 'btn btn-primary', style: { fontSize: '0.86rem' }, onClick: function(){ startSimilarDrill(q); } },
+                          done ? '🔁 Luyện thêm ' + n + ' câu khác' : '🔁 Luyện thêm ' + n + ' câu tương tự'),
+                        h('span', { key: 's', style: { marginLeft: '10px', fontSize: '0.78rem', color: done ? 'var(--good)' : 'var(--muted)', fontWeight: done ? 700 : 400 } },
+                          done ? '✓ Đã luyện tương tự câu này' : 'Làm lại ngay khi vừa hiểu lời giải để nhớ lâu hơn')
+                      ];
+                    })()
                   ) : null
                 )
               );
@@ -2170,6 +2232,10 @@
           ) : (
           // ĐANG LÀM BÀI (ACTIVE TAKING EXAM)
           h('div', { className: 'ps-exam-screen' },
+            (examSession.isSimilarDrill && parentReview) ? h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', padding: '8px 12px', marginBottom: '12px', borderRadius: '10px', background: 'var(--surface-2, #f8fafc)', fontSize: '0.84rem' } },
+              h('span', null, '🔁 Đang luyện tương tự cho ' + (examSession.sourceLabel || 'câu sai') + '. Nộp bài xong em quay lại để luyện tiếp các câu sai khác.'),
+              h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.78rem', padding: '5px 10px' }, onClick: returnToParentReview }, '← Quay lại kết quả bài trước')
+            ) : null,
             h('div', { className: 'ps-exam-header' },
               h('div', { className: 'ps-exam-title-group' },
                 h('h3', null, examSession.title),
