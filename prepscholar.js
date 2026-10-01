@@ -759,6 +759,30 @@
       count = Math.min(count || 5, pool.length);
       return pool.slice(0, count);
     },
+    // THÊM 30/9/2026 — "Luyện thêm N câu tương tự" ngay dưới lời giải của 1
+    // câu làm sai: ưu tiên câu CÙNG nano-point (cùng kỹ năng), thiếu thì bù
+    // câu cùng Bài; bỏ chính câu vừa sai; xáo trộn để mỗi lần bấm ra câu khác
+    // (createNanoDrill cũ luôn trả đúng mấy câu đầu tiên). QUESTION_BANK đã
+    // lọc theo chương đang mở nên không ra câu chương chưa học.
+    createSimilarDrill: function(question, count){
+      if(!question) return [];
+      count = count || 3;
+      function shuf(a){ a = a.slice(0); for(var i = a.length - 1; i > 0; i--){ var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+      var sameNano = question.nanoId ? shuf(QUESTION_BANK.filter(function(q){ return q.nanoId === question.nanoId && q.id !== question.id; })) : [];
+      var picked = sameNano.slice(0, count);
+      if(picked.length < count && question.baiKey){
+        var ids = {}; picked.forEach(function(q){ ids[q.id] = true; });
+        var sameBai = shuf(QUESTION_BANK.filter(function(q){ return q.baiKey === question.baiKey && q.id !== question.id && !ids[q.id]; }));
+        picked = picked.concat(sameBai.slice(0, count - picked.length));
+      }
+      return picked;
+    },
+    countSimilar: function(question){
+      if(!question) return 0;
+      return QUESTION_BANK.filter(function(q){
+        return q.id !== question.id && ((question.nanoId && q.nanoId === question.nanoId) || (question.baiKey && q.baiKey === question.baiKey));
+      }).length;
+    },
     // Luyện lại cả 1 "Bài" (gộp các Tag con) — dùng cho nút "Luyện bài này"
     // trên lưới 16 Bài của Trang chủ Học sinh.
     createBaiDrill: function(baiKey, count){

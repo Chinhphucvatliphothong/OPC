@@ -1210,6 +1210,24 @@
       setMasteryImpact(null);
     }
 
+    // THÊM 30/9/2026 — nút "Luyện thêm 3 câu tương tự" dưới lời giải câu sai.
+    function startSimilarDrill(q){
+      var questions = window.PrepScholarEngine.createSimilarDrill(q, 3);
+      if(!questions.length){
+        alert('Ngân hàng đề chưa có câu cùng dạng với câu này — thầy cô đang nạp thêm.');
+        return;
+      }
+      var session = { type: 'drill', title: 'Luyện tương tự: ' + (q.subtopic || q.topicName || 'cùng dạng'), questions: questions, isSubmitted: false, initialTimeSec: questions.length * 120 };
+      setExamSession(session);
+      setUserAnswers({});
+      setFlagged({});
+      setCurQIdx(0);
+      setTimeLeft(questions.length * 120);
+      setScoreResult(null);
+      setMasteryImpact(null);
+      try{ window.scrollTo(0, 0); }catch(e){}
+    }
+
     // Bắt đầu làm 1 đề cá nhân hóa mà GIÁO VIÊN đã giao (từ admin.html) —
     // câu hỏi đã có sẵn trong ae.questions (đúng định dạng QUESTION_BANK,
     // xem toStudentQuestionShape trong admin.html), không cần tạo lại.
@@ -2024,6 +2042,14 @@
                   q.trapTip ? h('div', { className: 'ps-trap-tip' },
                     h('b', null, '⚠️ Bẫy thường gặp (PrepScholar Note): '),
                     q.trapTip
+                  ) : null,
+                  // THÊM 30/9/2026 — sai thì luyện lại NGAY đúng dạng đó (kiểu
+                  // IXL), thay vì chỉ đọc lời giải rồi bỏ qua. Chỉ hiện khi
+                  // ngân hàng thật sự còn câu cùng dạng (khỏi bấm vào nút rỗng).
+                  (!item.isFullCorrect && !examSession.reviewOnly && window.PrepScholarEngine.countSimilar(q) > 0) ? h('div', { style: { marginTop: '12px' } },
+                    h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.86rem' }, onClick: function(){ startSimilarDrill(q); } },
+                      '🔁 Luyện thêm ' + Math.min(3, window.PrepScholarEngine.countSimilar(q)) + ' câu tương tự'),
+                    h('span', { style: { marginLeft: '10px', fontSize: '0.78rem', color: 'var(--muted)' } }, 'Làm lại ngay khi vừa hiểu lời giải để nhớ lâu hơn')
                   ) : null
                 )
               );
