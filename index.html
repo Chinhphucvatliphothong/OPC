@@ -135,6 +135,15 @@
   }
   .brand{ display:flex; align-items:center; gap:10px; white-space:nowrap; }
   .brand-logo{ display:block; height:36px; width:auto; } /* THÊM 1/10/2026 — logo ảnh SVG thay chữ */
+  /* THÊM 1/10/2026 — logo đổi màu theo giao diện: sáng = bản có ô tối, tối = bản nền tối (chữ trắng, lồng vàng).
+     Cùng cơ chế với bảng màu phía dưới: theo hệ điều hành, và data-theme ép tay thắng hệ điều hành. */
+  .brand-logo.logo-dark{ display:none; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .brand-logo.logo-light{ display:none; }
+    :root:not([data-theme="light"]) .brand-logo.logo-dark{ display:block; }
+  }
+  :root[data-theme="dark"] .brand-logo.logo-light{ display:none; }
+  :root[data-theme="dark"] .brand-logo.logo-dark{ display:block; }
   .brand-mark{ font-family:"Literata",serif; font-weight:700; font-size:1.25rem; letter-spacing: 0.01em; }
   .brand-sub{ font-size:0.78rem; color: var(--muted); }
   .navlinks{ display:flex; align-items:center; gap: 18px; row-gap:8px; font-size: 0.9rem; flex-wrap:wrap; justify-content:flex-end; }
@@ -750,7 +759,8 @@
 <nav class="top">
   <div class="wrap">
     <div class="brand">
-      <img class="brand-logo" src="/logo-horizontal.svg" alt="FaradayAI" width="152" height="36">
+      <img class="brand-logo logo-light" src="/logo-horizontal.svg" alt="FaradayAI" width="152" height="36">
+      <img class="brand-logo logo-dark" src="/logo-horizontal-dark.svg" alt="FaradayAI" width="152" height="36">
       <span class="brand-sub">Luyện Thi Vật Lí</span>
     </div>
     <div class="navlinks">
