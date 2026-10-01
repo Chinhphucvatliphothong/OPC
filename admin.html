@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OPC Quản Lý Học Sinh &amp; Ngân Hàng Đề</title>
+<title>FaradayAI Quản Lý Học Sinh &amp; Ngân Hàng Đề</title>
+<!-- THÊM 1/10/2026 — favicon FaradayAI -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,500&family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -431,7 +436,7 @@
   <div class="wrap">
     <div class="brand">
       <a href="/" style="text-decoration:none; color:inherit; display:flex; align-items:center; gap:10px;">
-        <span class="brand-mark">OPC</span>
+        <img src="/logo-horizontal-dark.svg" alt="FaradayAI" width="150" height="34" style="display:block; height:30px; width:auto;">
         <span class="brand-sub">Quản lý học sinh &amp; ngân hàng đề</span>
       </a>
     </div>
@@ -453,7 +458,7 @@
   </div>
 </main>
 
-<footer class="admin-foot">OPC — công cụ quản lý nội bộ, không chia sẻ công khai.</footer>
+<footer class="admin-foot">FaradayAI — công cụ quản lý nội bộ, không chia sẻ công khai.</footer>
 
 <script type="module">
 (async function(){
@@ -2761,7 +2766,7 @@
           h('span', { style: { fontSize: '1.2rem' } }, '📝'),
           h('div', null,
             h('div', { className: 'sm-alert-banner-title' }, pendingOnly.length + ' đăng ký chờ duyệt'),
-            h('div', { className: 'sm-alert-banner-sub' }, 'Từ trang giới thiệu OPC — duyệt để tự tạo tài khoản, hoặc từ chối nếu không phù hợp.')
+            h('div', { className: 'sm-alert-banner-sub' }, 'Từ trang giới thiệu FaradayAI — duyệt để tự tạo tài khoản, hoặc từ chối nếu không phù hợp.')
           )
         )
       ),
@@ -2804,7 +2809,7 @@
           h('button', {
             type: 'button', className: 'btn btn-secondary', style: { flex: 1, justifyContent: 'center' },
             onClick: function(){
-              copyToClipboard('Tài khoản luyện tập OPC của ' + justApproved.name + '\nTên đăng nhập: ' + justApproved.username + '\nMật khẩu: ' + justApproved.password + '\nVào luyện tại: https://opc-weld.vercel.app')
+              copyToClipboard('Tài khoản luyện tập FaradayAI của ' + justApproved.name + '\nTên đăng nhập: ' + justApproved.username + '\nMật khẩu: ' + justApproved.password + '\nVào luyện tại: https://opc-weld.vercel.app')
                 .then(function(){ props.fireToast('Đã sao chép — dán vào Zalo để gửi.'); });
             }
           }, '📋 Sao chép'),
@@ -3451,13 +3456,13 @@
             if(result.ok && result.data && result.data.report){
               next[s.id] = { text: composeMessage(result.data.report, s, week), loading: false, error: null };
             } else {
-              next[s.id] = { text: null, loading: false, error: (result.data && result.data.error) || 'OPC Learning AI đang bận, thử lại sau.' };
+              next[s.id] = { text: null, loading: false, error: (result.data && result.data.error) || 'FaradayAI đang bận, thử lại sau.' };
             }
             return next;
           });
           return result;
         }).catch(function(){
-          setDrafts(function(prev){ var next = Object.assign({}, prev); next[s.id] = { text: null, loading: false, error: 'Không kết nối được tới OPC Learning AI.' }; return next; });
+          setDrafts(function(prev){ var next = Object.assign({}, prev); next[s.id] = { text: null, loading: false, error: 'Không kết nối được tới FaradayAI.' }; return next; });
         });
     }
 
@@ -3510,7 +3515,7 @@
       h('div', { className: 'sm-modal', style: { maxWidth: '540px' }, role: 'dialog', 'aria-modal': 'true' },
         h('div', { className: 'sm-modal-head' }, h('h3', null, '🦉 Báo cáo cho ' + reviewStudent.name),
           h('button', { type: 'button', className: 'sm-modal-close', onClick: function(){ setReviewId(null); } }, h(IconClose))),
-        reviewDraft && reviewDraft.loading ? h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem' } }, 'OPC Learning AI đang soạn báo cáo…') :
+        reviewDraft && reviewDraft.loading ? h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem' } }, 'FaradayAI đang soạn báo cáo…') :
         reviewDraft && reviewDraft.error ? h('div', { className: 'banner warn' }, h('span', null, '⚠️'), h('div', null, reviewDraft.error)) :
         h('textarea', {
           value: (reviewDraft && reviewDraft.text) || '',
@@ -3544,7 +3549,7 @@
     return h('div', null,
       h('div', { className: 'card' },
         h('div', { className: 'sm-toolbar' },
-          h('div', null, h('h3', null, '🦉 Báo cáo Phụ huynh — OPC Learning AI'),
+          h('div', null, h('h3', null, '🦉 Báo cáo Phụ huynh — FaradayAI'),
             h('p', { className: 'sm-sub' }, 'AI soạn nháp từ dữ liệu luyện tập thật — thầy xem/sửa rồi Sao chép + gửi qua Zalo cá nhân.')),
           h('div', { className: 'sm-actions' },
             h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !staleStudents.length, onClick: handleGenerateAllMissing },
@@ -5794,7 +5799,7 @@
       lines.push('\\usepackage{answers}');
       lines.push('');
       lines.push('% ==========================================');
-      lines.push('% ĐỀ LUYỆN THI VẬT LÍ CÁ NHÂN HÓA - HỆ THỐNG OPC');
+      lines.push('% ĐỀ LUYỆN THI VẬT LÍ CÁ NHÂN HÓA - HỆ THỐNG FARADAYAI');
       lines.push('% Học sinh: ' + (s.name || 'Học sinh'));
       lines.push('% Mục tiêu điểm: ' + (s.targetScore || 8) + '+ | Mã đề: ' + code);
       lines.push('% Ma trận: M1(' + generated.stats.m1 + ') - M2(' + generated.stats.m2 + ') - M3(' + generated.stats.m3 + ') - M4(' + generated.stats.m4 + ')');
@@ -5806,7 +5811,7 @@
       lines.push('\\begin{document}');
       lines.push('');
       lines.push('\\noindent\\begin{minipage}{0.48\\textwidth}');
-      lines.push('  \\textbf{HỆ THỐNG LUYỆN THI VẬT LÍ OPC}\\\\');
+      lines.push('  \\textbf{HỆ THỐNG LUYỆN THI VẬT LÍ FARADAYAI}\\\\');
       lines.push('  \\textbf{LỘ TRÌNH CÁ NHÂN HÓA 2025 - 2026}');
       lines.push('\\end{minipage}');
       lines.push('\\hfill');
@@ -5864,7 +5869,7 @@
       lines.push('\\end{document}');
 
       var content = lines.join('\n');
-      var filename = 'De_CaNhanHoa_' + (s.name ? s.name.replace(/\s+/g, '_') : 'OPC') + '_MaDe' + code + '.tex';
+      var filename = 'De_CaNhanHoa_' + (s.name ? s.name.replace(/\s+/g, '_') : 'FaradayAI') + '_MaDe' + code + '.tex';
       var blob = new Blob([content], {type: 'application/x-tex;charset=utf-8;'});
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');

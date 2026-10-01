@@ -1,5 +1,5 @@
 /**
- * OPC Luyện Thi Vật Lí — Khoá/mở chương theo học sinh (dạy "cuốn chiếu")
+ * FaradayAI Luyện Thi Vật Lí — Khoá/mở chương theo học sinh (dạy "cuốn chiếu")
  * ---------------------------------------------------------------------
  * THÊM 28/9/2026. File dùng CHUNG cho cả admin.html (trang "Quản lý
  * chương") lẫn trang học sinh (opc-live-data.js, prepscholar.js,

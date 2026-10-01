@@ -3,10 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OPC Luyện Thi Vật Lí</title>
-<meta name="description" content="Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi OPC">
-<meta property="og:title" content="OPC Luyện Thi Vật Lí">
-<meta property="og:description" content="Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi OPC">
+<title>FaradayAI Luyện Thi Vật Lí</title>
+<!-- THÊM 1/10/2026 — favicon + logo FaradayAI (file logo-*.svg, favicon.*, apple-touch-icon.png, og-image.png ở thư mục gốc) -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="description" content="Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi FaradayAI">
+<meta property="og:title" content="FaradayAI Luyện Thi Vật Lí">
+<meta property="og:image" content="https://faradayai.vn/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta property="og:description" content="Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi FaradayAI">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;0,7..72,700;1,7..72,500&family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -124,7 +133,8 @@
     padding-block: 14px;
     gap: 16px;
   }
-  .brand{ display:flex; align-items:baseline; gap:8px; white-space:nowrap; }
+  .brand{ display:flex; align-items:center; gap:10px; white-space:nowrap; }
+  .brand-logo{ display:block; height:36px; width:auto; } /* THÊM 1/10/2026 — logo ảnh SVG thay chữ */
   .brand-mark{ font-family:"Literata",serif; font-weight:700; font-size:1.25rem; letter-spacing: 0.01em; }
   .brand-sub{ font-size:0.78rem; color: var(--muted); }
   .navlinks{ display:flex; align-items:center; gap: 18px; row-gap:8px; font-size: 0.9rem; flex-wrap:wrap; justify-content:flex-end; }
@@ -740,7 +750,7 @@
 <nav class="top">
   <div class="wrap">
     <div class="brand">
-      <span class="brand-mark">OPC</span>
+      <img class="brand-logo" src="/logo-horizontal.svg" alt="FaradayAI" width="152" height="36">
       <span class="brand-sub">Luyện Thi Vật Lí</span>
     </div>
     <div class="navlinks">
@@ -762,7 +772,7 @@
   <div class="wrap">
     <div class="eyebrow">Mô hình luyện thi theo chuyên đề · Vật Lí 12</div>
     <h1>Luyện đúng chuyên đề đang yếu, thay vì làm đề tràn lan.</h1>
-    <p class="lede">OPC chấm điểm đề chẩn đoán theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — thay vì phát một bộ đề chung cho cả lớp rồi chờ đến khi kiểm tra mới biết học sinh yếu ở đâu.</p>
+    <p class="lede">FaradayAI chấm điểm đề chẩn đoán theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — thay vì phát một bộ đề chung cho cả lớp rồi chờ đến khi kiểm tra mới biết học sinh yếu ở đâu.</p>
     <div class="hero-ctas">
       <a class="btn btn-primary" href="#tao-de">Thử công cụ tạo đề ↓</a>
       <a class="btn btn-ghost" href="#lien-he">Đăng ký học</a>
@@ -1002,7 +1012,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 01-12.4 7.55L4 20l1.1-4.2A8.5 8.5 0 1121 11.5z" stroke="currentColor" stroke-width="1.8"/></svg>
           </span>
           <div>
-            <div class="phone-name">OPC Luyện Thi Vật Lí</div>
+            <div class="phone-name">FaradayAI Luyện Thi Vật Lí</div>
             <div class="phone-sub">Tin nhắn tự động · Thứ Bảy, 18:00</div>
           </div>
         </div>
@@ -1063,7 +1073,7 @@
 <section class="closing" id="lien-he">
   <div class="wrap">
     <div class="kicker" style="color:var(--accent-strong);">Tuyển sinh</div>
-    <h2 class="section-title">Đăng ký học cùng OPC Luyện Thi Vật Lí</h2>
+    <h2 class="section-title">Đăng ký học cùng FaradayAI Luyện Thi Vật Lí</h2>
     <p class="section-sub">Mô hình luyện thi theo chuyên đề, dựng trên ngân hàng đề Vật Lí 12 đầy đủ — bản đồ năng lực và lộ trình tự động cập nhật hằng tuần theo đúng kết quả học tập của từng em.</p>
     <div class="card">
       <div id="dkFormWrap">
@@ -1117,7 +1127,7 @@
   </div>
 </section>
 
-<footer>OPC Luyện Thi Vật Lí — nền tảng luyện thi Vật Lí 12 theo chuyên đề.</footer>
+<footer>FaradayAI Luyện Thi Vật Lí — nền tảng luyện thi Vật Lí 12 theo chuyên đề.</footer>
 
 <script>
 (function(){
@@ -1346,7 +1356,7 @@
     // Gửi mail dự phòng — CHỈ dùng khi không ghi được thẳng vào Firestore
     // (mất mạng, OPC_LIVE chưa kịp nạp, bị chặn…) để không bao giờ mất lead.
     function fallbackMailto(data){
-      var subject = 'Đăng ký học OPC — ' + data.name;
+      var subject = 'Đăng ký học FaradayAI — ' + data.name;
       var body = [
         'Họ tên học sinh: ' + data.name,
         'Gmail: ' + data.gmail,
@@ -1354,7 +1364,7 @@
         'SĐT Zalo phụ huynh: ' + data.zalo,
         'Mã giới thiệu: ' + (data.referral || '(không có)'),
         '',
-        '(Gửi dự phòng từ trang giới thiệu OPC — hệ thống đăng ký trực tuyến không phản hồi kịp)'
+        '(Gửi dự phòng từ trang giới thiệu FaradayAI — hệ thống đăng ký trực tuyến không phản hồi kịp)'
       ].join('\n');
       var mailLink = document.createElement('a');
       mailLink.href = 'mailto:vovanthai2018tv@gmail.com?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);

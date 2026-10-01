@@ -1,0 +1,9 @@
+Đổi thương hiệu OPC -> FaradayAI, thêm logo + favicon + ảnh chia sẻ
+
+- Chuỗi hiển thị, prompt AI, tiêu đề, metadata: OPC -> FaradayAI
+- Logo lồng Faraday: logo-mark.svg, logo-horizontal(.dark).svg, favicon.svg/.ico/-32.png, apple-touch-icon.png, og-image.png
+- index.html / admin.html: favicon, logo ảnh ở đầu trang, og:image
+
+Giữ nguyên: tên biến trong code (window.OPC, OPC_LIVE...), cấu hình Firebase (opcluyenthivatli).
+
+Co-Authored-By: Claude <noreply@anthropic.com>

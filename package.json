@@ -1,7 +1,7 @@
 {
   "name": "opc-luyen-thi-vat-li",
   "version": "1.0.0",
-  "description": "Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi OPC",
+  "description": "Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi FaradayAI",
   "type": "module",
   "scripts": {
     "dev": "node server.js",

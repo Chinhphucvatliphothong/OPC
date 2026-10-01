@@ -1,5 +1,5 @@
 /**
- * OPC Luyện Thi Vật Lí — Bản đồ kiến thức "nano" (mô hình Squirrel AI)
+ * FaradayAI Luyện Thi Vật Lí — Bản đồ kiến thức "nano" (mô hình Squirrel AI)
  * ------------------------------------------------------------------
  * Squirrel AI phân rã mỗi môn học thành hàng nghìn "nano-point": đơn vị
  * kiến thức nhỏ nhất mà hệ thống có thể đo lường mức độ nắm vững riêng

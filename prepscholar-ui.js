@@ -1,5 +1,5 @@
 /**
- * OPC Luyện Thi Vật Lí - PrepScholar UI Component
+ * FaradayAI Luyện Thi Vật Lí - PrepScholar UI Component
  * Giao diện tương tác trực tiếp theo chuẩn PrepScholar
  */
 
@@ -469,7 +469,7 @@
       h('div', { className: 'ps-radar-legend' },
         h('span', { className: 'ps-radar-legend-item' }, h('i', { className: 'ps-radar-swatch', style: { background: 'var(--accent-strong)' } }), 'Học sinh'),
         peerRadar5
-          ? h('span', { className: 'ps-radar-legend-item' }, h('i', { className: 'ps-radar-swatch dashed', style: { borderColor: 'var(--muted)' } }), 'Mặt bằng chung OPC (' + peerRadar5.sampleSize + ' bạn)')
+          ? h('span', { className: 'ps-radar-legend-item' }, h('i', { className: 'ps-radar-swatch dashed', style: { borderColor: 'var(--muted)' } }), 'Mặt bằng chung FaradayAI (' + peerRadar5.sampleSize + ' bạn)')
           : h('span', { className: 'ps-radar-legend-item muted' }, 'Chưa đủ học sinh khác để so sánh')
       ),
       !hasAnyStudent ? h('p', { className: 'ps-radar-empty-note' }, 'Chưa có chiều nào đủ dữ liệu thật — làm thêm bài kiểm tra đầu vào/luyện tập để Radar hiện số liệu của em.') : null
@@ -703,7 +703,7 @@
       return list.map(function(n){ var c = window.OPC_CURRICULUM.getChapter(n); return 'Chương ' + n + (c ? ' (' + c.name + ')' : ''); }).join(', ');
     }
 
-    // "Mặt bằng chung OPC" cho Radar 5 chiều — trung bình cộng radar5 THẬT
+    // "Mặt bằng chung FaradayAI" cho Radar 5 chiều — trung bình cộng radar5 THẬT
     // của mọi học sinh đã có số liệu (đọc 1 lần collection student_stats —
     // SỬA 25/9/2026: giờ cần đã đăng nhập mới đọc được, không còn công khai
     // — xem loadPeerRadar5 trong opc-live-data.js). null nếu chưa đủ dữ liệu
@@ -1038,7 +1038,7 @@
     var attempts = attemptsState[0];
     var setAttempts = attemptsState[1];
 
-    // OPC Learning AI (gia sư ảo cá nhân hoá) — trạng thái giải thích AI theo TỪNG câu
+    // FaradayAI (gia sư ảo cá nhân hoá) — trạng thái giải thích AI theo TỪNG câu
     // sai trong Sổ tay câu sai, key theo item.id: {loading, text, error}.
     // Gọi Vercel Serverless Function /api/ai-tutor (giữ API key Gemini ở
     // server, xem api/ai-tutor.js) — KHÔNG gọi thẳng Gemini từ trình duyệt.
@@ -1051,7 +1051,7 @@
       if(!q || !q.stem){
         setAiTutor(function(prev){
           var next = Object.assign({}, prev);
-          next[item.id] = { loading: false, text: null, error: 'Không tìm thấy đủ nội dung câu hỏi để hỏi OPC Learning AI.' };
+          next[item.id] = { loading: false, text: null, error: 'Không tìm thấy đủ nội dung câu hỏi để hỏi FaradayAI.' };
           return next;
         });
         return;
@@ -1083,20 +1083,20 @@
             if(result.ok && result.data && result.data.explanation){
               next[item.id] = { loading: false, text: result.data.explanation, error: null };
             } else {
-              next[item.id] = { loading: false, text: null, error: (result.data && result.data.error) || 'OPC Learning AI đang bận, thử lại sau.' };
+              next[item.id] = { loading: false, text: null, error: (result.data && result.data.error) || 'FaradayAI đang bận, thử lại sau.' };
             }
             return next;
           });
         }).catch(function(){
           setAiTutor(function(prev){
             var next = Object.assign({}, prev);
-            next[item.id] = { loading: false, text: null, error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng và thử lại.' };
+            next[item.id] = { loading: false, text: null, error: 'Không kết nối được tới FaradayAI — kiểm tra mạng và thử lại.' };
             return next;
           });
         });
     }
 
-    // OPC Learning AI — Gợi ý học tập hôm nay (Trang chủ). Khác với
+    // FaradayAI — Gợi ý học tập hôm nay (Trang chủ). Khác với
     // askAiTutor (giải thích 1 CÂU sai cụ thể), hàm này gửi TOÀN CẢNH mức
     // thành thạo hiện tại (5 nano-point yếu nhất + mastery theo chuyên đề +
     // vài câu sai gần nhất + điểm dự báo/mục tiêu) để AI "suy luận" ra nên
@@ -1130,10 +1130,10 @@
           if(result.ok && result.data && result.data.suggestion){
             setAiSuggest({ loading: false, text: result.data.suggestion, error: null, fetchedOnce: true });
           } else {
-            setAiSuggest({ loading: false, text: null, error: (result.data && result.data.error) || 'OPC Learning AI đang bận, thử lại sau.', fetchedOnce: true });
+            setAiSuggest({ loading: false, text: null, error: (result.data && result.data.error) || 'FaradayAI đang bận, thử lại sau.', fetchedOnce: true });
           }
         }).catch(function(){
-          setAiSuggest({ loading: false, text: null, error: 'Không kết nối được tới OPC Learning AI — kiểm tra mạng và thử lại.', fetchedOnce: true });
+          setAiSuggest({ loading: false, text: null, error: 'Không kết nối được tới FaradayAI — kiểm tra mạng và thử lại.', fetchedOnce: true });
         });
     }
 
@@ -1512,7 +1512,7 @@
         h('div', { className: 'ps-level-top' },
           h('div', { className: 'ps-level-badge' }, 'Cấp ' + lx.level),
           h('div', { className: 'ps-level-titles' },
-            h('div', { className: 'ps-level-title' }, chuDeInfo.warriorTitle || 'Chiến Binh OPC'),
+            h('div', { className: 'ps-level-title' }, chuDeInfo.warriorTitle || 'Chiến Binh FaradayAI'),
             h('div', { className: 'ps-level-xp-text' }, lx.xpIntoLevel + ' / ' + lx.xpForNextLevel + ' XP')
           )
         ),
@@ -2254,8 +2254,8 @@
                   h('div', { className: 'ps-exam-title-group' },
                     h('h3', null, '⚡ ' + examSession.title),
                     h('p', null, 'Câu ' + qNo + ' / ' + ADAPTIVE_TARGET_COUNT + ' · Hệ thống tự chọn câu tiếp theo ngay sau khi bạn trả lời'),
-                    aiAdaptive.loading ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 OPC Learning AI đang phân tích để định hướng lộ trình…') : null,
-                    !aiAdaptive.loading && aiAdaptive.reason ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 OPC Learning AI: ' + aiAdaptive.reason) : null
+                    aiAdaptive.loading ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 FaradayAI đang phân tích để định hướng lộ trình…') : null,
+                    !aiAdaptive.loading && aiAdaptive.reason ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 FaradayAI: ' + aiAdaptive.reason) : null
                   ),
                   h('button', {
                     type: 'button',
@@ -2813,14 +2813,14 @@
                 },
                   h('span', { className: 'ps-ai-tutor-trigger-avatar' }, '🦉'),
                   h('span', { className: 'ps-ai-tutor-trigger-text' },
-                    h('b', null, (ai && ai.loading) ? 'OPC Learning AI đang soạn câu trả lời…' : 'Hỏi OPC Learning AI'),
+                    h('b', null, (ai && ai.loading) ? 'FaradayAI đang soạn câu trả lời…' : 'Hỏi FaradayAI'),
                     !(ai && ai.loading) ? h('span', { className: 'ps-ai-tutor-trigger-sub' }, 'Giải thích lại vì sao bạn làm sai') : null
                   )
                 ),
                 ai && ai.loading ? h('div', { className: 'ps-ai-tutor-card typing' },
                   h('span', { className: 'ps-ai-tutor-avatar sm' }, '🦉'),
                   h('span', { className: 'ps-ai-tutor-dots' }, h('span'), h('span'), h('span')),
-                  h('span', { className: 'ps-ai-tutor-typing-text' }, 'OPC Learning AI đang soạn câu trả lời…')
+                  h('span', { className: 'ps-ai-tutor-typing-text' }, 'FaradayAI đang soạn câu trả lời…')
                 ) : null,
                 ai && !ai.loading && ai.error ? h('div', { className: 'ps-ai-tutor-card error' },
                   h('span', { className: 'ps-ai-tutor-card-icon' }, '⚠️'),
@@ -2830,7 +2830,7 @@
                   h('div', { className: 'ps-ai-tutor-card-head' },
                     h('span', { className: 'ps-ai-tutor-avatar' }, '🦉'),
                     h('div', null,
-                      h('div', { className: 'ps-ai-tutor-name' }, 'OPC Learning AI'),
+                      h('div', { className: 'ps-ai-tutor-name' }, 'FaradayAI'),
                       h('div', { className: 'ps-ai-tutor-tag' }, 'Gia sư ảo cá nhân hoá')
                     )
                   ),
@@ -3033,7 +3033,7 @@
               h('div', { className: 'ps-radar-card' },
                 h('div', { className: 'ps-radar-card-head' },
                   h('h4', { style: { margin: 0, fontSize: '0.98rem', fontWeight: 700 } }, '🧭 Radar năng lực 5 chiều'),
-                  h('p', { style: { margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--ink-2)' } }, 'Đối sánh học sinh vs Mặt bằng chung OPC')
+                  h('p', { style: { margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--ink-2)' } }, 'Đối sánh học sinh vs Mặt bằng chung FaradayAI')
                 ),
                 renderRadarChart(student.radar5, peerRadar5)
               ),
@@ -3043,7 +3043,7 @@
                   h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
                     h('span', { className: 'ps-ai-tutor-avatar' }, '🦉'),
                     h('div', null,
-                      h('div', { className: 'ps-ai-tutor-name' }, 'OPC Learning AI gợi ý hôm nay'),
+                      h('div', { className: 'ps-ai-tutor-name' }, 'FaradayAI gợi ý hôm nay'),
                       h('div', { className: 'ps-ai-tutor-tag' }, 'Dựa trên lịch sử làm bài gần đây của em')
                     )
                   ),
@@ -3057,7 +3057,7 @@
                 aiSuggest.loading ? h('div', { className: 'ps-ai-tutor-card typing', style: { marginTop: '12px' } },
                   h('span', { className: 'ps-ai-tutor-avatar sm' }, '🦉'),
                   h('span', { className: 'ps-ai-tutor-dots' }, h('span'), h('span'), h('span')),
-                  h('span', { className: 'ps-ai-tutor-typing-text' }, 'OPC Learning AI đang phân tích lịch sử làm bài…')
+                  h('span', { className: 'ps-ai-tutor-typing-text' }, 'FaradayAI đang phân tích lịch sử làm bài…')
                 ) : null,
                 !aiSuggest.loading && aiSuggest.error ? h('div', { className: 'ps-ai-tutor-card error', style: { marginTop: '12px' } },
                   h('span', { className: 'ps-ai-tutor-card-icon' }, '⚠️'),
@@ -3065,7 +3065,7 @@
                 ) : null,
                 !aiSuggest.loading && aiSuggest.text ? h('p', { className: 'ps-ai-tutor-text', style: { marginTop: '12px' } }, aiSuggest.text) : null,
                 !aiSuggest.loading && aiSuggest.text ? h('div', { className: 'ps-ai-tutor-disclaimer' }, '✦ Gợi ý do AI tạo ra dựa trên dữ liệu làm bài — không thay thế hướng dẫn của thầy cô.') : null,
-                !aiSuggest.loading && !aiSuggest.error && !aiSuggest.text ? h('p', { className: 'ps-ai-tutor-text', style: { marginTop: '12px', color: 'var(--muted)' } }, 'Bấm "Gợi ý mới" để OPC Learning AI phân tích và đề xuất phần nên ôn hôm nay.') : null
+                !aiSuggest.loading && !aiSuggest.error && !aiSuggest.text ? h('p', { className: 'ps-ai-tutor-text', style: { marginTop: '12px', color: 'var(--muted)' } }, 'Bấm "Gợi ý mới" để FaradayAI phân tích và đề xuất phần nên ôn hôm nay.') : null
               ),
 
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },

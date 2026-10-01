@@ -1,5 +1,5 @@
 /**
- * OPC Luyện Thi Vật Lí - PrepScholar Adaptive Learning Engine
+ * FaradayAI Luyện Thi Vật Lí - PrepScholar Adaptive Learning Engine
  * Mô phỏng toàn diện cơ chế học thích ứng thông minh của PrepScholar:
  * 1. Đánh giá chẩn đoán & Đo lường năng lực (% Mastery theo chuyên đề)
  * 2. Luyện tập tập trung (Focused Drill) theo điểm yếu nhất
