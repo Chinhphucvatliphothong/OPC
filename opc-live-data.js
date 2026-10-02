@@ -263,6 +263,31 @@ async function loadAssignedExams(studentId, max){
 // tránh bị spam ghi rác. Thầy cô duyệt trong admin.html (panel "Danh sách
 // học sinh" — banner "Đăng ký chờ duyệt") rồi mới tạo tài khoản thật, tự
 // sinh username/mật khẩu — KHÔNG còn thu mật khẩu tự đặt của học sinh nữa.
+// THÊM 2/10/2026 — chuẩn hoá mã giới thiệu: bỏ dấu tiếng Việt, bỏ khoảng trắng, IN HOA,
+// chỉ giữ A-Z 0-9 _ -. Mã cũ sinh từ tên có dấu (vd. "TÚ123VLY") — học sinh gõ
+// "TU123VLY" vẫn khớp khi admin so khớp bằng cùng hàm này (xem admin.html).
+function normalizeReferralCode(v){
+  return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+}
+
+// THÊM 2/10/2026 — mức ưu đãi giới thiệu do admin đặt (settings/referral, đọc công khai).
+// discountVnd: giảm cho học sinh mới nhập mã hợp lệ; commissionVnd: cộng cho người giới thiệu.
+// Chưa cấu hình/lỗi mạng -> mặc định 100.000đ (đúng mức cũ).
+async function loadReferralSettings(){
+  var out = { discountVnd: 100000, commissionVnd: 100000 };
+  try{
+    var snap = await getDoc(doc(db, 'settings', 'referral'));
+    if(snap.exists()){
+      var d = snap.data() || {};
+      if(isFinite(Number(d.discountVnd)) && Number(d.discountVnd) >= 0) out.discountVnd = Number(d.discountVnd);
+      if(isFinite(Number(d.commissionVnd)) && Number(d.commissionVnd) >= 0) out.commissionVnd = Number(d.commissionVnd);
+    }
+  }catch(e){ console.warn('Lỗi tải ưu đãi giới thiệu:', e); }
+  return out;
+}
+
 async function submitRegistration(data){
   try{
     var ref = doc(collection(db, 'registrations'));
@@ -271,7 +296,7 @@ async function submitRegistration(data){
       gmail: String((data && data.gmail) || '').slice(0, 119),
       phone: String((data && data.phone) || '').slice(0, 19),
       parentZalo: String((data && data.parentZalo) || '').slice(0, 19),
-      referralCode: String((data && data.referralCode) || '').slice(0, 29),
+      referralCode: normalizeReferralCode((data && data.referralCode) || '').slice(0, 29),
       status: 'pending',
       createdAt: new Date().toISOString(),
       source: 'landing_page'
@@ -586,6 +611,7 @@ window.OPC_LIVE = {
   saveStudentStats: saveStudentStats,
   loadPeerRadar5: loadPeerRadar5,
   loadPricingPlans: loadPricingPlans,
+  loadReferralSettings: loadReferralSettings,
   loadSpecialExamList: loadSpecialExamList,
   loadSpecialExam: loadSpecialExam,
   saveSpecialAttempt: saveSpecialAttempt

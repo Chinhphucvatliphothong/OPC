@@ -1116,8 +1116,12 @@
             <div class="signup-field full">
               <label for="dk-referral">Mã giới thiệu (nếu có)</label>
               <input type="text" id="dk-referral" name="dk-referral" placeholder="Vd. CHAU815VLY — bỏ trống nếu không có" autocomplete="off" style="text-transform:uppercase;">
-              <div class="signup-hint">Người giới thiệu (nếu có mã) sẽ được giảm 100.000đ khi đăng ký được xác nhận.</div>
+              <div class="signup-hint" id="dk-referral-hint">Có mã giới thiệu của bạn bè? Nhập vào để nhận ưu đãi khi đăng ký được xác nhận.</div>
             </div>
+          </div>
+          <div style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
+            <label for="dk-website">Website (để trống)</label>
+            <input type="text" id="dk-website" name="dk-website" tabindex="-1" autocomplete="off">
           </div>
           <div class="signup-privacy">Thông tin đăng ký được gửi thẳng vào hệ thống của giáo viên để xét duyệt — chưa tạo tài khoản ngay.</div>
           <div class="signup-actions">
@@ -1343,7 +1347,9 @@
       var gmail = document.getElementById('dk-gmail').value.trim();
       var phone = document.getElementById('dk-phone').value.trim();
       var zalo = document.getElementById('dk-parent-zalo').value.trim();
-      var referral = document.getElementById('dk-referral').value.trim().toUpperCase();
+      // SỬA 2/10/2026 — chuẩn hoá mã giới thiệu (bỏ dấu/khoảng trắng, in hoa) để gõ sai kiểu vẫn khớp.
+      var referral = document.getElementById('dk-referral').value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
 
       if(!name){ setError('dk-name', 'Vui lòng nhập họ tên.'); ok = false; }
       else setError('dk-name', '');
@@ -1404,6 +1410,18 @@
       });
     }
 
+    // THÊM 2/10/2026 — hiện đúng mức giảm admin đang đặt (settings/referral).
+    waitForLive(6000).then(function(live){
+      if(!live || !live.loadReferralSettings) return null;
+      return live.loadReferralSettings();
+    }).then(function(cfg){
+      var hint = document.getElementById('dk-referral-hint');
+      if(!cfg || !hint) return;
+      var d = Number(cfg.discountVnd) || 0;
+      if(d > 0) hint.textContent = 'Nhập mã giới thiệu của bạn bè để được giảm ' + d.toLocaleString('vi-VN') + 'đ học phí khi đăng ký được xác nhận.';
+      else hint.textContent = 'Mã giới thiệu (nếu có) giúp thầy ghi nhận người giới thiệu bạn — không bắt buộc.';
+    }).catch(function(){});
+
     form.addEventListener('submit', function(e){
       e.preventDefault();
       var errBox = document.getElementById('dkFormErr');
@@ -1413,6 +1431,9 @@
         if(errBox) errBox.textContent = 'Vui lòng kiểm tra lại các mục còn thiếu hoặc chưa hợp lệ ở trên.';
         return;
       }
+      // THÊM 2/10/2026 — ô bẫy chống bot: người thật không thấy/không điền; bot điền thì báo "thành công" giả, không ghi gì.
+      var trap = document.getElementById('dk-website');
+      if(trap && trap.value){ showSuccess(); return; }
       var btn = document.getElementById('dkSubmitBtn');
       if(btn){ btn.disabled = true; btn.textContent = 'Đang gửi…'; }
 
@@ -1425,12 +1446,14 @@
         if(res && res.ok){
           showSuccess();
         } else {
+          // SỬA 2/10/2026 — trước đây lỗi vẫn báo "thành công" dù chưa gửi được gì (mailto có thể không mở).
+          // Nay báo rõ chưa gửi được, mở thư dự phòng và để học sinh bấm gửi lại.
           fallbackMailto(data);
-          showSuccess();
+          if(errBox) errBox.textContent = 'Chưa gửi được lên hệ thống. Bạn bấm "Gửi đăng ký" lần nữa, hoặc gửi email vừa mở ra để thầy nhận được thông tin.';
         }
       }).catch(function(){
         fallbackMailto(data);
-        showSuccess();
+        if(errBox) errBox.textContent = 'Chưa gửi được lên hệ thống. Bạn bấm "Gửi đăng ký" lần nữa, hoặc gửi email vừa mở ra để thầy nhận được thông tin.';
       }).finally(function(){
         if(btn){ btn.disabled = false; btn.textContent = 'Gửi đăng ký'; }
       });

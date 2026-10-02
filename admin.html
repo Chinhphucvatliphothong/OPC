@@ -512,7 +512,13 @@
     var getStorage = stMod.getStorage, ref = stMod.ref, uploadBytesResumable = stMod.uploadBytesResumable,
         getDownloadURL = stMod.getDownloadURL, deleteObject = stMod.deleteObject;
 
-    var app = initializeApp(firebaseConfig);
+    // SỬA 2/10/2026 — TÁCH PHIÊN ĐĂNG NHẬP CỦA ADMIN KHỎI HỌC SINH: Firebase Auth lưu
+    // phiên theo (apiKey + tên app) trong IndexedDB và ĐỒNG BỘ GIỮA CÁC TAB cùng
+    // trình duyệt. Trước đây trang này dùng app mặc định, nên khi có em học sinh
+    // đang đăng nhập (index.html) ở tab khác, đoạn onAuthStateChanged bên dưới
+    // thấy "không phải admin" và gọi signOut -> em bị đăng xuất âm thầm, ghi bài
+    // bị permission-denied. Đặt tên app riêng 'opc-admin' để hai phiên không đụng nhau.
+    var app = initializeApp(firebaseConfig, 'opc-admin');
     var auth = getAuth(app);
     var db = getFirestore(app);
     var storage = getStorage(app);
@@ -842,6 +848,22 @@
       }
     };
 
+    // ================= Ưu đãi giới thiệu (settings/referral) ===================
+    // THÊM 2/10/2026 — doc đơn { discountVnd, commissionVnd } (đọc công khai để trang
+    // đăng ký hiện đúng mức giảm; ghi chỉ admin — xem firestore.rules "settings").
+    //  - discountVnd: giảm học phí cho học sinh MỚI nhập mã giới thiệu hợp lệ.
+    //  - commissionVnd: cộng vào "số dư hoa hồng" của NGƯỜI GIỚI THIỆU.
+    OPC.referral = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(doc(db, 'settings', 'referral'), function(snap){
+          onNext(snap.exists() ? snap.data() : null);
+        }, onErr);
+      },
+      save: function(data){
+        return setDoc(doc(db, 'settings', 'referral'), Object.assign({}, data, { updatedAt: serverTimestamp() }), { merge: true });
+      }
+    };
+
     // ================= Khoá/mở chương theo học sinh ============================
     // THÊM 28/9/2026 — doc đơn "settings/curriculum" { defaultUnlockedChapters }
     // (chương mở mặc định cho cả lớp — "settings" đọc công khai, ghi chỉ admin,
@@ -906,6 +928,17 @@
     return (parts[parts.length-1] || '?').charAt(0).toUpperCase();
   }
   function fmtVND(n){ return (n||0).toLocaleString('vi-VN') + ' đ'; }
+  // THÊM 2/10/2026 — mã giới thiệu: chuẩn hoá để so khớp (bỏ dấu, khoảng trắng, in hoa; mã cũ có thể
+  // mang dấu như "TÚ123VLY") và sinh mã mới KHÔNG dấu để học sinh gõ được trên điện thoại.
+  function normCode(v){
+    return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D')
+      .toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+  }
+  function digitsOnly(v){ return String(v || '').replace(/\D/g, ''); }
+  function makeReferralCode(name){
+    var last = String(name || 'HS').trim().split(/\s+/).pop();
+    return (normCode(last) || 'HS') + Math.floor(100 + Math.random() * 900) + 'VLY';
+  }
   // Mở thẳng khung chat Zalo của 1 số điện thoại VN — zalo.me nhận cả dạng
   // 0xxxxxxxxx lẫn 84xxxxxxxxx, ở đây chuẩn hoá về 84xxxxxxxxx cho chắc.
   function zaloLink(phone){
@@ -2350,12 +2383,25 @@
     }, []);
     var pendingOnly = pendingRegistrations.filter(function(r){ return r.status === 'pending'; });
 
-    // Hoa hồng giới thiệu — số tiền CỐ ĐỊNH mỗi lượt giới thiệu thành công,
-    // cộng thẳng vào commissionBalance của học sinh có referralCode trùng
-    // khớp lúc duyệt đăng ký. Đây là giá trị mặc định hợp lý, thầy có thể
-    // nhờ sửa lại con số này bất cứ lúc nào.
-    var REFERRAL_COMMISSION_VND = 100000;
-
+    // SỬA 2/10/2026 — ƯU ĐÃI GIỚI THIỆU do admin tự chỉnh (panel "🎁 Ưu đãi giới thiệu" ở tab
+    // "💰 Gói dịch vụ", lưu settings/referral). Trước đây hoa hồng cố định 100.000đ trong code
+    // và học sinh mới nhập mã không được gì. Mặc định 100.000đ cho cả hai (đúng mức cũ).
+    var DEFAULT_REFERRAL_VND = 100000;
+    var referralCfgState = React.useState(null); var referralCfg = referralCfgState[0], setReferralCfg = referralCfgState[1];
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.referral) return;
+      var unsub = OPCref.referral.subscribe(function(d){ setReferralCfg(d || {}); }, function(){ setReferralCfg({}); });
+      return function(){ unsub(); };
+    }, []);
+    function refAmount(key){
+      var v = referralCfg ? Number(referralCfg[key]) : NaN;
+      return (isFinite(v) && v >= 0) ? v : DEFAULT_REFERRAL_VND;
+    }
+    function findReferrer(code){
+      var c = normCode(code);
+      if(!c) return null;
+      return students.filter(function(s){ return normCode(s.referralCode) === c; })[0] || null;
+    }
     var approvingIdState = React.useState(null); var approvingId = approvingIdState[0], setApprovingId = approvingIdState[1];
     var justApprovedState = React.useState(null); var justApproved = justApprovedState[0], setJustApproved = justApprovedState[1]; // {name, username, password, parentPhone}
 
@@ -2375,10 +2421,15 @@
         return;
       }
       setApprovingId(reg.id);
-      var lastName = (reg.name || 'HS').trim().split(/\s+/).pop().toUpperCase();
-      var code = lastName + Math.floor(100 + Math.random() * 900) + 'VLY';
+      var code = makeReferralCode(reg.name);
       var username = emailLower.split('@')[0];
       var password = genPassword();
+      // Người giới thiệu (nếu học sinh nhập mã khớp 1 học sinh có sẵn) -> học sinh mới được giảm học phí,
+      // người giới thiệu được cộng hoa hồng. Mã không khớp thì KHÔNG áp ưu đãi nhưng báo rõ cho thầy.
+      var refTyped = (reg.referralCode || '').trim();
+      var referrer = refTyped ? findReferrer(refTyped) : null;
+      var discountVnd = referrer ? refAmount('discountVnd') : 0;
+      var commissionVnd = referrer ? refAmount('commissionVnd') : 0;
       var newStu = {
         name: (reg.name || '').trim(), username: username, password: password,
         email: reg.gmail || '', phone: reg.phone || '',
@@ -2387,20 +2438,24 @@
         parentName: 'Chưa cập nhật', parentPhone: reg.parentZalo || '', parentEmail: '',
         referralCode: code, commissionBalance: 0
       };
+      if(referrer){
+        newStu.referredByCode = referrer.referralCode || normCode(refTyped);
+        newStu.referredById = referrer.id;
+        newStu.referralDiscountVnd = discountVnd;
+      }
       OPCref.students.add(newStu).then(function(newRef){
         var jobs = [OPCref.registrations.setStatus(reg.id, { status: 'converted', convertedStudentId: newRef.id, convertedAt: new Date().toISOString() })];
-        // Cộng hoa hồng cho người giới thiệu, nếu mã trùng khớp 1 học sinh có sẵn.
-        var refCodeTyped = (reg.referralCode || '').trim().toUpperCase();
-        if(refCodeTyped){
-          var referrer = students.filter(function(s){ return (s.referralCode || '').toUpperCase() === refCodeTyped; })[0];
-          if(referrer){
-            jobs.push(OPCref.students.update(referrer.id, { commissionBalance: (Number(referrer.commissionBalance) || 0) + REFERRAL_COMMISSION_VND }));
-          }
+        if(referrer && commissionVnd > 0){
+          jobs.push(OPCref.students.update(referrer.id, { commissionBalance: (Number(referrer.commissionBalance) || 0) + commissionVnd }));
         }
         return Promise.all(jobs);
       }).then(function(){
         props.fireToast('Đã tạo tài khoản cho ' + newStu.name + '.');
-        setJustApproved({ name: newStu.name, username: username, password: password, parentPhone: reg.parentZalo || '' });
+        setJustApproved({
+          name: newStu.name, username: username, password: password, parentPhone: reg.parentZalo || '',
+          discountVnd: discountVnd, referrerName: referrer ? referrer.name : '',
+          codeNotFound: !!(refTyped && !referrer), typedCode: refTyped
+        });
       }).catch(function(err){
         console.error('Lỗi duyệt đăng ký:', err);
         props.fireToast('Không duyệt được đăng ký này — thử lại.', true);
@@ -2708,8 +2763,7 @@
       var emailLower = form.email.trim().toLowerCase();
       var dup = students.some(function(s){ return (s.email||'').toLowerCase()===emailLower; });
       if(dup){ props.fireToast('Email này đã có trong danh sách — kiểm tra lại.', true); return; }
-      var lastName = form.name.trim().split(/\s+/).pop().toUpperCase();
-      var code = lastName + Math.floor(100+Math.random()*900) + 'VLY';
+      var code = makeReferralCode(form.name);
       var newStu = {
         name: form.name.trim(), username: form.username.trim() || form.email.split('@')[0],
         password: form.password.trim() || '123', email: form.email.trim(), phone: form.phone.trim(),
@@ -2760,6 +2814,30 @@
     // Banner "Đăng ký chờ duyệt" — ưu tiên hiện TRÊN cảnh báo học sinh yếu
     // (đây là lead mới, việc kinh doanh) — reuse đúng khung .sm-alert-banner
     // nhưng đổi màu accent để phân biệt (xem CSS .sm-alert-banner.leads).
+    // THÊM 2/10/2026 — nhãn kiểm tra ngay trên dòng đăng ký chờ duyệt: mã giới thiệu có khớp ai không,
+    // đăng ký trùng (Gmail đã có tài khoản / gửi nhiều lần), trùng SĐT với người giới thiệu.
+    function regRefLabel(reg){
+      if(!reg.referralCode) return '';
+      var r = findReferrer(reg.referralCode);
+      return r ? ' · Mã GT: ' + reg.referralCode + ' ✓ (' + r.name + ')' : ' · Mã GT: ' + reg.referralCode + ' ⚠ không khớp học sinh nào';
+    }
+    function regWarnLabel(reg){
+      var warns = [];
+      var em = (reg.gmail || '').trim().toLowerCase();
+      if(em && students.some(function(s){ return (s.email || '').toLowerCase() === em; })) warns.push('Gmail đã có tài khoản');
+      var sameCount = pendingOnly.filter(function(o){
+        return o.id !== reg.id && ((em && (o.gmail || '').trim().toLowerCase() === em) || (digitsOnly(o.phone) && digitsOnly(o.phone) === digitsOnly(reg.phone)));
+      }).length;
+      if(sameCount) warns.push('đăng ký trùng ' + sameCount + ' lần khác');
+      var r = reg.referralCode ? findReferrer(reg.referralCode) : null;
+      if(r){
+        var mine = [digitsOnly(reg.phone), digitsOnly(reg.parentZalo)].filter(Boolean);
+        var theirs = [digitsOnly(r.phone), digitsOnly(r.parentPhone)].filter(Boolean);
+        if(mine.some(function(x){ return theirs.indexOf(x) > -1; })) warns.push('trùng SĐT với người giới thiệu');
+      }
+      return warns.length ? ' · ⚠ ' + warns.join(', ') : '';
+    }
+
     var pendingRegBanner = !pendingOnly.length ? null : h('div', { className: 'sm-alert-banner leads' },
       h('div', { className: 'sm-alert-banner-head' },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
@@ -2780,8 +2858,9 @@
               h('div', { className: 'sm-alert-row-name' }, reg.name),
               h('div', { className: 'sm-alert-row-reasons' },
                 reg.gmail + ' · SĐT ' + reg.phone + ' · Zalo PH ' + reg.parentZalo +
-                (reg.referralCode ? ' · Mã GT: ' + reg.referralCode : '') +
-                (createdLabel ? ' · Gửi ' + createdLabel : '')
+                regRefLabel(reg) +
+                (createdLabel ? ' · Gửi ' + createdLabel : '') +
+                regWarnLabel(reg)
               )
             ),
             h('div', { style: { display: 'flex', gap: '8px', flexShrink: 0 } },
@@ -2803,13 +2882,17 @@
         h('p', { style: { fontSize: '0.85rem', color: 'var(--ink-2)', marginBottom: '10px' } }, 'Gửi thông tin đăng nhập này cho phụ huynh qua Zalo:'),
         h('div', { className: 'sm-info-block', style: { marginTop: 0 } },
           h('p', null, h('b', null, 'Tên đăng nhập: '), h('span', { className: 'sm-mono-pill' }, justApproved.username)),
-          h('p', null, h('b', null, 'Mật khẩu: '), h('span', { className: 'sm-mono-pill' }, justApproved.password))
+          h('p', null, h('b', null, 'Mật khẩu: '), h('span', { className: 'sm-mono-pill' }, justApproved.password)),
+          justApproved.referrerName && justApproved.discountVnd > 0
+            ? h('p', null, h('b', null, '🎁 Giảm học phí: '), fmtVND(justApproved.discountVnd) + ' (mã của ' + justApproved.referrerName + ') — nhớ trừ khi thu học phí.') : null,
+          justApproved.codeNotFound
+            ? h('p', { style: { color: 'var(--danger, #b3261e)' } }, '⚠ Mã giới thiệu "' + justApproved.typedCode + '" không khớp học sinh nào — chưa áp ưu đãi. Kiểm tra lại với phụ huynh.') : null
         ),
         h('div', { style: { display: 'flex', gap: '10px', marginTop: '14px' } },
           h('button', {
             type: 'button', className: 'btn btn-secondary', style: { flex: 1, justifyContent: 'center' },
             onClick: function(){
-              copyToClipboard('Tài khoản luyện tập FaradayAI của ' + justApproved.name + '\nTên đăng nhập: ' + justApproved.username + '\nMật khẩu: ' + justApproved.password + '\nVào luyện tại: https://opc-weld.vercel.app')
+              copyToClipboard('Tài khoản luyện tập FaradayAI của ' + justApproved.name + '\nTên đăng nhập: ' + justApproved.username + '\nMật khẩu: ' + justApproved.password + (justApproved.referrerName && justApproved.discountVnd > 0 ? '\nƯu đãi giới thiệu: giảm ' + fmtVND(justApproved.discountVnd) + ' học phí' : '') + '\nVào luyện tại: https://faradayai.vn')
                 .then(function(){ props.fireToast('Đã sao chép — dán vào Zalo để gửi.'); });
             }
           }, '📋 Sao chép'),
@@ -3631,6 +3714,62 @@
     ];
   }
   function pricingFmtVND(n){ return (Number(n) || 0).toLocaleString('vi-VN') + 'đ'; }
+
+  // THÊM 2/10/2026 — panel chỉnh ƯU ĐÃI GIỚI THIỆU (settings/referral). Lưu xong là trang đăng ký
+  // (index.html) hiện đúng mức giảm mới ngay, không cần deploy; lượt duyệt đăng ký kế tiếp dùng mức mới.
+  // Mức đã áp cho học sinh cũ KHÔNG đổi (đã ghi vào hồ sơ lúc duyệt).
+  function ReferralSettingsCard(props){
+    var OPCref = window.OPC;
+    var loadedState = React.useState(false); var loaded = loadedState[0], setLoaded = loadedState[1];
+    var discState = React.useState('100000'); var disc = discState[0], setDisc = discState[1];
+    var commState = React.useState('100000'); var comm = commState[0], setComm = commState[1];
+    var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
+    var initedRef = React.useRef(false);
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.referral){ setLoaded(true); return; }
+      var unsub = OPCref.referral.subscribe(function(d){
+        setLoaded(true);
+        if(initedRef.current) return; // chỉ mồi 1 lần — không ghi đè lúc thầy đang gõ dở
+        initedRef.current = true;
+        if(d){
+          if(d.discountVnd != null) setDisc(String(d.discountVnd));
+          if(d.commissionVnd != null) setComm(String(d.commissionVnd));
+        }
+      }, function(){ setLoaded(true); });
+      return function(){ unsub(); };
+    }, []);
+    function parseVnd(v){ var n = Number(String(v).replace(/[^\d]/g, '')); return isFinite(n) ? n : NaN; }
+    function handleSave(){
+      var d = parseVnd(disc), c = parseVnd(comm);
+      if(isNaN(d) || d < 0 || isNaN(c) || c < 0 || String(disc).trim() === '' || String(comm).trim() === ''){
+        props.fireToast('Số tiền không hợp lệ — nhập số từ 0 trở lên (0 = không áp ưu đãi).', true); return;
+      }
+      setSaving(true);
+      OPCref.referral.save({ discountVnd: d, commissionVnd: c })
+        .then(function(){ setDisc(String(d)); setComm(String(c)); props.fireToast('Đã lưu ưu đãi giới thiệu — trang đăng ký cập nhật ngay.'); })
+        .catch(function(err){ console.error('Lỗi lưu ưu đãi giới thiệu:', err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setSaving(false); });
+    }
+    if(!loaded) return h('div', { className: 'card' }, h('p', { style: { color: 'var(--ink-2)', fontSize: '0.9rem' } }, 'Đang tải ưu đãi giới thiệu…'));
+    var inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--line, #d9d4c7)', borderRadius: '8px', fontSize: '0.95rem', background: 'var(--surface, #fff)', color: 'inherit' };
+    return h('div', { className: 'card', style: { marginBottom: '16px' } },
+      h('div', { className: 'sm-toolbar' },
+        h('div', null, h('h3', null, '🎁 Ưu đãi giới thiệu'),
+          h('p', { className: 'sm-sub' }, 'Học sinh mới nhập mã giới thiệu hợp lệ được giảm học phí; người giới thiệu được cộng vào số dư hoa hồng. Đặt 0 để tắt.')),
+        h('div', { className: 'sm-actions' },
+          h('button', { type: 'button', className: 'btn btn-primary', disabled: saving, onClick: handleSave }, saving ? 'Đang lưu…' : '💾 Lưu ưu đãi')
+        )
+      ),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginTop: '6px' } },
+        h('label', { style: { display: 'block', fontSize: '0.85rem' } }, 'Giảm cho học sinh mới (đ)',
+          h('input', { type: 'text', inputMode: 'numeric', value: disc, style: inputStyle, onChange: function(e){ setDisc(e.target.value); } }),
+          h('span', { style: { color: 'var(--ink-2)' } }, 'Hiện tại: ' + (isNaN(parseVnd(disc)) ? '—' : fmtVND(parseVnd(disc))))),
+        h('label', { style: { display: 'block', fontSize: '0.85rem' } }, 'Hoa hồng cho người giới thiệu (đ)',
+          h('input', { type: 'text', inputMode: 'numeric', value: comm, style: inputStyle, onChange: function(e){ setComm(e.target.value); } }),
+          h('span', { style: { color: 'var(--ink-2)' } }, 'Hiện tại: ' + (isNaN(parseVnd(comm)) ? '—' : fmtVND(parseVnd(comm)))))
+      )
+    );
+  }
 
   function PricingPanel(props){
     var OPCref = window.OPC;
@@ -6844,7 +6983,7 @@
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
             tab === 'curriculum' ? h(CurriculumPanel, {fireToast:fireToast}) : (
             tab === 'reports' ? h(ParentReportsPanel, {fireToast:fireToast}) : (
-              tab === 'pricing' ? h(PricingPanel, {fireToast:fireToast}) : (
+              tab === 'pricing' ? h('div', null, h(ReferralSettingsCard, {fireToast:fireToast}), h(PricingPanel, {fireToast:fireToast})) : (
                 tab === 'special' ? h(SpecialBankPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast}))
             )
             )

@@ -1299,7 +1299,10 @@
       var e = (notice && notice.err) || {};
       var code = e.error || '';
       var wrongAcct = !!(e.authUid && notice.studentId && e.authUid !== notice.studentId);
-      if(wrongAcct || code === 'unauthenticated') return 'Phiên đăng nhập của em không còn đúng tài khoản. Bấm "Đăng xuất" rồi đăng nhập lại, bài này sẽ tự được lưu.';
+      // SỬA 2/10/2026 — authUid rỗng nghĩa là phiên Firebase Auth đã mất (không phải lỗi Rules) dù
+      // mã lỗi là permission-denied: hướng dẫn đăng nhập lại thay vì báo thầy sửa Rules.
+      var sessionLost = !!(code && !e.authUid);
+      if(wrongAcct || sessionLost || code === 'unauthenticated') return 'Phiên đăng nhập của em không còn đúng tài khoản. Bấm "Đăng xuất" rồi đăng nhập lại, bài này sẽ tự được lưu.';
       if(code === 'permission-denied') return 'Máy chủ từ chối quyền ghi bài của em. Em chụp màn hình này gửi thầy — thầy cần kiểm tra lại quy tắc bảo mật (Firestore Rules).';
       if(e.online === false || code === 'unavailable' || code === 'deadline-exceeded') return 'Mạng đang yếu hoặc mất kết nối. Bật lại mạng rồi bấm "Lưu lại".';
       if(code === 'invalid-argument') return 'Dữ liệu bài làm bị máy chủ từ chối. Em chụp màn hình này gửi thầy.';

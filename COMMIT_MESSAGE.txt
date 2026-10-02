@@ -1,6 +1,12 @@
-Tự thử lại khi tải ngân hàng đề lỗi + tải ảnh đề song song
+Tối ưu đăng ký học + ưu đãi giới thiệu do admin chỉnh được
 
-- Thử lại tối đa 4 lần, sau đó hiện mã lỗi + nút "Tải lại" (hết treo banner)
-- Tải ảnh các đề song song thay vì lần lượt (đăng nhập xong vào nhanh hơn)
+- Admin: panel "Ưu đãi giới thiệu" (tab Gói dịch vụ) chỉnh mức giảm cho học sinh mới
+  và hoa hồng cho người giới thiệu (settings/referral, mặc định 100.000đ, 0 = tắt)
+- Duyệt đăng ký: học sinh nhập mã hợp lệ được ghi giảm học phí vào hồ sơ; hiện trong
+  hộp thoại + tin nhắn Zalo; mã không khớp được cảnh báo; nhãn trùng đăng ký/trùng SĐT
+- Mã giới thiệu so khớp không phân biệt dấu/khoảng trắng; mã mới sinh không dấu
+- Trang đăng ký: hiện đúng mức giảm đang đặt, chuẩn hoá mã, ô bẫy chống bot,
+  gửi lỗi không còn báo "thành công" giả
+- Sửa link trong tin nhắn Zalo gửi phụ huynh: opc-weld.vercel.app -> faradayai.vn
 
 Co-Authored-By: Claude <noreply@anthropic.com>
