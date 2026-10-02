@@ -1,12 +1,12 @@
-Tối ưu đăng ký học + ưu đãi giới thiệu do admin chỉnh được
+Hiển thị hình vẽ TikZ + bảng LaTeX thay vì mã thô; gộp các bản sửa trước
 
-- Admin: panel "Ưu đãi giới thiệu" (tab Gói dịch vụ) chỉnh mức giảm cho học sinh mới
-  và hoa hồng cho người giới thiệu (settings/referral, mặc định 100.000đ, 0 = tắt)
-- Duyệt đăng ký: học sinh nhập mã hợp lệ được ghi giảm học phí vào hồ sơ; hiện trong
-  hộp thoại + tin nhắn Zalo; mã không khớp được cảnh báo; nhãn trùng đăng ký/trùng SĐT
-- Mã giới thiệu so khớp không phân biệt dấu/khoảng trắng; mã mới sinh không dấu
-- Trang đăng ký: hiện đúng mức giảm đang đặt, chuẩn hoá mã, ô bẫy chống bot,
-  gửi lỗi không còn báo "thành công" giả
-- Sửa link trong tin nhắn Zalo gửi phụ huynh: opc-weld.vercel.app -> faradayai.vn
+- tikz-lite.js (mới): dựng \begin{tikzpicture} thành SVG ngay trong trình duyệt
+  (đồ thị, trục, đường nét đứt, chấm, nhãn $t_1$, mũi tên, foreach, arc, circle...);
+  tự đổi màu theo giao diện sáng/tối; không hỗ trợ -> báo gọn, không lộ mã
+- prepscholar-ui.js: nhận môi trường tikzpicture; dọn "}{" còn sót của \immini,
+  lệnh khung đề (\Opensolutionfile, \setcounter), \renewcommand{\arraystretch}{1.3}
+- admin.html: xuất PDF/in đề cũng vẽ được hình TikZ; nạp đề tách đúng \immini{văn bản}{hình}
+- index.html: nạp tikz-lite.js
+- Gộp: ưu đãi giới thiệu, tách phiên admin/học sinh, thử lại tải ngân hàng đề
 
 Co-Authored-By: Claude <noreply@anthropic.com>

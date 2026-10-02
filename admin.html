@@ -19,6 +19,7 @@
      mới mở — nên chỉ cần nạp đúng 1 lần ở đây, không cần nạp lại trong tab đó. -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="/tikz-lite.js"></script>
 <style>
   :root{
     color-scheme: light;
@@ -1078,6 +1079,15 @@
                 while(j < len && d > 0){ if(str[j] === '{') d++; else if(str[j] === '}') d--; j++; }
                 envName = str.slice(envNameStart, j - 1).trim();
               }
+              // THÊM 2/10/2026 — hình TikZ trong đề in/xuất PDF: xem tikzpicture ở tokenizeLatexRuns (prepscholar-ui.js).
+              if(cmdName === 'begin' && envName === 'tikzpicture'){
+                var endTagT = '\\end{tikzpicture}';
+                var endIdxT = str.indexOf(endTagT, j);
+                flush();
+                nodes.push({ type: 'tikz', code: endIdxT > -1 ? str.slice(j, endIdxT) : str.slice(j) });
+                i = endIdxT > -1 ? endIdxT + endTagT.length : len;
+                continue;
+              }
               if(cmdName === 'begin' && envName === 'tabular'){
                 while(str[j] === ' ') j++;
                 if(str[j] === '{'){
@@ -1151,6 +1161,11 @@
         var tag = LATEX_TAG_MAP_PDF[node.name] || 'span';
         return '<' + tag + '>' + latexNodesToHtmlPDF(node.children) + '</' + tag + '>';
       }
+      if(node.type === 'tikz'){
+        var svgPdf = window.OPC_TIKZ ? window.OPC_TIKZ.render(node.code) : null;
+        return svgPdf ? '<div style="text-align:center;margin:8px 0;color:#000;">' + svgPdf + '</div>'
+          : '<div style="margin:8px 0;padding:8px;border:1px dashed #94a3b8;font-size:0.85em;color:#64748b;">[Hình vẽ chưa hiển thị được]</div>';
+      }
       if(node.type === 'table'){
         var rowsHtml = node.rows.map(function(cells, rIdx){
           var cellsHtml = cells.map(function(cellNodes){
@@ -1165,7 +1180,13 @@
   }
   function latexToHtmlPDF(text){
     if(!text) return '';
-    return latexNodesToHtmlPDF(tokenizeLatexRunsPDF(String(text)));
+    var src = String(text);
+    // dọn phần \immini bóc dở quanh hình TikZ (xem cleanLatexSource trong prepscholar-ui.js)
+    if(/\}\s*\{\s*\\begin\{tikzpicture\}/.test(src)){
+      src = src.replace(/\}\s*\{\s*(\\begin\{tikzpicture\})/, '$1').replace(/(\\end\{tikzpicture\})\s*\}/, '$1');
+    }
+    src = src.replace(/\\(?:renewcommand|newcommand|setlength)\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\]\s*)?\{[^}]*\}/g, '');
+    return latexNodesToHtmlPDF(tokenizeLatexRunsPDF(src));
   }
   function pdfImagesHtml(images){
     if(!images || !images.length) return '';
@@ -1506,6 +1527,35 @@
     return blocks;
   }
 
+  // THÊM 2/10/2026 — gỡ \immini{A}{B} (có thể kèm [tuỳ chọn]) thành "A" + xuống dòng + "B"; không đụng gì nếu
+  // không có \immini hoặc cú pháp không đủ 2 khối ngoặc (khi đó giữ cách cũ: chỉ bỏ chữ \immini{).
+  function unwrapImminiInStem(stem){
+    var idx = stem.indexOf('\\immini');
+    if(idx < 0) return stem;
+    function groupEnd(str, open){
+      var depth = 0;
+      for(var k = open; k < str.length; k++){
+        var ch = str[k];
+        if(ch === '\\'){ k++; continue; }
+        if(ch === '{') depth++;
+        else if(ch === '}'){ depth--; if(depth === 0) return k; }
+      }
+      return -1;
+    }
+    var p = idx + 7;
+    while(stem[p] === ' ') p++;
+    if(stem[p] === '['){ var cb = stem.indexOf(']', p); if(cb < 0) return stem.replace(/\\immini\{?/, ''); p = cb + 1; while(stem[p] === ' ') p++; }
+    if(stem[p] !== '{') return stem.replace(/\\immini\{?/, '');
+    var e1 = groupEnd(stem, p);
+    if(e1 < 0) return stem.replace(/\\immini\{?/, '');
+    var q = e1 + 1;
+    while(/\s/.test(stem[q] || '')) q++;
+    if(stem[q] !== '{') return stem.replace(/\\immini\{?/, '');
+    var e2 = groupEnd(stem, q);
+    if(e2 < 0) return stem.replace(/\\immini\{?/, '');
+    return stem.slice(0, idx) + stem.slice(p + 1, e1) + '\n' + stem.slice(q + 1, e2) + stem.slice(e2 + 1);
+  }
+
   // Tải file .tex trực tiếp về máy tính người dùng từ bộ nhớ/Firestore
   function downloadTexFile(texObj, title){
     if(!texObj) return;
@@ -1838,7 +1888,9 @@
           var stemRaw = full.replace(/^[\s\S]*?\\begin\{ex\}/, '').replace(/\\end\{ex\}[\s\S]*?$/, '');
           var stemCutIdx = stemRaw.search(/\\choice|\\choiceTF|\\shortans|\\dongke|\\loigiai/);
           var stem = (stemCutIdx > -1 ? stemRaw.substring(0, stemCutIdx) : stemRaw).trim();
-          stem = stem.replace(/\\immini\{?/, '').trim();
+          // SỬA 2/10/2026 — \immini{đoạn văn}{hình} đứng TRONG câu: trước đây chỉ xoá "\immini{" nên còn sót "}{"
+          // giữa đoạn văn và hình (hiện chữ thô "}{ ..." ở màn hình học sinh). Nay bóc đúng 2 tham số rồi nối lại.
+          stem = unwrapImminiInStem(stem).trim();
 
           // Bóc tách phương án lựa chọn
           var options = [];

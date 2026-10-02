@@ -177,6 +177,18 @@
               // "thiếu khung" thầy báo. Nay nhận diện riêng "tabular" để dựng
               // đúng bảng HTML có viền, ô nào cũng được tokenize lại (giữ
               // nguyên $...$ / \textbf... bên trong ô).
+              // THÊM 2/10/2026 — HÌNH VẼ TikZ: \begin{tikzpicture}[...]...\end{tikzpicture}. Trước đây
+              // \begin/\end bị bỏ "mù" nên TOÀN BỘ mã vẽ (\draw, \node, toạ độ...) hiện ra chữ thô trên
+              // màn hình học sinh. Nay gom nguyên khối mã thành 1 node 'tikz' để tikz-lite.js dựng thành
+              // hình SVG (xem renderLatexNodes); không dựng được thì hiện thông báo gọn thay vì mã thô.
+              if(cmdName === 'begin' && envName === 'tikzpicture'){
+                var endTagT = '\\end{tikzpicture}';
+                var endIdxT = str.indexOf(endTagT, j);
+                flush();
+                nodes.push({ type: 'tikz', code: endIdxT > -1 ? str.slice(j, endIdxT) : str.slice(j) });
+                i = endIdxT > -1 ? endIdxT + endTagT.length : len;
+                continue;
+              }
               if(cmdName === 'begin' && envName === 'tabular'){
                 while(str[j] === ' ') j++;
                 if(str[j] === '{'){ // bỏ qua {colspec}, vd {|l|c|c|c|c|}
@@ -272,6 +284,17 @@
         out.push(h(tag, { key: key }, renderLatexNodes(node.children, key)));
         return;
       }
+      // Hình vẽ TikZ — dựng SVG bằng tikz-lite.js (nạp trước file này); SVG dùng currentColor nên tự
+      // đổi màu theo giao diện sáng/tối. Không dựng được (cú pháp chưa hỗ trợ) -> thông báo gọn.
+      if(node.type === 'tikz'){
+        var tikzSvg = window.OPC_TIKZ ? window.OPC_TIKZ.render(node.code) : null;
+        if(tikzSvg){
+          out.push(h('div', { key: key, className: 'ps-tikz', style: { margin: '10px auto', textAlign: 'center', maxWidth: '100%', overflowX: 'auto', color: 'var(--ink, currentColor)' }, dangerouslySetInnerHTML: { __html: tikzSvg } }));
+        } else {
+          out.push(h('div', { key: key, className: 'ps-tikz-missing', style: { margin: '10px 0', padding: '10px 12px', border: '1px dashed var(--border, #cbd5e1)', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--ink-2, #64748b)' } }, '📐 Hình vẽ của câu này chưa hiển thị được — nếu cần xem hình, báo thầy/cô để cập nhật.'));
+        }
+        return;
+      }
       // Bảng LaTeX (\begin{tabular}...\end{tabular}) — xem chú thích ở
       // tokenizeLatexRuns. Bọc trong div cuộn ngang để bảng nhiều cột không
       // vỡ layout trên màn hình điện thoại.
@@ -294,9 +317,25 @@
     });
     return out;
   }
+  // THÊM 2/10/2026 — dọn "rác" còn sót từ lúc nạp đề (dữ liệu đã lưu sẵn trong Firestore nên phải xử lý
+  // ngay lúc hiển thị):
+  //  (1) \immini{đoạn văn}{hình TikZ} bị bóc dở: còn "}{" ngay trước hình và "}" ngay sau hình.
+  //  (2) lệnh của khung đề (\Opensolutionfile, \Closesolutionfile, \setcounter...) lọt vào đoạn dùng chung.
+  function cleanLatexSource(text){
+    var s = String(text);
+    if(/\}\s*\{\s*\\begin\{tikzpicture\}/.test(s)){
+      s = s.replace(/\}\s*\{\s*(\\begin\{tikzpicture\})/, '$1');
+      s = s.replace(/(\\end\{tikzpicture\})\s*\}/, '$1');
+    }
+    s = s.replace(/\\(?:Opensolutionfile|Closesolutionfile)\s*\{[^}]*\}(?:\s*\[[^\]]*\])?/g, '')
+         .replace(/\\(?:setcounter|addtocounter)\s*\{[^}]*\}\s*\{[^}]*\}/g, '')
+         // (3) \renewcommand{\arraystretch}{1.3} đứng trước bảng: không có nghĩa gì khi hiển thị nhưng để lại chữ "{1.3}"
+         .replace(/\\(?:renewcommand|newcommand|setlength)\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\]\s*)?\{[^}]*\}/g, '');
+    return s;
+  }
   function renderLatexText(text){
     if(!text) return '';
-    return h('span', null, renderLatexNodes(tokenizeLatexRuns(String(text)), 'lx'));
+    return h('span', null, renderLatexNodes(tokenizeLatexRuns(cleanLatexSource(text)), 'lx'));
   }
 
   // Hiển thị hình ảnh minh họa (sơ đồ, đồ thị...) đính kèm câu hỏi — dữ liệu
