@@ -800,9 +800,10 @@
       });
     }
     function submitSpecialExam(){
-      if(!window.confirm('Nộp bài và xem đáp án, lời giải chi tiết?')) return;
-      setSpExam(function(p){ return Object.assign({}, p, { phase: 'review', finishedAt: Date.now() }); });
-      try{ window.scrollTo(0, 0); }catch(e){}
+      askConfirm('Nộp bài và xem đáp án, lời giải chi tiết?', function(){
+        setSpExam(function(p){ return Object.assign({}, p, { phase: 'review', finishedAt: Date.now() }); });
+        try{ window.scrollTo(0, 0); }catch(e){}
+      }, 'Nộp bài');
     }
     function saveSpecialScore(){
       var meta = SPECIAL_META[spExam.track];
@@ -853,7 +854,7 @@
             !review ? h('div', { style: { fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, fontSize: '1.1rem', color: left < 600 ? 'var(--critical, #dc2626)' : 'inherit' } }, '⏱ ' + formatTime(left)) : null,
             h('div', { style: { display: 'flex', gap: '8px' } },
               !review ? h('button', { type: 'button', className: 'btn btn-primary', onClick: submitSpecialExam }, 'Nộp bài & xem lời giải') : null,
-              h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ if(review || window.confirm('Thoát khỏi đề đang làm?')) setSpExam(null); } }, review ? '← Về danh sách đề' : 'Thoát')
+              h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ if(review){ setSpExam(null); } else { askConfirm('Thoát khỏi đề đang làm?', function(){ setSpExam(null); }, 'Thoát'); } } }, review ? '← Về danh sách đề' : 'Thoát')
             )
           ),
           review ? h('div', { className: 'ps-topic-card', style: { display: 'block', marginBottom: '14px' } },
@@ -976,6 +977,43 @@
       document.addEventListener('keydown', onKey);
       return function(){ document.removeEventListener('keydown', onKey); };
     }, [wtModal]);
+    // THÊM 1/10/2026 — HỘP THOẠI XÁC NHẬN TRONG ỨNG DỤNG (thay window.confirm).
+    // Lý do: confirm() của trình duyệt bị chặn/không hiện ở nhiều nơi học sinh
+    // hay dùng (trình duyệt nhúng Zalo/Messenger/TikTok, Safari/Chrome sau khi
+    // chặn hộp thoại, ứng dụng web trên màn hình chính) — khi đó nó trả về "không"
+    // ngay và bấm "Nộp bài" KHÔNG có phản ứng gì. Hộp thoại này là phần tử
+    // React nên luôn hiện được. askConfirm(thôngBáo, hàmKhiĐồngÝ, nhãnNút).
+    var confirmDlgState = React.useState(null);
+    var confirmDlg = confirmDlgState[0];
+    var setConfirmDlg = confirmDlgState[1];
+    function askConfirm(message, onYes, yesLabel){
+      setConfirmDlg({ message: message, onYes: onYes, yesLabel: yesLabel || 'Đồng ý' });
+    }
+    React.useEffect(function(){
+      if(!confirmDlg) return;
+      function onKey(e){ if(e.key === 'Escape') setConfirmDlg(null); }
+      document.addEventListener('keydown', onKey);
+      return function(){ document.removeEventListener('keydown', onKey); };
+    }, [confirmDlg]);
+    function renderConfirmDialog(){
+      function yes(){
+        var fn = confirmDlg && confirmDlg.onYes;
+        setConfirmDlg(null);
+        if(fn) fn();
+      }
+      return h('div', {
+        role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Xác nhận',
+        style: { position: 'fixed', inset: 0, zIndex: 100001, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }
+      },
+        h('div', { style: { width: '100%', maxWidth: '380px', background: 'var(--surface, #fff)', color: 'var(--ink, #0f172a)', borderRadius: '14px', padding: '20px', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' } },
+          h('p', { style: { margin: '0 0 18px', fontSize: '1rem', lineHeight: 1.55, fontWeight: 600 } }, confirmDlg.message),
+          h('div', { style: { display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' } },
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setConfirmDlg(null); } }, 'Hủy'),
+            h('button', { type: 'button', className: 'btn btn-primary', autoFocus: true, onClick: yes }, confirmDlg.yesLabel)
+          )
+        )
+      );
+    }
     // wrong=true -> nút nổi bật (câu làm sai); false -> nút phụ (câu đúng, xem nếu muốn).
     function renderWalkthroughButton(q, wrong){
       var WT = window.OPC_WALKTHROUGH;
@@ -1182,21 +1220,48 @@
         });
     }
 
-    // Đếm ngược thời gian khi đang làm bài
+    // Đếm ngược thời gian khi đang làm bài.
+    // SỬA 1/10/2026 — trước đây hết giờ gọi handleSubmitExam() BÊN TRONG hàm cập
+    // nhật state và dùng bản handleSubmitExam bị "đóng băng" từ lúc bắt đầu bài
+    // (effect chỉ phụ thuộc examSession) → tự nộp bằng userAnswers RỖNG: em đã làm
+    // nhiều câu vẫn bị chấm 0 điểm và lưu answers rỗng. Nay đọc qua ref luôn trỏ
+    // tới bản mới nhất (bài làm, hồ sơ, sổ câu sai hiện tại) và gọi ngoài updater.
+    var submitRef = React.useRef(null);
+    submitRef.current = handleSubmitExam;
+    var timeLeftRef = React.useRef(timeLeft);
+    timeLeftRef.current = timeLeft;
     React.useEffect(function(){
       if(!examSession || examSession.isSubmitted) return;
       var timer = setInterval(function(){
-        setTimeLeft(function(prev){
-          if(prev <= 1){
-            clearInterval(timer);
-            handleSubmitExam();
-            return 0;
-          }
-          return prev - 1;
-        });
+        if(timeLeftRef.current <= 1){
+          clearInterval(timer);
+          setTimeLeft(0);
+          if(submitRef.current) submitRef.current();
+          return;
+        }
+        setTimeLeft(function(prev){ return prev > 1 ? prev - 1 : prev; });
       }, 1000);
       return function(){ clearInterval(timer); };
     }, [examSession]);
+    // Chống nộp 2 lần (bấm đúp, hoặc hết giờ đúng lúc đang bấm) → khỏi lưu trùng lượt.
+    var submittedSessionRef = React.useRef(null);
+    // THÊM 1/10/2026 — nếu lưu kết quả lên máy chủ thất bại (mất mạng, lỗi quyền...)
+    // trước đây em KHÔNG hề biết, kết quả mất âm thầm. Nay hiện cảnh báo + nút "Lưu lại".
+    var saveNoticeState = React.useState(null); // null | { studentId, record, busy }
+    var saveNotice = saveNoticeState[0];
+    var setSaveNotice = saveNoticeState[1];
+    function retrySaveAttempt(){
+      if(!saveNotice || saveNotice.busy || !window.OPC_LIVE) return;
+      var sn = saveNotice;
+      setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: true });
+      window.OPC_LIVE.saveAttempt(sn.studentId, sn.record).then(function(res){
+        if(res && res.ok){
+          setSaveNotice(null);
+          return window.OPC_LIVE.loadAttempts(sn.studentId).then(function(list){ if(list && list.length) setAttempts(list); });
+        }
+        setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false });
+      }).catch(function(){ setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false }); });
+    }
 
     // Bắt đầu một bài Focused Drill
     function startDrill(topicKey, count){
@@ -1347,7 +1412,14 @@
 
     function returnToParentReview(){
       if(!parentReview) return;
-      if(examSession && !examSession.isSubmitted && !window.confirm('Bài luyện tương tự chưa nộp sẽ bị bỏ dở. Quay lại kết quả bài trước?')) return;
+      if(examSession && !examSession.isSubmitted){
+        askConfirm('Bài luyện tương tự chưa nộp sẽ bị bỏ dở. Quay lại kết quả bài trước?', returnToParentReviewNow, 'Quay lại');
+        return;
+      }
+      returnToParentReviewNow();
+    }
+    function returnToParentReviewNow(){
+      if(!parentReview) return;
       var focus = parentReview.focusId;
       setExamSession(parentReview.session);
       setScoreResult(parentReview.scoreResult);
@@ -1703,8 +1775,10 @@
 
     // Nộp bài và chấm điểm
     function handleSubmitExam(){
-      if(!examSession) return;
+      if(!examSession || examSession.isSubmitted) return;
+      if(submittedSessionRef.current === examSession) return; // đã nộp lượt này rồi
       var scored = window.PrepScholarEngine.scoreExam(examSession.questions, userAnswers);
+      submittedSessionRef.current = examSession; // đặt SAU khi chấm xong để lỗi chấm (nếu có) không khoá nút
       setScoreResult(scored);
       setExamSession(function(prev){
         return Object.assign({}, prev, { isSubmitted: true });
@@ -1837,8 +1911,9 @@
           timeAllocatedSec: (examSession.initialTimeSec != null) ? examSession.initialTimeSec : null,
           timeUsedSec: (examSession.initialTimeSec != null) ? Math.max(0, examSession.initialTimeSec - timeLeft) : null
         };
+        setSaveNotice(null);
         window.OPC_LIVE.saveAttempt(studentId, attemptRecord).then(function(res){
-          if(!res || !res.ok) return null;
+          if(!res || !res.ok){ setSaveNotice({ studentId: studentId, record: attemptRecord, busy: false }); return null; }
           return window.OPC_LIVE.loadAttempts(studentId);
         }).then(function(attempts){
           if(!attempts) return;
@@ -2119,6 +2194,11 @@
                 'Điểm đạt được: ' + scoreResult.totalEarnedScore.toFixed(2) + ' / ' + scoreResult.totalMaxScore.toFixed(2)
               ),
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
+              (saveNotice && !examSession.reviewOnly) ? h('div', { role: 'alert', style: { margin: '12px auto 0', maxWidth: '520px', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--critical, #d03b3b)', background: 'color-mix(in srgb, var(--critical, #d03b3b) 10%, transparent)', color: 'var(--ink, #12161c)', fontSize: '0.88rem', lineHeight: 1.5, textAlign: 'left' } },
+                h('div', { style: { fontWeight: 700, marginBottom: '6px' } }, '⚠️ Kết quả CHƯA được lưu lên hệ thống'),
+                h('div', null, 'Em vẫn xem được điểm và lời giải ở đây, nhưng thầy cô chưa thấy bài này. Kiểm tra mạng rồi bấm "Lưu lại" — đừng đóng trang trước khi lưu xong.'),
+                h('button', { type: 'button', className: 'btn btn-primary', style: { marginTop: '8px', fontSize: '0.85rem' }, disabled: saveNotice.busy, onClick: retrySaveAttempt }, saveNotice.busy ? 'Đang lưu…' : '💾 Lưu lại')
+              ) : null,
               (parentReview && parentReview.session === examSession) ? (function(){
                 var wrongs = scoreResult.perQuestionResults.filter(function(it){ return !it.isFullCorrect; });
                 var passN = wrongs.filter(function(it){ return it.question && parentReview.status[it.question.id] === 'pass'; }).length;
@@ -2146,10 +2226,10 @@
                   type: 'button',
                   className: 'btn btn-primary',
                   onClick: function(){
-                    if(confirm('Làm lại đề này? Lượt làm mới sẽ được tính là 1 lượt luyện tập riêng, không thay lượt cũ.')){
+                    askConfirm('Làm lại đề này? Lượt làm mới sẽ được tính là 1 lượt luyện tập riêng, không thay lượt cũ.', function(){
                       var ae = assignedExams.filter(function(x){ return x.id === examSession.assignedExamId; })[0];
                       if(ae) startAssignedExam(ae);
-                    }
+                    }, 'Làm lại');
                   }
                 }, '🔁 Làm lại đề này') :
                 (examSession && examSession.isSimilarDrill && parentReview) ? h('button', {
@@ -2261,9 +2341,9 @@
                     type: 'button',
                     className: 'btn btn-secondary',
                     onClick: function(){
-                      if(confirm('Dừng luyện tập thích ứng và chấm điểm với ' + (adaptiveChecked ? qNo : qNo - 1) + ' câu đã làm?')){
+                      askConfirm('Dừng luyện tập thích ứng và chấm điểm với ' + (adaptiveChecked ? qNo : qNo - 1) + ' câu đã làm?', function(){
                         handleSubmitExam();
-                      }
+                      }, 'Chấm điểm');
                     }
                   }, 'Dừng & chấm điểm')
                 ),
@@ -2370,9 +2450,9 @@
                   type: 'button',
                   className: 'btn btn-primary',
                   onClick: function(){
-                    if(confirm('Bạn có chắc chắn muốn nộp bài để chấm điểm ngay?')){
+                    askConfirm('Bạn có chắc chắn muốn nộp bài để chấm điểm ngay?', function(){
                       handleSubmitExam();
-                    }
+                    }, 'Nộp bài');
                   }
                 }, 'Nộp bài ➔')
               )
@@ -2500,9 +2580,9 @@
                   if(curQIdx < examSession.questions.length - 1){
                     setCurQIdx(function(i){ return i + 1; });
                   } else {
-                    if(confirm('Bạn đang ở câu cuối cùng. Nộp bài ngay để chấm điểm?')){
+                    askConfirm('Bạn đang ở câu cuối cùng. Nộp bài ngay để chấm điểm?', function(){
                       handleSubmitExam();
-                    }
+                    }, 'Nộp bài');
                   }
                 }
               }, curQIdx === examSession.questions.length - 1 ? 'Nộp bài & Chấm điểm ➔' : 'Câu tiếp theo →')
@@ -2950,9 +3030,9 @@
                           type: 'button',
                           className: hasReviewDetail ? 'btn btn-secondary' : 'btn btn-primary',
                           onClick: function(){
-                            if(confirm('Làm lại đề "' + (ae.title || 'Đề cá nhân hóa') + '"? Lượt làm mới sẽ được tính là 1 lượt luyện tập riêng, không thay lượt cũ.')){
+                            askConfirm('Làm lại đề "' + (ae.title || 'Đề cá nhân hóa') + '"? Lượt làm mới sẽ được tính là 1 lượt luyện tập riêng, không thay lượt cũ.', function(){
                               setTab('assigned'); startAssignedExam(ae);
-                            }
+                            }, 'Làm lại');
                           }
                         }, '🔁 Làm lại')
                       ]
@@ -3154,7 +3234,9 @@
       )
       ), // đóng ternary "remediation ? renderRemediationStep(...) : ( examSession ? ... )"
       // Modal phát đoạn video chữa đề (xem renderWalkthroughButton).
-      (wtModal && window.OPC_WALKTHROUGH) ? window.OPC_WALKTHROUGH.renderModal(h, wtModal, function(){ setWtModal(null); }) : null
+      (wtModal && window.OPC_WALKTHROUGH) ? window.OPC_WALKTHROUGH.renderModal(h, wtModal, function(){ setWtModal(null); }) : null,
+      // Hộp thoại xác nhận (Nộp bài, Dừng & chấm điểm, Làm lại...) — xem askConfirm.
+      confirmDlg ? renderConfirmDialog() : null
     );
   }
 

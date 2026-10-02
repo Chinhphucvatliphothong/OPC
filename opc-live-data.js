@@ -112,11 +112,25 @@ async function resumeSession(){
 // firestore.rules giờ chỉ cho phép đúng học sinh đang đăng nhập (hoặc
 // admin) ghi vào đúng attempts của chính mình — không còn ai ghi được cho
 // người khác nữa.
+// THÊM 1/10/2026 — Firestore TỪ CHỐI cả bản ghi nếu có bất kỳ trường undefined
+// (lỗi "Unsupported field value: undefined"), khiến kết quả bài làm mất âm
+// thầm. Loại bỏ trường undefined (và đổi undefined trong mảng thành null) trước
+// khi ghi để một trường thiếu không làm mất cả lượt làm bài.
+function stripUndefined(v){
+  if(Array.isArray(v)) return v.map(function(x){ return x === undefined ? null : stripUndefined(x); });
+  if(v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype){
+    var o = {};
+    Object.keys(v).forEach(function(k){ if(v[k] !== undefined) o[k] = stripUndefined(v[k]); });
+    return o;
+  }
+  return v;
+}
+
 async function saveAttempt(studentId, attempt){
   if(!studentId) return { ok: false, error: 'Thiếu studentId.' };
   try{
     var ref = doc(collection(db, 'students', studentId, 'attempts'));
-    await setDoc(ref, Object.assign({}, attempt, { createdAt: new Date().toISOString() }));
+    await setDoc(ref, stripUndefined(Object.assign({}, attempt, { createdAt: new Date().toISOString() })));
     return { ok: true, id: ref.id };
   }catch(e){
     console.error('Lỗi lưu kết quả luyện tập:', e);
@@ -211,7 +225,7 @@ async function saveStudentStats(studentId, stats){
   if(!studentId) return { ok: false, error: 'Thiếu studentId.' };
   try{
     var ref = doc(db, 'student_stats', studentId);
-    await setDoc(ref, Object.assign({}, stats, { updatedAt: new Date().toISOString() }), { merge: true });
+    await setDoc(ref, stripUndefined(Object.assign({}, stats, { updatedAt: new Date().toISOString() })), { merge: true });
     return { ok: true };
   }catch(e){
     console.error('Lỗi lưu số liệu học tập:', e);
@@ -431,7 +445,7 @@ async function saveSpecialAttempt(studentId, data){
   if(!studentId) return { ok: false };
   try{
     var ref = doc(collection(db, 'students', studentId, 'specialAttempts'));
-    await setDoc(ref, Object.assign({}, data, { createdAt: new Date().toISOString() }));
+    await setDoc(ref, stripUndefined(Object.assign({}, data, { createdAt: new Date().toISOString() })));
     return { ok: true };
   }catch(e){
     console.error('Lỗi lưu kết quả HSG/Olympic:', e);
