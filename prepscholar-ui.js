@@ -606,7 +606,10 @@
       // cả hai đã xong — cần cả 2 để tính đúng "Hoàn thành X/Y đề được giao"
       // (so khớp assignedExamId của từng lượt làm bài với danh sách đề được
       // giao) trước khi đẩy lên student_stats cho trang admin đọc.
-      var loadAttemptsP = window.OPC_LIVE.loadAttempts ? window.OPC_LIVE.loadAttempts(real.id) : Promise.resolve([]);
+      // THÊM 1/10/2026: lưu nốt các bài còn tồn trên máy này (lần nộp trước lưu thất bại) rồi mới tải lịch sử,
+      // để lịch sử + student_stats (admin đọc) tính luôn cả những bài đó.
+      var flushP = (window.OPC_LIVE.flushPendingAttempts ? window.OPC_LIVE.flushPendingAttempts(real.id) : Promise.resolve(0)).catch(function(){ return 0; });
+      var loadAttemptsP = flushP.then(function(){ return window.OPC_LIVE.loadAttempts ? window.OPC_LIVE.loadAttempts(real.id) : []; });
       var loadAssignedP = window.OPC_LIVE.loadAssignedExams ? window.OPC_LIVE.loadAssignedExams(real.id) : Promise.resolve([]);
       Promise.all([loadAttemptsP, loadAssignedP]).then(function(results){
         var attempts = results[0] || [];
@@ -1253,14 +1256,35 @@
     function retrySaveAttempt(){
       if(!saveNotice || saveNotice.busy || !window.OPC_LIVE) return;
       var sn = saveNotice;
-      setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: true });
+      setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: true, err: sn.err, diag: sn.diag });
       window.OPC_LIVE.saveAttempt(sn.studentId, sn.record).then(function(res){
         if(res && res.ok){
           setSaveNotice(null);
-          return window.OPC_LIVE.loadAttempts(sn.studentId).then(function(list){ if(list && list.length) setAttempts(list); });
+          return window.OPC_LIVE.loadAttempts(sn.studentId).then(function(list){ applyAttemptsAndSync(sn.studentId, list || []); });
         }
-        setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false });
-      }).catch(function(){ setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false }); });
+        setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false, err: res || null, diag: sn.diag });
+      }).catch(function(){ setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false, err: sn.err, diag: sn.diag }); });
+    }
+    // Chẩn đoán 1 chạm: em bấm, chụp màn hình gửi thầy -> biết ngay nguyên nhân thật.
+    function runSaveDiagnosis(){
+      if(!saveNotice || saveNotice.busy || !window.OPC_LIVE || !window.OPC_LIVE.diagnoseSave) return;
+      var sn = saveNotice;
+      setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: true, err: sn.err, diag: sn.diag });
+      window.OPC_LIVE.diagnoseSave(sn.studentId).then(function(d){
+        setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false, err: sn.err, diag: d });
+      }).catch(function(){ setSaveNotice({ studentId: sn.studentId, record: sn.record, busy: false, err: sn.err, diag: { read: 'lỗi', write: 'lỗi' } }); });
+    }
+    // Gợi ý nguyên nhân + cách xử lý theo mã lỗi (nói bằng lời học sinh hiểu được).
+    function saveHint(notice){
+      var e = (notice && notice.err) || {};
+      var code = e.error || '';
+      var wrongAcct = !!(e.authUid && notice.studentId && e.authUid !== notice.studentId);
+      if(wrongAcct || code === 'unauthenticated') return 'Phiên đăng nhập của em không còn đúng tài khoản. Bấm "Đăng xuất" rồi đăng nhập lại, bài này sẽ tự được lưu.';
+      if(code === 'permission-denied') return 'Máy chủ từ chối quyền ghi bài của em. Em chụp màn hình này gửi thầy — thầy cần kiểm tra lại quy tắc bảo mật (Firestore Rules).';
+      if(e.online === false || code === 'unavailable' || code === 'deadline-exceeded') return 'Mạng đang yếu hoặc mất kết nối. Bật lại mạng rồi bấm "Lưu lại".';
+      if(code === 'invalid-argument') return 'Dữ liệu bài làm bị máy chủ từ chối. Em chụp màn hình này gửi thầy.';
+      if(code === 'resource-exhausted') return 'Hệ thống đang quá tải. Em chờ vài phút rồi bấm "Lưu lại".';
+      return 'Em kiểm tra mạng rồi bấm "Lưu lại". Nếu vẫn lỗi, chụp màn hình này gửi thầy.';
     }
 
     // Bắt đầu một bài Focused Drill
@@ -1773,6 +1797,39 @@
       setAdaptiveLastResult(null);
     }
 
+    // THÊM 1/10/2026 — phần "tải lại lịch sử -> tính lại mastery/sổ câu sai -> đẩy student_stats cho admin"
+    // sau khi 1 lượt làm bài ĐÃ LƯU được. Tách ra để dùng chung cho: nộp bài lần đầu, bấm "Lưu lại", và
+    // tự lưu bài tồn sau khi đăng nhập — nếu thiếu bước này, bài lưu muộn sẽ KHÔNG cập nhật student_stats
+    // (admin vẫn không thấy em đã làm bài).
+    function applyAttemptsAndSync(studentId, attempts){
+      if(!attempts) return;
+      setAttempts(attempts);
+      var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
+      setStudent(function(prev){
+        if(!prev || prev.id !== studentId) return prev;
+        return Object.assign({}, prev, {
+          mastery: Object.assign({}, prev.mastery, stats.mastery),
+          predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
+          nanoMastery: stats.nanoMastery,
+          radar5: stats.radar5 || prev.radar5,
+          levelXp: stats.levelXp || prev.levelXp,
+          currentChuDe: stats.currentChuDe || prev.currentChuDe
+        });
+      });
+      var withQ = stats.mistakeLog.map(function(m){
+        return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
+      });
+      setMistakeLog(withQ);
+      // Hoàn thành đề được giao: dùng danh sách assignedExams đã có sẵn
+      // trong state (tải lúc đăng nhập) — so khớp với attemptRecord vừa
+      // lưu để cập nhật đúng số đã hoàn thành mỗi khi nộp bài.
+      stats.assignedExamsTotal = assignedExams.length;
+      stats.assignedExamsCompleted = assignedExams.filter(function(ae){
+        return attempts.some(function(a){ return a.assignedExamId === ae.id; });
+      }).length;
+      syncStudentStats(studentId, stats);
+    }
+
     // Nộp bài và chấm điểm
     function handleSubmitExam(){
       if(!examSession || examSession.isSubmitted) return;
@@ -1890,6 +1947,10 @@
         // ước lượng). Lượt làm bài trước đó không có initialTimeSec —
         // computeRadar5 tự bỏ qua các lượt thiếu trường này.
         var attemptRecord = {
+          // clientId + createdAt: THÊM 1/10/2026 — lưu lại nhiều lần vẫn chỉ ra 1 doc, và
+          // giờ nộp bài được giữ nguyên dù lưu muộn (xem saveAttempt trong opc-live-data.js).
+          clientId: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+          createdAt: new Date().toISOString(),
           type: examSession.type,
           topicKey: examSession.topicKey || null,
           assignedExamId: examSession.assignedExamId || null,
@@ -1913,35 +1974,10 @@
         };
         setSaveNotice(null);
         window.OPC_LIVE.saveAttempt(studentId, attemptRecord).then(function(res){
-          if(!res || !res.ok){ setSaveNotice({ studentId: studentId, record: attemptRecord, busy: false }); return null; }
+          if(!res || !res.ok){ setSaveNotice({ studentId: studentId, record: attemptRecord, busy: false, err: res || null, diag: null }); return null; }
           return window.OPC_LIVE.loadAttempts(studentId);
         }).then(function(attempts){
-          if(!attempts) return;
-          setAttempts(attempts);
-          var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
-          setStudent(function(prev){
-            if(!prev || prev.id !== studentId) return prev;
-            return Object.assign({}, prev, {
-              mastery: Object.assign({}, prev.mastery, stats.mastery),
-              predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
-              nanoMastery: stats.nanoMastery,
-              radar5: stats.radar5 || prev.radar5,
-              levelXp: stats.levelXp || prev.levelXp,
-              currentChuDe: stats.currentChuDe || prev.currentChuDe
-            });
-          });
-          var withQ = stats.mistakeLog.map(function(m){
-            return Object.assign({}, m, { question: window.PrepScholarEngine.QUESTION_BANK.filter(function(q){ return q.id === m.qId; })[0] });
-          });
-          setMistakeLog(withQ);
-          // Hoàn thành đề được giao: dùng danh sách assignedExams đã có sẵn
-          // trong state (tải lúc đăng nhập) — so khớp với attemptRecord vừa
-          // lưu để cập nhật đúng số đã hoàn thành mỗi khi nộp bài.
-          stats.assignedExamsTotal = assignedExams.length;
-          stats.assignedExamsCompleted = assignedExams.filter(function(ae){
-            return attempts.some(function(a){ return a.assignedExamId === ae.id; });
-          }).length;
-          syncStudentStats(studentId, stats);
+          applyAttemptsAndSync(studentId, attempts);
         }).catch(function(err){ console.error('Lỗi lưu/tải lại lịch sử luyện tập:', err); });
       }
     }
@@ -2196,8 +2232,20 @@
               masteryImpact ? h('div', { className: 'ps-impact-pill' }, '⚡ Cập nhật năng lực: ' + masteryImpact) : null,
               (saveNotice && !examSession.reviewOnly) ? h('div', { role: 'alert', style: { margin: '12px auto 0', maxWidth: '520px', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--critical, #d03b3b)', background: 'color-mix(in srgb, var(--critical, #d03b3b) 10%, transparent)', color: 'var(--ink, #12161c)', fontSize: '0.88rem', lineHeight: 1.5, textAlign: 'left' } },
                 h('div', { style: { fontWeight: 700, marginBottom: '6px' } }, '⚠️ Kết quả CHƯA được lưu lên hệ thống'),
-                h('div', null, 'Em vẫn xem được điểm và lời giải ở đây, nhưng thầy cô chưa thấy bài này. Kiểm tra mạng rồi bấm "Lưu lại" — đừng đóng trang trước khi lưu xong.'),
-                h('button', { type: 'button', className: 'btn btn-primary', style: { marginTop: '8px', fontSize: '0.85rem' }, disabled: saveNotice.busy, onClick: retrySaveAttempt }, saveNotice.busy ? 'Đang lưu…' : '💾 Lưu lại')
+                h('div', null, 'Em vẫn xem được điểm và lời giải ở đây, nhưng thầy cô chưa thấy bài này. ' + saveHint(saveNotice)),
+                h('div', { style: { marginTop: '6px', fontSize: '0.78rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace' } },
+                  'Mã lỗi: ' + ((saveNotice.err && saveNotice.err.error) || 'chưa rõ') +
+                  (saveNotice.err && saveNotice.err.authUid ? ' · tài khoản: ' + (saveNotice.err.authUid === saveNotice.studentId ? 'khớp' : 'KHÔNG KHỚP') : '') +
+                  (saveNotice.err && saveNotice.err.online === false ? ' · mất mạng' : '')),
+                saveNotice.diag ? h('div', { style: { marginTop: '4px', fontSize: '0.78rem', color: 'var(--muted)', fontFamily: 'IBM Plex Mono, monospace' } },
+                  'Chẩn đoán → đọc: ' + saveNotice.diag.read + ' · ghi: ' + saveNotice.diag.write +
+                  ' · tài khoản: ' + (saveNotice.diag.authUid ? (saveNotice.diag.authUid === saveNotice.diag.studentId ? 'khớp' : 'KHÔNG KHỚP') : 'chưa đăng nhập') +
+                  ' · chờ lưu: ' + saveNotice.diag.pending) : null,
+                h('div', { style: { marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+                  h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.85rem' }, disabled: saveNotice.busy, onClick: retrySaveAttempt }, saveNotice.busy ? 'Đang xử lý…' : '💾 Lưu lại'),
+                  h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, disabled: saveNotice.busy, onClick: runSaveDiagnosis }, '🔍 Chẩn đoán'),
+                  h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, onClick: handleLogout }, '🚪 Đăng xuất')
+                )
               ) : null,
               (parentReview && parentReview.session === examSession) ? (function(){
                 var wrongs = scoreResult.perQuestionResults.filter(function(it){ return !it.isFullCorrect; });

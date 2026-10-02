@@ -1,9 +1,9 @@
-Đổi thương hiệu OPC -> FaradayAI, thêm logo + favicon + ảnh chia sẻ
+Sửa lưu kết quả nộp bài: hàng đợi, lưu không trùng, chẩn đoán lỗi, cập nhật student_stats cho admin
 
-- Chuỗi hiển thị, prompt AI, tiêu đề, metadata: OPC -> FaradayAI
-- Logo lồng Faraday: logo-mark.svg, logo-horizontal(.dark).svg, favicon.svg/.ico/-32.png, apple-touch-icon.png, og-image.png
-- index.html / admin.html: favicon, logo ảnh ở đầu trang, og:image
-
-Giữ nguyên: tên biến trong code (window.OPC, OPC_LIVE...), cấu hình Firebase (opcluyenthivatli).
+- opc-live-data.js: saveAttempt dùng clientId làm ID doc (lưu lại nhiều lần vẫn 1 doc); lưu thất bại -> giữ trong localStorage,
+  tự lưu lại sau khi đăng nhập (flushPendingAttempts); lỗi trả kèm mã lỗi + uid đang đăng nhập; thêm diagnoseSave;
+  id của doc luôn thắng trường "id" trong hồ sơ học sinh
+- prepscholar-ui.js: banner lưu thất bại hiển thị mã lỗi, gợi ý theo nguyên nhân, nút Lưu lại / Chẩn đoán / Đăng xuất;
+  lưu muộn cũng cập nhật student_stats (admin thấy bài làm); lưu nốt bài tồn ngay sau đăng nhập
 
 Co-Authored-By: Claude <noreply@anthropic.com>

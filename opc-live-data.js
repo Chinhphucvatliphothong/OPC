@@ -26,7 +26,7 @@
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, query, orderBy, limit
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, query, orderBy, limit
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import {
   getAuth, onAuthStateChanged, signInWithCustomToken, signOut
@@ -67,7 +67,9 @@ async function loginStudent(usernameRaw, passwordRaw){
     if(!stuSnap.exists()){
       return { ok: false, error: 'Tài khoản không hợp lệ — liên hệ thầy cô để được hỗ trợ.' };
     }
-    return { ok: true, student: Object.assign({ id: stuSnap.id }, stuSnap.data()) };
+    // SỬA 1/10/2026: id của DOC luôn thắng — nếu hồ sơ lỡ có trường "id" riêng, trước đây nó ĐÈ lên mã doc
+    // khiến đường dẫn ghi students/{id}/attempts sai và bị rules từ chối (uid != id).
+    return { ok: true, student: Object.assign({}, stuSnap.data(), { id: stuSnap.id }) };
   }catch(e){
     console.error('Lỗi đăng nhập học sinh:', e);
     return { ok: false, error: 'Lỗi kết nối tới máy chủ (' + (e && (e.code || e.message) || 'không rõ') + ') — thử lại sau ít phút.' };
@@ -97,7 +99,7 @@ async function resumeSession(){
     if(!user) return null;
     var stuSnap = await getDoc(doc(db, 'students', user.uid));
     if(!stuSnap.exists()){ logoutStudent(); return null; }
-    return Object.assign({ id: stuSnap.id }, stuSnap.data());
+    return Object.assign({}, stuSnap.data(), { id: stuSnap.id });
   }catch(e){
     console.error('Lỗi tải lại phiên đăng nhập:', e);
     return null;
@@ -126,16 +128,88 @@ function stripUndefined(v){
   return v;
 }
 
+// ---- THÊM 1/10/2026 — HÀNG ĐỢI LƯU BÀI + LƯU IDEMPOTENT ----
+// Trước đây lưu thất bại là MẤT bài làm (admin không thấy em nào đã làm). Nay:
+//  - mỗi lượt nộp có clientId -> dùng làm ID doc, nên lưu lại nhiều lần vẫn chỉ
+//    ra ĐÚNG 1 doc (không trùng lượt);
+//  - lưu thất bại -> bản ghi được giữ trong localStorage của máy và tự lưu lại
+//    ở lần đăng nhập kế tiếp (flushPendingAttempts) hoặc khi em bấm "Lưu lại";
+//  - lỗi trả về kèm mã lỗi + uid đang đăng nhập để chẩn đoán đúng nguyên nhân.
+var PENDING_KEY = 'faradayai_pending_attempts_v1';
+function readPending(){
+  try{
+    var raw = window.localStorage.getItem(PENDING_KEY);
+    var arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return []; }
+}
+function writePending(arr){
+  try{ window.localStorage.setItem(PENDING_KEY, JSON.stringify(arr.slice(-20))); }catch(e){}
+}
+function queueAttempt(studentId, record){
+  if(!record || !record.clientId) return;
+  var arr = readPending().filter(function(x){ return !(x && x.record && x.record.clientId === record.clientId); });
+  arr.push({ studentId: studentId, record: record });
+  writePending(arr);
+}
+function dequeueAttempt(clientId){
+  writePending(readPending().filter(function(x){ return !(x && x.record && x.record.clientId === clientId); }));
+}
+function saveErrorInfo(e){
+  return {
+    ok: false,
+    error: (e && e.code) || 'unknown',
+    message: (e && e.message) || '',
+    authUid: (auth.currentUser && auth.currentUser.uid) || null,
+    online: (typeof navigator !== 'undefined') ? navigator.onLine !== false : true
+  };
+}
 async function saveAttempt(studentId, attempt){
   if(!studentId) return { ok: false, error: 'Thiếu studentId.' };
+  var rec = Object.assign({}, attempt, { createdAt: (attempt && attempt.createdAt) || new Date().toISOString() });
   try{
-    var ref = doc(collection(db, 'students', studentId, 'attempts'));
-    await setDoc(ref, stripUndefined(Object.assign({}, attempt, { createdAt: new Date().toISOString() })));
+    var ref = rec.clientId
+      ? doc(db, 'students', studentId, 'attempts', String(rec.clientId))
+      : doc(collection(db, 'students', studentId, 'attempts'));
+    await setDoc(ref, stripUndefined(rec));
+    if(rec.clientId) dequeueAttempt(rec.clientId);
     return { ok: true, id: ref.id };
   }catch(e){
     console.error('Lỗi lưu kết quả luyện tập:', e);
-    return { ok: false, error: (e && e.code) || 'unknown' };
+    queueAttempt(studentId, rec);
+    return saveErrorInfo(e);
   }
+}
+// Lưu nốt các bài còn tồn trên máy này của em (gọi ngay sau khi đăng nhập).
+async function flushPendingAttempts(studentId){
+  var list = readPending().filter(function(x){ return x && x.studentId === studentId && x.record; });
+  var saved = 0;
+  for(var i = 0; i < list.length; i++){
+    var r = await saveAttempt(studentId, list[i].record);
+    if(r && r.ok) saved++; else break;
+  }
+  return saved;
+}
+// Tự chẩn đoán: em đang đăng nhập bằng tài khoản nào, đọc/ghi được lịch sử không.
+async function diagnoseSave(studentId){
+  var out = {
+    studentId: studentId || null,
+    authUid: (auth.currentUser && auth.currentUser.uid) || null,
+    online: (typeof navigator !== 'undefined') ? navigator.onLine !== false : true,
+    pending: readPending().filter(function(x){ return x && x.studentId === studentId; }).length,
+    read: null, write: null
+  };
+  try{
+    await getDocs(query(collection(db, 'students', studentId, 'attempts'), limit(1)));
+    out.read = 'ok';
+  }catch(e){ out.read = (e && e.code) || 'unknown'; }
+  try{
+    var pref = doc(db, 'students', studentId, 'attempts', '_ping');
+    await setDoc(pref, { type: 'ping', createdAt: new Date().toISOString() });
+    await deleteDoc(pref);
+    out.write = 'ok';
+  }catch(e){ out.write = (e && e.code) || 'unknown'; }
+  return out;
 }
 
 async function loadAttempts(studentId, max){
@@ -493,6 +567,8 @@ window.OPC_LIVE = {
   resumeSession: resumeSession,
   loadRealQuestionBank: loadRealQuestionBank,
   saveAttempt: saveAttempt,
+  flushPendingAttempts: flushPendingAttempts,
+  diagnoseSave: diagnoseSave,
   loadAttempts: loadAttempts,
   loadAssignedExams: loadAssignedExams,
   submitRegistration: submitRegistration,
