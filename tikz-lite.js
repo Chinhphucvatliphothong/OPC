@@ -463,7 +463,9 @@
     });
     if(shape) drawBox = drawBox || false;
     var fs = nst.fontPt * PX_PT;
-    var lines = String(textSrc).split(/\\\\/);
+    // \makecell{dòng 1\\dòng 2} / \shortstack{...}: chỉ là cách xuống dòng trong node -> bỏ lớp bọc, giữ nội dung
+    var textClean = String(textSrc).replace(/\\(?:makecell|shortstack)(?:\[[^\]]*\])?\s*\{([\s\S]*)\}\s*$/, '$1');
+    var lines = textClean.split(/\\\\/);
     var laid = lines.map(function(l){ return layText(l.trim(), fs, {}); });
     var lineH = fs * 1.2;
     var H = laid.length * lineH;
@@ -572,6 +574,45 @@
       var rest = pathSrc.slice(pos);
       var c = rest.charAt(0);
 
+      // THÊM 2/10/2026 — đường cong Bézier:  (a) .. controls (c1) and (c2) .. (b)   hoặc   .. controls (c1) .. (b)
+      if(rest.indexOf('..') === 0){
+        var cmC = /^\.\.\s*controls\s*/.exec(rest);
+        if(!cmC || !cur || !sub) bad('".." không phải controls');
+        pos += cmC[0].length;
+        function readCoordTok(){
+          skipWs();
+          var c0 = pathSrc.charAt(pos);
+          if(c0 !== '(' && c0 !== '+') bad('thiếu toạ độ trong controls');
+          var eC = skipGroup(pathSrc, pos + (c0 === '+' ? (pathSrc.charAt(pos + 1) === '+' ? 2 : 1) : 0), '(', ')');
+          var rcC = resolveCoord(ctx, pathSrc.slice(pos, eC + 1), cur);
+          pos = eC + 1;
+          return rcC.pt;
+        }
+        var c1 = readCoordTok(), c2 = null;
+        skipWs();
+        if(/^and\b/.test(pathSrc.slice(pos))){ pos += 3; c2 = readCoordTok(); }
+        skipWs();
+        if(pathSrc.substr(pos, 2) !== '..') bad('thiếu ".." sau controls');
+        pos += 2;
+        var endB = readCoordTok();
+        var p0 = ctx.px(cur), p1 = ctx.px(c1), p3 = ctx.px(endB), p2 = c2 ? ctx.px(c2) : null;
+        if(p2) sub.d += 'C' + r2(p1.x) + ' ' + r2(p1.y) + ' ' + r2(p2.x) + ' ' + r2(p2.y) + ' ' + r2(p3.x) + ' ' + r2(p3.y);
+        else sub.d += 'Q' + r2(p1.x) + ' ' + r2(p1.y) + ' ' + r2(p3.x) + ' ' + r2(p3.y);
+        sub.count++;
+        // phạm vi: lấy mẫu dọc đường cong thay vì lấy cả điểm điều khiển (tránh khung rộng thừa)
+        for(var tt = 0; tt <= 10; tt++){
+          var tq = tt / 10, mt = 1 - tq, bx, by;
+          if(p2){
+            bx = mt*mt*mt*p0.x + 3*mt*mt*tq*p1.x + 3*mt*tq*tq*p2.x + tq*tq*tq*p3.x;
+            by = mt*mt*mt*p0.y + 3*mt*mt*tq*p1.y + 3*mt*tq*tq*p2.y + tq*tq*tq*p3.y;
+          } else {
+            bx = mt*mt*p0.x + 2*mt*tq*p1.x + tq*tq*p3.x;
+            by = mt*mt*p0.y + 2*mt*tq*p1.y + tq*tq*p3.y;
+          }
+          ctx.ext(bx, by);
+        }
+        prev = cur; cur = endB; pendingOp = null; continue;
+      }
       if(rest.indexOf('--') === 0){ pendingOp = '--'; pos += 2; continue; }
       if(rest.indexOf('-|') === 0){ pendingOp = '-|'; pos += 2; continue; }
       if(rest.indexOf('|-') === 0){ pendingOp = '|-'; pos += 2; continue; }

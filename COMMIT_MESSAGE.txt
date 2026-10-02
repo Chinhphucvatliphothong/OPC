@@ -1,12 +1,11 @@
-Hiển thị hình vẽ TikZ + bảng LaTeX thay vì mã thô; gộp các bản sửa trước
+Giữ hình TikZ và bảng khi nạp đề (immini); vẽ đường cong Bézier
 
-- tikz-lite.js (mới): dựng \begin{tikzpicture} thành SVG ngay trong trình duyệt
-  (đồ thị, trục, đường nét đứt, chấm, nhãn $t_1$, mũi tên, foreach, arc, circle...);
-  tự đổi màu theo giao diện sáng/tối; không hỗ trợ -> báo gọn, không lộ mã
-- prepscholar-ui.js: nhận môi trường tikzpicture; dọn "}{" còn sót của \immini,
-  lệnh khung đề (\Opensolutionfile, \setcounter), \renewcommand{\arraystretch}{1.3}
-- admin.html: xuất PDF/in đề cũng vẽ được hình TikZ; nạp đề tách đúng \immini{văn bản}{hình}
-- index.html: nạp tikz-lite.js
-- Gộp: ưu đãi giới thiệu, tách phiên admin/học sinh, thử lại tải ngân hàng đề
+- admin.html: \immini{ \begin{ex}..\end{ex} }{tikz/bảng} -> chèn hình vào PHẦN ĐỀ BÀI
+  (trước đây chèn sau \loigiai nên bị mất); đoạn chữ/bảng nằm ngay sau
+  \immini{..}{..} của câu hỏi chùm không còn bị bỏ rơi; TikZ/bảng trong đoạn
+  dùng chung được giữ nguyên dòng (không làm phẳng)
+- tikz-lite.js: thêm .. controls .. (Bézier) và \makecell
+- Gồm các bản trước: hiển thị TikZ + bảng, ưu đãi giới thiệu, tách phiên admin/học sinh,
+  thử lại tải ngân hàng đề
 
 Co-Authored-By: Claude <noreply@anthropic.com>

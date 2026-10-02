@@ -1674,6 +1674,22 @@
     return { count: 1, uncertain: true };
   }
 
+  // THÊM 2/10/2026 — HÌNH TikZ & BẢNG trong đề: \begin{tikzpicture}...\end{tikzpicture} và
+  // \begin{tabular}...\end{tabular} KHÔNG được làm phẳng xuống 1 dòng như phần chữ (dòng chú thích "%" bên trong
+  // mã TikZ sẽ "nuốt" luôn phần còn lại của dòng). stash: cất các khối này ra, xử lý chữ xong rồi restore: trả về
+  // nguyên vẹn (kèm xuống dòng) để màn hình học sinh (tikz-lite.js / bảng) dựng lại.
+  var FIGURE_BLOCK_RE = /\\begin\{(tikzpicture|tabular)\}[\s\S]*?\\end\{\1\}/g;
+  function stashFigureBlocks(text){
+    var blocks = [];
+    var t = String(text).replace(FIGURE_BLOCK_RE, function(m){ blocks.push(m); return ' \u0001' + (blocks.length - 1) + '\u0001 '; });
+    return {
+      text: t,
+      blocks: blocks,
+      restore: function(str){
+        return str.replace(/\s*\u0001(\d+)\u0001\s*/g, function(_, k){ return '\n' + blocks[Number(k)] + '\n'; }).trim();
+      }
+    };
+  }
   function extractImminiGroup(text){
     var mIdx = text.indexOf('\\immini');
     if(mIdx === -1) return null;
@@ -1681,7 +1697,26 @@
     if(!blocks.length) return null;
     var passageRaw = blocks[0] || '';
     var imageRaw = blocks.length > 1 ? blocks[1] : '';
-    var passageText = passageRaw
+    var stashP = stashFigureBlocks(passageRaw);
+    var passageText = stashP.text
+      .replace(/\\textbf\{([^{}]*)\}/g, '$1')
+      .replace(/\\textit\{([^{}]*)\}/g, '$1')
+      .replace(/\\noindent/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    // SỬA 2/10/2026 — phần chữ/bảng nằm NGAY SAU \immini{..}{..} (vd "Kết quả thí nghiệm ghi ở bảng sau:" +
+    // bảng) trước đây bị bỏ rơi vì chỉ đọc 2 tham số của \immini. Nay nối tiếp vào đoạn dùng chung.
+    var trailing = '';
+    var b1 = scanBraceBlock(text, text.indexOf('{', mIdx + 7));
+    if(b1){
+      var k2 = b1.endIndex;
+      while(k2 < text.length && /\s/.test(text[k2])) k2++;
+      var b2 = text[k2] === '{' ? scanBraceBlock(text, k2) : null;
+      if(b2) trailing = text.slice(b2.endIndex);
+    }
+    var stashT = stashFigureBlocks(trailing.replace(/^%.*$/gm, '').replace(/\\begin\{ex\}[\s\S]*$/, ''));
+    var trailingText = stashT.text
+      .replace(/\\begin\{center\}|\\end\{center\}/g, ' ')
       .replace(/\\textbf\{([^{}]*)\}/g, '$1')
       .replace(/\\textit\{([^{}]*)\}/g, '$1')
       .replace(/\\noindent/g, '')
@@ -1693,7 +1728,13 @@
     var im2;
     while((im2 = imgRegex2.exec(imageRaw)) !== null){ imgs.push(im2[1]); }
     var groupCount = inferGroupQuestionCount(passageText);
-    return { passage: passageText, images: imgs, remaining: Math.max(1, groupCount.count), uncertain: groupCount.uncertain };
+    var passageFull = stashP.restore(passageText);
+    // hình TikZ nằm ở tham số thứ 2 của \immini (thay cho ảnh) -> đặt cuối đoạn dùng chung
+    var figInImage = [];
+    imageRaw.replace(FIGURE_BLOCK_RE, function(m){ figInImage.push(m); return m; });
+    if(figInImage.length) passageFull += '\n' + figInImage.join('\n');
+    if(trailingText) passageFull += '\n' + stashT.restore(trailingText);
+    return { passage: passageFull, images: imgs, remaining: Math.max(1, groupCount.count), uncertain: groupCount.uncertain };
   }
 
   // SỬA 26/9/2026 — theo báo cáo thật của thầy: nhiều đề dùng câu hỏi chùm
@@ -1715,8 +1756,8 @@
     var imgRegex3 = /\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g;
     var im3;
     while((im3 = imgRegex3.exec(text)) !== null){ imgs.push(im3[1]); }
-    var passageText = text
-      .replace(/^%.*$/gm, '')
+    var stashPl = stashFigureBlocks(text.replace(/^%.*$/gm, ''));
+    var passageText = stashPl.text
       .replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g, function(m, inner){
         return inner.replace(/\\includegraphics(?:\[.*?\])?\{[^}]+\}/g, '').trim();
       })
@@ -1729,7 +1770,8 @@
       .trim();
     if(!passageText) return null;
     var groupCount = inferGroupQuestionCount(passageText);
-    return { passage: passageText, images: imgs, remaining: Math.max(1, groupCount.count), uncertain: groupCount.uncertain };
+    // SỬA 2/10/2026 — giữ nguyên hình TikZ/bảng nằm trong đoạn dùng chung (không làm phẳng thành 1 dòng)
+    return { passage: stashPl.restore(passageText), images: imgs, remaining: Math.max(1, groupCount.count), uncertain: groupCount.uncertain };
   }
 
   // Quét 1 khối {...} bắt đầu ĐÚNG tại dấu '{' ở startIdx (nhận diện đúng độ
@@ -1793,7 +1835,21 @@
         if(block2){ imageArg = block2.content; finalEnd = block2.endIndex; }
       }
       var exContent = block1.content;
-      var withImage = imageArg ? exContent.replace(/\\end\{ex\}/, imageArg + '\n\\end{ex}') : exContent;
+      // SỬA 2/10/2026 — hình ở tham số 2 là TikZ/bảng (không phải \includegraphics): chèn vào PHẦN ĐỀ BÀI (ngay trước
+      // \choice/\choiceTF/\shortans/\dongke/\loigiai). Trước đây mọi thứ đều chèn trước \end{ex} — tức nằm SAU
+      // \loigiai, ngoài phạm vi phần đề bài nên hình TikZ bị mất khi hiện cho học sinh (ảnh \includegraphics thì
+      // vẫn được nhận vì được quét trên toàn câu, nên vẫn giữ cách cũ cho ảnh).
+      var figureBlocks = [];
+      var imageOnly = imageArg ? imageArg.replace(FIGURE_BLOCK_RE, function(m){ figureBlocks.push(m); return ''; }) : '';
+      var withImage = exContent;
+      if(figureBlocks.length){
+        var cutAt = exContent.search(/\\choice|\\shortans|\\dongke|\\loigiai/);
+        var ins = '\n' + figureBlocks.join('\n') + '\n';
+        withImage = cutAt > -1 ? exContent.slice(0, cutAt) + ins + exContent.slice(cutAt) : exContent.replace(/\\end\{ex\}/, ins + '\\end{ex}');
+      }
+      if(imageOnly.replace(/\\begin\{center\}|\\end\{center\}/g, '').trim()){
+        withImage = withImage.replace(/\\end\{ex\}/, imageOnly + '\n\\end{ex}');
+      }
       out += content.slice(pos, mIdx) + withImage;
       pos = finalEnd;
     }
