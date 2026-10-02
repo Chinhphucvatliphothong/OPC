@@ -662,17 +662,37 @@
     // trong lúc chờ (thường rất nhanh, ngay sau khi đăng nhập).
     var bankVersionState = React.useState(0); var bankVersion = bankVersionState[0], setBankVersion = bankVersionState[1];
     var bankLiveState = React.useState(false); var bankIsLive = bankLiveState[0], setBankIsLive = bankLiveState[1];
+    // SỬA 2/10/2026 — TỰ THỬ LẠI khi tải ngân hàng đề lỗi: trước đây chỉ tải 1 lần,
+    // nếu lỗi thoáng qua (token đăng nhập chưa kịp gắn vào Firestore, mạng chập
+    // chờn) thì banner treo mãi, học sinh phải Ctrl+Shift+R. Nay thử lại tối đa
+    // 4 lần (cách 1,5s / 3s / 6s) rồi hiện nút "Tải lại"; bankReloadTick tăng
+    // khi học sinh bấm nút để chạy lại cả chuỗi.
+    var bankFailState = React.useState(false); var bankFailed = bankFailState[0], setBankFailed = bankFailState[1];
+    var bankTickState = React.useState(0); var bankReloadTick = bankTickState[0], setBankReloadTick = bankTickState[1];
     React.useEffect(function(){
       if(!liveReady || !authed) return;
       var cancelled = false;
-      window.OPC_LIVE.loadRealQuestionBank().then(function(list){
-        if(cancelled || !list || !list.length) return;
-        window.PrepScholarEngine.replaceQuestionBank(list);
-        setBankIsLive(true);
-        setBankVersion(function(v){ return v + 1; });
-      });
+      var delays = [1500, 3000, 6000];
+      setBankFailed(false);
+      function attempt(n){
+        window.OPC_LIVE.loadRealQuestionBank().then(function(list){
+          if(cancelled) return;
+          if(list && list.length){
+            window.PrepScholarEngine.replaceQuestionBank(list);
+            setBankIsLive(true);
+            setBankFailed(false);
+            setBankVersion(function(v){ return v + 1; });
+            return;
+          }
+          var err = window.OPC_LIVE.getLastBankError && window.OPC_LIVE.getLastBankError();
+          if(!err) return; // ngân hàng thật sự trống (chưa nạp đề) — không phải lỗi
+          if(n < delays.length){ setTimeout(function(){ if(!cancelled) attempt(n + 1); }, delays[n]); }
+          else { setBankFailed(true); }
+        });
+      }
+      attempt(0);
       return function(){ cancelled = true; };
-    }, [liveReady, authed]);
+    }, [liveReady, authed, bankReloadTick]);
 
     // THÊM 28/9/2026 — KHOÁ/MỞ CHƯƠNG THEO HỌC SINH. Đọc cấu hình lớp
     // (settings/curriculum) sau khi đăng nhập, gộp với unlockedChapters riêng
@@ -2083,7 +2103,11 @@
 
     return h('div', { className: 'ps-wrapper', key: 'bank-' + bankVersion },
       bankIsLive ? null : h('div', { className: 'banner warn', style: { marginBottom: '14px' } },
-        h('span', null, 'ℹ️'), h('div', null, 'Đang tải ngân hàng đề thật từ Firestore… nếu chờ lâu mà vẫn thấy thông báo này, báo thầy cô kiểm tra lại đề đã nạp trong trang admin.')),
+        h('span', null, 'ℹ️'),
+        bankFailed
+          ? h('div', null, 'Chưa tải được ngân hàng đề (mã: ' + ((window.OPC_LIVE.getLastBankError && window.OPC_LIVE.getLastBankError()) || 'không rõ') + '). ',
+              h('button', { className: 'btn btn-secondary', style: { marginLeft: '6px' }, onClick: function(){ setBankReloadTick(function(t){ return t + 1; }); } }, '🔄 Tải lại'))
+          : h('div', null, 'Đang tải ngân hàng đề thật từ Firestore… nếu chờ lâu mà vẫn thấy thông báo này, báo thầy cô kiểm tra lại đề đã nạp trong trang admin.')),
 
       // 1-3. Hồ sơ + Chỉ số + Điều hướng — ẨN khi đang khoá trong quy trình
       // Vá lỗi, thay bằng 1 thanh "Thoát" mỏng để học sinh không lạc sang

@@ -441,16 +441,25 @@ function transformQuestion(q, examMeta){
   return out;
 }
 
+// SỬA 2/10/2026 — tải ảnh của các đề SONG SONG (trước đây tải lần lượt từng đề
+// nên ngân hàng lớn chờ rất lâu sau đăng nhập) và ghi lại mã lỗi cuối cùng vào
+// lastBankError để giao diện biết "tải lỗi" khác "ngân hàng thật sự trống".
+var lastBankError = null;
 async function loadRealQuestionBank(){
   try{
+    lastBankError = null;
     var snap = await getDocs(query(collection(db, 'de_thi'), orderBy('createdAt', 'desc')));
     var docs = [];
     snap.forEach(function(d){ docs.push(d); });
+    var imagesList = await Promise.all(docs.map(function(d){
+      var ex = d.data() || {};
+      return loadExamImages(d.id, ex.images);
+    }));
     var all = [];
     for(var i = 0; i < docs.length; i++){
       var d = docs[i];
       var exam = d.data() || {};
-      var resolvedImages = await loadExamImages(d.id, exam.images);
+      var resolvedImages = imagesList[i];
       var meta = { examId: d.id, title: exam.title || '', images: resolvedImages };
       (exam.questions || []).forEach(function(q){
         all.push(transformQuestion(q, meta));
@@ -464,6 +473,7 @@ async function loadRealQuestionBank(){
     return all;
   }catch(e){
     console.error('Lỗi tải ngân hàng đề thật:', e);
+    lastBankError = (e && (e.code || e.message)) || 'unknown';
     return [];
   }
 }
@@ -566,6 +576,7 @@ window.OPC_LIVE = {
   logoutStudent: logoutStudent,
   resumeSession: resumeSession,
   loadRealQuestionBank: loadRealQuestionBank,
+  getLastBankError: function(){ return lastBankError; },
   saveAttempt: saveAttempt,
   flushPendingAttempts: flushPendingAttempts,
   diagnoseSave: diagnoseSave,
