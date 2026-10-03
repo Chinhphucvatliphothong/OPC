@@ -1500,7 +1500,11 @@
   ];
   var MAX_TEX_BYTES = 8 * 1024 * 1024;
   var MAX_IMAGE_BYTES = 6 * 1024 * 1024;
-  var MAX_IMAGES = 15;
+  // SỬA 2/10/2026 — nâng từ 15 lên 40 hình/lần nạp. Đây KHÔNG phải giới hạn của Firestore: mỗi hình được nén
+  // JPEG (cạnh dài ≤1200px) rồi lưu thành 1 tài liệu con riêng (xem saveExamDoc) nên không chạm trần 1MB.
+  // Con số chỉ là "rào" an toàn cho thao tác nén tuần tự trên trình duyệt (nhất là iPad/điện thoại) và để
+  // một đề không phình quá to — vì học sinh tải ảnh của đề khi vào học (opc-live-data.js loadExamImages).
+  var MAX_IMAGES = 40;
 
   // Trích xuất các khối ngoặc nhọn {...} an toàn ngay cả khi có ngoặc nhọn lồng nhau như $\dfrac{a}{b}$
   function extractBraceBlocks(str, startIndex, maxBlocks){
@@ -4890,7 +4894,8 @@
       setPreEditIdx(null); setPreEditDraft(null); setImportingRows({});
       setBulkAiProgress({ done: 0, total: 0 });
       if(!f){ setTexFile(null); setParsedAnalysis(null); setNanoRows({}); return; }
-      if(!/\.tex$/i.test(f.name)){ setFormErr('File đề phải có đuôi .tex.'); e.target.value=''; return; }
+      // Nhận .tex, và cả .txt (trên iPad có thể đổi đuôi .tex -> .txt nếu app Tệp vẫn không cho chọn)
+      if(!/\.(tex|txt)$/i.test(f.name)){ setFormErr('File đề phải có đuôi .tex (hoặc .txt).'); e.target.value=''; return; }
       if(f.size > MAX_TEX_BYTES){ setFormErr('File .tex vượt quá ' + fmtBytes(MAX_TEX_BYTES) + '.'); e.target.value=''; return; }
       setFormErr(''); setTexFile(f);
       try{
@@ -5309,8 +5314,11 @@
 
           h('div',{className:'sm-form-section'},
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-tex'},'File đề (.tex chuẩn cấu trúc Bộ GD) *'),
-              h('input',{id:'eb-tex', type:'file', accept:'.tex', className:'eb-file-input', onChange:onPickTex, disabled:uploading}),
-              h('div',{className:'eb-hint'}, 'Hỗ trợ tag phân loại: % [Mức độ][Chủ đề lớn][Dạng bài] (M1: Nhận biết, M2: Thông hiểu, M3: Vận dụng, M4: Vận dụng cao).')),
+              // SỬA 2/10/2026 — BỎ thuộc tính accept='.tex': iPad/iPhone không biết đuôi .tex nên làm MỜ mọi file .tex
+          // trong cửa sổ chọn tệp (không chọn được). Không giới hạn loại ở bộ chọn nữa; việc kiểm tra đuôi
+          // (.tex hoặc .txt) làm trong onPickTex bên dưới.
+          h('input',{id:'eb-tex', type:'file', className:'eb-file-input', onChange:onPickTex, disabled:uploading}),
+              h('div',{className:'eb-hint'}, 'Hỗ trợ tag phân loại: % [Mức độ][Chủ đề lớn][Dạng bài] (M1: Nhận biết, M2: Thông hiểu, M3: Vận dụng, M4: Vận dụng cao). Dùng iPad: nếu file .tex bị mờ, đổi đuôi thành .txt rồi chọn lại — vẫn nạp được.')),
 
             // Real-time analysis card if parsed
             parsedAnalysis ? h('div',{className:'eb-analysis-card'},
