@@ -1,11 +1,10 @@
-Sửa đọc đáp án trả lời ngắn "1{,}73"; admin xem lại bài làm đúng thứ tự câu đã giao
+Lớp viết tay Apple Pencil trong admin (xem lại bài làm) + lịch sử bài làm theo thứ tự giao
 
-- opc-live-data.js: đọc đúng \shortans{1{,}73} (trước đây ra 1); dung sai chấm suy ra từ số chữ số
-  thập phân của đáp án (1,73 -> ±0,005; trước đây cố định ±0,5)
-- prepscholar-ui.js: lượt làm lưu thêm questionIds (đúng thứ tự câu hệ thống giao, kể cả luyện tập
-  thích ứng); "Dừng & chấm điểm" của thích ứng không còn tính câu hiện tại chưa chấm; hiện đáp án
-  đúng theo dấu phẩy (1,73)
-- admin.html: bấm một lượt trong "Lịch sử làm bài" để xem từng câu (đề, phương án, đáp án em chọn,
-  đáp án đúng, đúng/sai/bỏ trống, lời giải) theo đúng thứ tự giao; lọc câu sai; tới 100 lượt gần nhất
+- ink-overlay.js: thanh công cụ dùng biến màu của admin (var(--accent/--surface/--line/--ink)), có màu
+  dự phòng để ink-demo.html vẫn chạy riêng
+- admin.html: nạp ink-overlay.js sau React; màn "Xem lại bài làm" bọc danh sách câu (đề + phương án + lời
+  giải) bằng InkBoard — Pencil viết, ngón tay chỉ cuộn đúng hộp thoại, nét tự xoá khi đổi lượt/lọc câu sai
+- Gộp bản trước (chưa upload): admin xem lại bài làm từng câu theo đúng thứ tự giao (questionIds), sửa đọc
+  đáp án "1{,}73", "Dừng & chấm điểm" thích ứng không tính câu chưa chấm
 
 Co-Authored-By: Claude <noreply@anthropic.com>

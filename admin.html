@@ -969,6 +969,8 @@
 <script src="prepscholar.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<!-- THÊM 04/10/2026 — lớp viết tay Apple Pencil (InkBoard): phải nạp SAU React -->
+<script src="/ink-overlay.js"></script>
 <script>
 (function(){
   if(!window.React || !window.ReactDOM){ return; }
@@ -2634,6 +2636,9 @@
     var examsState = React.useState({}); var exams = examsState[0], setExams = examsState[1];
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
     var onlyWrongState = React.useState(false); var onlyWrong = onlyWrongState[0], setOnlyWrong = onlyWrongState[1];
+    // THÊM 04/10/2026 — phần tử cuộn của hộp thoại (.sm-modal cuộn riêng, không cuộn cả trang): InkBoard cần nó để
+    // ngón tay kéo thì cuộn đúng hộp thoại. Dùng state (không phải ref) để lần render sau mới truyền được vào InkBoard.
+    var modalElState = React.useState(null); var modalEl = modalElState[0], setModalEl = modalElState[1];
     React.useEffect(function(){
       var cancelled = false;
       var ids = {};
@@ -2653,7 +2658,7 @@
     var nOk = rows.filter(function(r){ return r.status === 'ok'; }).length;
     var timeTxt = (attempt.timeUsedSec != null) ? (Math.floor(attempt.timeUsedSec / 60) + ' phút ' + (attempt.timeUsedSec % 60) + ' giây') : null;
     return h('div', { className: 'sm-overlay hv-overlay', onClick: function(e){ if(e.target === e.currentTarget) props.onClose(); } },
-      h('div', { className: 'sm-modal sm-modal-review', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Xem lại bài làm' },
+      h('div', { className: 'sm-modal sm-modal-review', ref: setModalEl, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Xem lại bài làm' },
         h('div', { className: 'sm-modal-head' },
           h('h3', null, 'Xem lại bài làm' + (props.student ? ' — ' + props.student.name : '')),
           h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
@@ -2672,7 +2677,15 @@
               h('label', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' } },
                 h('input', { type: 'checkbox', checked: onlyWrong, onChange: function(e){ setOnlyWrong(e.target.checked); } }), 'Chỉ hiện câu sai / bỏ trống'),
               h('span', { style: { color: 'var(--muted)' } }, nOk + '/' + rows.length + ' câu đúng · ' + (Array.isArray(attempt.questionIds) ? 'đúng thứ tự câu hệ thống giao cho em' : 'sắp theo đề gốc (lượt làm này không lưu thứ tự câu em làm)'))),
-            shown.map(function(r, i){ return h(HvQuestion, { key: r.id, row: r, n: rows.indexOf(r) + 1 }); }),
+            // LỚP VIẾT TAY (04/10/2026): thầy dùng Apple Pencil viết thẳng lên câu hỏi + lời giải khi giảng online. Ngón
+            // tay chỉ cuộn; nét tự xoá khi đổi lượt làm hoặc bật/tắt "chỉ câu sai" (bố cục đổi nên nét cũ sẽ lệch).
+            // Không có ink-overlay.js (chưa upload) -> vẫn hiện danh sách bình thường.
+            (function(){
+              var list = h('div', null, shown.map(function(r, i){ return h(HvQuestion, { key: r.id, row: r, n: rows.indexOf(r) + 1 }); }));
+              return window.InkBoard
+                ? h(window.InkBoard, { resetKey: attempt.id + '|' + (onlyWrong ? 1 : 0), scrollEl: modalEl }, list)
+                : list;
+            })(),
             onlyWrong && !shown.length ? h('p', { style: { color: 'var(--good)', fontWeight: 600 } }, '🎉 Em làm đúng hết các câu trong lượt này.') : null)
       )
     );
