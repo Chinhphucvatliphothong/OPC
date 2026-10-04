@@ -419,6 +419,26 @@ function resolveQuestionImages(q, examImages){
   return out;
 }
 
+// THÊM 4/10/2026 — ĐỌC ĐÁP ÁN TRẢ LỜI NGẮN từ chuỗi LaTeX trong \shortans{...}.
+// Lỗi cũ: "1{,}73" (dấu phẩy thập phân viết trong ngoặc để KaTeX hiện đúng) bị cắt ở "{" nên đọc ra 1.
+// Nay chuẩn hoá {,} -> , rồi đọc đủ số; hiểu cả dạng 2{,}5\cdot10^{3}. Trả { value, decimals, exp } hoặc null.
+// decimals = số chữ số sau dấu thập phân của đáp án gốc (dùng suy ra dung sai chấm bài).
+function parseShortAnswer(raw){
+  var s = String(raw == null ? '' : raw)
+    .replace(/\{\s*,\s*\}/g, ',').replace(/\{\s*\.\s*\}/g, '.')
+    .replace(/\$/g, '').replace(/\\[,;:!]/g, '').replace(/\\ /g, '').replace(/~/g, '');
+  var sci = /(-?\d+(?:[.,]\d+)?)\s*(?:\\cdot|\\times|·|×|\*)\s*10\s*\^\s*\{?\s*(-?\d+)\s*\}?/.exec(s);
+  var m = sci || /-?\d+(?:[.,]\d+)?/.exec(s);
+  if(!m) return null;
+  var mant = String(sci ? sci[1] : m[0]).replace(',', '.');
+  var exp = sci ? parseInt(sci[2], 10) : 0;
+  var dot = mant.indexOf('.');
+  var decimals = dot < 0 ? 0 : mant.length - dot - 1;
+  var value = Number((Number(mant) * Math.pow(10, exp)).toPrecision(12));
+  if(!isFinite(value)) return null;
+  return { value: value, decimals: decimals, exp: exp };
+}
+
 // ================= Ngân hàng đề thật =================
 // Chuyển 1 câu hỏi ở định dạng admin.html (parseTexBank) sang định dạng mà
 // prepscholar.js / prepscholar-ui.js đang render (xem QUESTION_BANK mẫu).
@@ -454,9 +474,12 @@ function transformQuestion(q, examMeta){
   if(q.type === 'choiceTF'){
     out.statements = (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; });
   } else if(q.type === 'shortans'){
-    var m = String(q.shortans || '').match(/-?\d+([.,]\d+)?/);
-    out.correctAnswer = m ? Number(m[0].replace(',', '.')) : null;
-    out.tolerance = 0.5; // chưa có dữ liệu dung sai gốc — mặc định tạm
+    // SỬA 4/10/2026 — dùng parseShortAnswer (hiểu "1{,}73"); dung sai = nửa đơn vị chữ số cuối của đáp án
+    // gốc (1,73 -> ±0,005; 7,5 -> ±0,05; 12 -> ±0,5). Trước đây cố định ±0,5 cho mọi câu nên đáp án 1,73
+    // mà em điền 2 vẫn được tính đúng.
+    var pa = parseShortAnswer(q.shortans);
+    out.correctAnswer = pa ? pa.value : null;
+    out.tolerance = pa ? (0.5 * Math.pow(10, -pa.decimals) * Math.pow(10, pa.exp) + 1e-9) : 0.5;
     out.unit = '';
   } else {
     out.options = (q.options || []).map(function(o){ return { key: o.key, text: o.text }; });
@@ -612,6 +635,7 @@ window.OPC_LIVE = {
   loadPeerRadar5: loadPeerRadar5,
   loadPricingPlans: loadPricingPlans,
   loadReferralSettings: loadReferralSettings,
+  parseShortAnswer: parseShortAnswer,
   loadSpecialExamList: loadSpecialExamList,
   loadSpecialExam: loadSpecialExam,
   saveSpecialAttempt: saveSpecialAttempt

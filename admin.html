@@ -353,6 +353,41 @@
   .sm-history-table{ width:100%; border-collapse:collapse; font-size:0.78rem; margin-top:4px; }
   .sm-history-table th{ text-align:left; color:var(--muted); font-weight:600; padding:5px 6px; border-bottom:1px solid var(--line); }
   .sm-history-table td{ padding:6px 6px; border-bottom:1px solid var(--line); color:var(--ink-2); }
+  /* THÊM 4/10/2026 — Xem lại bài làm của học sinh (AttemptReviewModal) */
+  .sm-history-table tr.hv-row{ cursor:pointer; }
+  .sm-history-table tr.hv-row:hover td{ background:var(--surface-2); }
+  .sm-overlay.hv-overlay{ z-index:1200; }
+  .sm-modal.sm-modal-review{ max-width:880px; padding:22px; }
+  .hv-sum{ display:flex; flex-wrap:wrap; gap:8px 18px; font-size:0.84rem; color:var(--ink-2); margin-bottom:12px; }
+  .hv-sum b{ color:var(--ink); }
+  .hv-toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px; font-size:0.84rem; }
+  .hv-q{ border:1px solid var(--line); border-left-width:4px; border-radius:12px; padding:14px 16px; margin-bottom:12px; background:var(--surface); }
+  .hv-q.ok{ border-left-color:var(--good); }
+  .hv-q.bad{ border-left-color:var(--critical); }
+  .hv-q.blank{ border-left-color:var(--muted); }
+  .hv-qhead{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; font-size:0.78rem; color:var(--muted); margin-bottom:8px; }
+  .hv-chip{ padding:2px 10px; border-radius:999px; font-weight:700; font-size:0.74rem; }
+  .hv-chip.ok{ background:color-mix(in srgb, var(--good) 14%, var(--surface)); color:var(--good); }
+  .hv-chip.bad{ background:color-mix(in srgb, var(--critical) 14%, var(--surface)); color:var(--critical); }
+  .hv-chip.blank{ background:var(--surface-2); color:var(--muted); }
+  .hv-text{ font-size:0.92rem; line-height:1.7; color:var(--ink); overflow-wrap:anywhere; }
+  .hv-text img{ max-width:100%; height:auto; }
+  .hv-text table{ border-collapse:collapse; margin:8px 0; }
+  .hv-text td, .hv-text th{ border:1px solid var(--line); padding:4px 10px; }
+  .hv-opt{ display:flex; gap:10px; align-items:flex-start; padding:8px 12px; border:1px solid var(--line); border-radius:10px; margin-top:6px; font-size:0.9rem; }
+  .hv-opt.correct{ border-color:var(--good); background:color-mix(in srgb, var(--good) 10%, var(--surface)); }
+  .hv-opt.picked-wrong{ border-color:var(--critical); background:color-mix(in srgb, var(--critical) 10%, var(--surface)); }
+  .hv-key{ font-weight:700; min-width:22px; }
+  .hv-tag{ margin-left:auto; font-size:0.72rem; font-weight:700; white-space:nowrap; flex:none; }
+  .hv-tag.good{ color:var(--good); } .hv-tag.crit{ color:var(--critical); }
+  .hv-ans-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; font-size:0.86rem; }
+  .hv-pill{ padding:6px 12px; border-radius:8px; font-weight:700; }
+  .hv-pill.good{ background:color-mix(in srgb, var(--good) 14%, var(--surface)); color:var(--good); }
+  .hv-pill.crit{ background:color-mix(in srgb, var(--critical) 14%, var(--surface)); color:var(--critical); }
+  .hv-pill.neutral{ background:var(--surface-2); color:var(--muted); }
+  .hv-details{ margin-top:10px; font-size:0.86rem; }
+  .hv-details summary{ cursor:pointer; color:var(--accent-strong); font-weight:600; }
+  .hv-passage{ padding:10px 12px; margin-bottom:10px; border-left:3px solid var(--accent); background:var(--surface-2); border-radius:6px; font-size:0.86rem; }
   .sm-history-table tr:last-child td{ border-bottom:none; }
 
   /* Question list in modal */
@@ -509,7 +544,7 @@
         addDoc = fsMod.addDoc, setDoc = fsMod.setDoc, updateDoc = fsMod.updateDoc,
         deleteDoc = fsMod.deleteDoc, onSnapshot = fsMod.onSnapshot, query = fsMod.query,
         orderBy = fsMod.orderBy, serverTimestamp = fsMod.serverTimestamp, getDocs = fsMod.getDocs,
-        limit = fsMod.limit, deleteField = fsMod.deleteField;
+        limit = fsMod.limit, deleteField = fsMod.deleteField, getDoc = fsMod.getDoc;
     var getStorage = stMod.getStorage, ref = stMod.ref, uploadBytesResumable = stMod.uploadBytesResumable,
         getDownloadURL = stMod.getDownloadURL, deleteObject = stMod.deleteObject;
 
@@ -634,6 +669,22 @@
             var subRef = doc(collection(db, COL, refDoc.id, 'images'), 'img_' + i);
             await setDoc(subRef, images[i]);
           }
+        },
+        // THÊM 4/10/2026 — đọc 1 đề theo id (kèm ảnh) cho màn "Xem lại bài làm" của học sinh. null nếu đề đã bị xoá.
+        getExam: async function(examId){
+          var snap = await getDoc(doc(db, COL, examId));
+          if(!snap.exists()) return null;
+          var data = snap.data() || {};
+          var images = data.images || [];
+          if(images.length && !(images[0].url || images[0].dataUrl)){
+            try{
+              var isnap = await getDocs(collection(db, COL, examId, 'images'));
+              var map = {};
+              isnap.forEach(function(d){ map[d.id] = d.data(); });
+              images = images.map(function(im, idx){ var full = map['img_' + idx] || map[im.subdocId]; return full ? Object.assign({}, im, full) : im; });
+            }catch(e){ console.warn('Lỗi tải ảnh của đề:', e); }
+          }
+          return Object.assign({ id: examId }, data, { images: images });
         },
         loadExamImages: async function(examId, imagesMeta){
           if(!imagesMeta || !imagesMeta.length) return [];
@@ -1505,6 +1556,27 @@
   // Con số chỉ là "rào" an toàn cho thao tác nén tuần tự trên trình duyệt (nhất là iPad/điện thoại) và để
   // một đề không phình quá to — vì học sinh tải ảnh của đề khi vào học (opc-live-data.js loadExamImages).
   var MAX_IMAGES = 40;
+
+// THÊM 4/10/2026 — ĐỌC ĐÁP ÁN TRẢ LỜI NGẮN từ chuỗi LaTeX trong \shortans{...}.
+  // Lỗi cũ: "1{,}73" (dấu phẩy thập phân viết trong ngoặc để KaTeX hiện đúng) bị cắt ở "{" nên đọc ra 1.
+  // Nay chuẩn hoá {,} -> , rồi đọc đủ số; hiểu cả dạng 2{,}5\cdot10^{3}. Trả { value, decimals, exp } hoặc null.
+  // decimals = số chữ số sau dấu thập phân của đáp án gốc (dùng suy ra dung sai chấm bài).
+  function parseShortAnswer(raw){
+    var s = String(raw == null ? '' : raw)
+      .replace(/\{\s*,\s*\}/g, ',').replace(/\{\s*\.\s*\}/g, '.')
+      .replace(/\$/g, '').replace(/\\[,;:!]/g, '').replace(/\\ /g, '').replace(/~/g, '');
+    var sci = /(-?\d+(?:[.,]\d+)?)\s*(?:\\cdot|\\times|·|×|\*)\s*10\s*\^\s*\{?\s*(-?\d+)\s*\}?/.exec(s);
+    var m = sci || /-?\d+(?:[.,]\d+)?/.exec(s);
+    if(!m) return null;
+    var mant = String(sci ? sci[1] : m[0]).replace(',', '.');
+    var exp = sci ? parseInt(sci[2], 10) : 0;
+    var dot = mant.indexOf('.');
+    var decimals = dot < 0 ? 0 : mant.length - dot - 1;
+    var value = Number((Number(mant) * Math.pow(10, exp)).toPrecision(12));
+    if(!isFinite(value)) return null;
+    return { value: value, decimals: decimals, exp: exp };
+  }
+
 
   // Trích xuất các khối ngoặc nhọn {...} an toàn ngay cả khi có ngoặc nhọn lồng nhau như $\dfrac{a}{b}$
   function extractBraceBlocks(str, startIndex, maxBlocks){
@@ -2396,6 +2468,216 @@
     );
   }
 
+  // ============================================================================
+  // THÊM 4/10/2026 — XEM LẠI BÀI LÀM CỦA HỌC SINH (trang admin).
+  // Giống màn "Phân tích chi tiết từng câu" mà em thấy sau khi nộp bài: từng câu, đáp án em đã chọn,
+  // đáp án đúng, đúng/sai, lời giải. Dữ liệu lấy từ:
+  //  - students/{id}/attempts: answers (đáp án em chọn, khoá theo mã câu "examId_qN"), rightQuestions /
+  //    wrongQuestions (mã câu + kết quả lúc nộp);
+  //  - đề gốc trong "de_thi" (nội dung câu, phương án, lời giải) — tải theo examId và nhớ lại (cache).
+  // Lượt làm trước 24/9/2026 không có "answers": vẫn liệt kê câu đúng/sai nhưng báo rõ không có đáp án em chọn.
+  // Câu đã bị xoá khỏi ngân hàng: hiện mã câu + kết quả đã lưu.
+  // ============================================================================
+  var examDocCache = {};
+  function loadExamCached(examId){
+    if(!examDocCache[examId]){
+      var OPCref = window.OPC;
+      examDocCache[examId] = (OPCref && OPCref.examBank)
+        ? OPCref.examBank.getExam(examId).catch(function(e){ console.warn('Lỗi tải đề ' + examId + ':', e); delete examDocCache[examId]; return undefined; })
+        : Promise.resolve(undefined);
+    }
+    return examDocCache[examId];
+  }
+  function hvSplitQid(id){
+    var i = String(id).lastIndexOf('_q');
+    if(i < 0) return null;
+    return { examId: String(id).slice(0, i), index: Number(String(id).slice(i + 2)) };
+  }
+  function hvNormImg(name){ return String(name || '').trim().toLowerCase().replace(/^.*[\\/]/, '').replace(/\.[a-z0-9]+$/i, ''); }
+  function hvImagesFor(names, exam){
+    if(!names || !names.length || !exam || !exam.images) return [];
+    var out = [];
+    names.forEach(function(n){
+      var key = hvNormImg(n);
+      var f = exam.images.filter(function(im){ return hvNormImg(im.name) === key; })[0];
+      var url = f ? (f.url || f.dataUrl) : '';
+      if(url) out.push({ name: n, url: url });
+    });
+    return out;
+  }
+  function hvPartOf(q){ return q.type === 'choiceTF' ? 'II' : (q.type === 'shortans' ? 'III' : 'I'); }
+  function hvFmtNum(n){ return String(n).replace('.', ','); }
+  var HV_TYPE_LABEL = { diagnostic:'Kiểm tra đầu vào', adaptive:'Luyện tập thích ứng', drill:'Luyện trọng tâm', assigned:'Đề được giao', mistakes:'Sửa câu sai' };
+
+  // Dựng danh sách "dòng xem lại" cho 1 lượt làm: mỗi dòng = 1 câu, kèm kết luận đúng/sai/bỏ trống.
+  function hvBuildRows(attempt, exams){
+    var answers = (attempt.answers && typeof attempt.answers === 'object') ? attempt.answers : {};
+    var ids = {}, rightSet = {}, wrongSet = {};
+    Object.keys(answers).forEach(function(k){ ids[k] = 1; });
+    (attempt.rightQuestions || []).forEach(function(r){ if(r && r.qId){ ids[r.qId] = 1; rightSet[r.qId] = 1; } });
+    (attempt.wrongQuestions || []).forEach(function(r){ if(r && r.qId){ ids[r.qId] = 1; wrongSet[r.qId] = 1; } });
+    var rows = Object.keys(ids).map(function(id){
+      var sp = hvSplitQid(id);
+      var exam = sp ? exams[sp.examId] : undefined;
+      var q = (exam && exam.questions) ? exam.questions.filter(function(x){ return Number(x.index) === sp.index; })[0] : null;
+      var ua = answers[id];
+      var row = { id: id, examId: sp ? sp.examId : '', index: sp ? sp.index : 0, exam: exam, q: q || null, ua: ua, hasAnswers: attempt.answers != null };
+      var stored = rightSet[id] ? 'ok' : (wrongSet[id] ? 'bad' : null);
+      if(!q){ row.status = stored || 'bad'; row.missing = (exam === null) ? 'deleted' : (exam === undefined ? 'error' : 'noq'); return row; }
+      row.part = hvPartOf(q);
+      var computed = false, blank = false;
+      if(row.part === 'I'){
+        var correct = (q.options || []).filter(function(o){ return o.isTrue; })[0];
+        row.correctKey = correct ? correct.key : null;
+        blank = (ua === undefined || ua === '' || ua === 'Chưa chọn');
+        computed = !blank && ua === row.correctKey;
+      } else if(row.part === 'II'){
+        var sts = q.options || [];
+        var matched = 0;
+        sts.forEach(function(st){ if(ua && ua[st.key] === !!st.isTrue) matched++; });
+        row.matched = matched; row.total = sts.length;
+        blank = !ua || !Object.keys(ua).length;
+        computed = sts.length > 0 && matched === sts.length;
+      } else {
+        var pa = parseShortAnswer(q.shortans);
+        row.correctValue = pa ? pa.value : null;
+        blank = (ua === undefined || ua === null || String(ua).trim() === '');
+        if(!blank && pa){
+          var num = Number(String(ua).trim().replace(',', '.'));
+          var tol = 0.5 * Math.pow(10, -pa.decimals) * Math.pow(10, pa.exp) + 1e-9;
+          computed = !isNaN(num) && Math.abs(num - pa.value) <= tol;
+        }
+      }
+      row.blank = blank;
+      row.status = blank ? 'blank' : ((stored || (computed ? 'ok' : 'bad')));
+      return row;
+    });
+    // THÊM 4/10/2026 — có questionIds (lượt làm từ 4/10/2026) -> đúng thứ tự câu hệ thống đã giao cho em;
+    // lượt cũ không có -> sắp theo đề gốc (Firestore không giữ thứ tự khoá của "answers").
+    var order = Array.isArray(attempt.questionIds) ? attempt.questionIds : null;
+    if(order){
+      var pos = {}; order.forEach(function(id, i){ pos[id] = i; });
+      rows.sort(function(a, b){
+        var pa = pos[a.id] != null ? pos[a.id] : 1e6, pb = pos[b.id] != null ? pos[b.id] : 1e6;
+        return pa !== pb ? pa - pb : (a.examId < b.examId ? -1 : (a.examId > b.examId ? 1 : a.index - b.index));
+      });
+    } else {
+      rows.sort(function(a, b){ return a.examId < b.examId ? -1 : (a.examId > b.examId ? 1 : a.index - b.index); });
+    }
+    return rows;
+  }
+
+  function HvHtml(props){
+    return h('div', { className: 'hv-text', style: props.style, dangerouslySetInnerHTML: { __html: latexToHtmlPDF(props.text || '') } });
+  }
+
+  function HvQuestion(props){
+    var row = props.row, q = row.q, n = props.n;
+    var statusLabel = row.status === 'ok' ? '✓ Đúng' : (row.status === 'blank' ? '○ Bỏ trống' : '✗ Sai');
+    var head = h('div', { className: 'hv-qhead' },
+      h('b', { style: { color: 'var(--ink)', fontSize: '0.9rem' } }, 'Câu ' + n),
+      h('span', { className: 'hv-chip ' + (row.status === 'ok' ? 'ok' : (row.status === 'blank' ? 'blank' : 'bad')) }, statusLabel),
+      q ? h('span', null, 'Phần ' + row.part + (q.level ? ' · ' + q.level : '') + (q.chuDeLon ? ' · ' + q.chuDeLon : '') + (q.dangBai ? ' › ' + q.dangBai : '')) : null,
+      row.exam && row.exam.title ? h('span', { style: { marginLeft: 'auto' } }, row.exam.title) : null
+    );
+    if(!q){
+      var why = row.missing === 'deleted' ? 'Đề chứa câu này đã bị xoá khỏi ngân hàng.' : (row.missing === 'error' ? 'Chưa tải được đề chứa câu này (thử mở lại).' : 'Không tìm thấy câu này trong đề (có thể đã bị sửa/xoá).');
+      return h('div', { className: 'hv-q ' + row.status }, head,
+        h('div', { style: { fontSize: '0.84rem', color: 'var(--muted)' } }, why + ' Mã câu: ' + row.id + '. Kết quả lúc nộp: ' + (row.status === 'ok' ? 'đúng' : 'sai') + '.'));
+    }
+    var imgs = hvImagesFor(q.images, row.exam).concat(hvImagesFor(q.groupImages, row.exam));
+    var body;
+    if(row.part === 'I'){
+      body = h('div', null,
+        (q.options || []).map(function(opt){
+          var isCorrect = opt.key === row.correctKey, picked = opt.key === row.ua;
+          return h('div', { key: opt.key, className: 'hv-opt' + (isCorrect ? ' correct' : (picked ? ' picked-wrong' : '')) },
+            h('span', { className: 'hv-key' }, opt.key),
+            h('div', { style: { flex: 1 } }, h(HvHtml, { text: opt.text })),
+            isCorrect ? h('span', { className: 'hv-tag good' }, picked ? '✓ Em chọn — đúng' : '✓ Đáp án đúng')
+              : (picked ? h('span', { className: 'hv-tag crit' }, '✗ Em đã chọn') : null));
+        }),
+        row.blank ? h('div', { style: { fontSize: '0.8rem', color: 'var(--critical)', marginTop: '6px' } }, row.hasAnswers ? '⚠ Em bỏ trống câu này.' : 'Lượt làm này không lưu đáp án em chọn.') : null
+      );
+    } else if(row.part === 'II'){
+      body = h('div', null,
+        h('table', { className: 'sm-history-table', style: { marginTop: '8px' } },
+          h('thead', null, h('tr', null, h('th', null, 'Ý'), h('th', null, 'Đáp án đúng'), h('th', null, 'Em chọn'))),
+          h('tbody', null, (q.options || []).map(function(st){
+            var uv = row.ua ? row.ua[st.key] : undefined;
+            var ok = uv === !!st.isTrue;
+            return h('tr', { key: st.key },
+              h('td', { style: { width: '60%' } }, h('b', null, st.key + ') '), h(HvHtml, { text: st.text, style: { display: 'inline' } })),
+              h('td', null, st.isTrue ? 'ĐÚNG' : 'SAI'),
+              h('td', { style: { fontWeight: 700, color: uv === undefined ? 'var(--muted)' : (ok ? 'var(--good)' : 'var(--critical)') } },
+                uv === undefined ? 'chưa chọn' : (uv ? 'ĐÚNG' : 'SAI')));
+          }))),
+        h('div', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', marginTop: '6px' } }, row.hasAnswers ? ('Đúng ' + row.matched + '/' + row.total + ' ý.') : 'Lượt làm này không lưu đáp án em chọn.')
+      );
+    } else {
+      var uaTxt = (row.ua === undefined || row.ua === null || String(row.ua).trim() === '') ? (row.hasAnswers ? 'chưa trả lời' : 'không lưu') : String(row.ua);
+      body = h('div', { className: 'hv-ans-row' },
+        h('span', { className: 'hv-pill good' }, 'Đáp án đúng: ' + (row.correctValue != null ? hvFmtNum(row.correctValue) : (q.shortans || '—'))),
+        h('span', { className: 'hv-pill ' + (row.status === 'ok' ? 'good' : (row.blank ? 'neutral' : 'crit')) }, 'Em trả lời: ' + uaTxt));
+    }
+    return h('div', { className: 'hv-q ' + row.status }, head,
+      q.groupPassage ? h('details', { className: 'hv-details' }, h('summary', null, 'Ngữ cảnh dùng chung'), h('div', { className: 'hv-passage' }, h(HvHtml, { text: q.groupPassage }))) : null,
+      h(HvHtml, { text: q.stem }),
+      imgs.length ? h('div', { style: { margin: '8px 0' } }, imgs.map(function(im, i){ return h('img', { key: i, src: im.url, alt: im.name, style: { maxWidth: '100%', height: 'auto', display: 'block', marginBottom: '6px' } }); })) : null,
+      body,
+      q.loigiai ? h('details', { className: 'hv-details' }, h('summary', null, '💡 Lời giải'), h('div', { style: { marginTop: '6px' } }, h(HvHtml, { text: q.loigiai }))) : null
+    );
+  }
+
+  function AttemptReviewModal(props){
+    var attempt = props.attempt;
+    var examsState = React.useState({}); var exams = examsState[0], setExams = examsState[1];
+    var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
+    var onlyWrongState = React.useState(false); var onlyWrong = onlyWrongState[0], setOnlyWrong = onlyWrongState[1];
+    React.useEffect(function(){
+      var cancelled = false;
+      var ids = {};
+      Object.keys(attempt.answers || {}).concat((attempt.rightQuestions || []).map(function(r){ return r && r.qId; }), (attempt.wrongQuestions || []).map(function(r){ return r && r.qId; })).forEach(function(id){
+        var sp = id ? hvSplitQid(id) : null; if(sp) ids[sp.examId] = 1;
+      });
+      setLoading(true);
+      Promise.all(Object.keys(ids).map(function(eid){ return loadExamCached(eid).then(function(ex){ return [eid, ex]; }); })).then(function(pairs){
+        if(cancelled) return;
+        var m = {}; pairs.forEach(function(pr){ m[pr[0]] = pr[1]; });
+        setExams(m); setLoading(false);
+      });
+      return function(){ cancelled = true; };
+    }, [attempt.id]);
+    var rows = React.useMemo(function(){ return loading ? [] : hvBuildRows(attempt, exams); }, [loading, exams, attempt.id]);
+    var shown = onlyWrong ? rows.filter(function(r){ return r.status !== 'ok'; }) : rows;
+    var nOk = rows.filter(function(r){ return r.status === 'ok'; }).length;
+    var timeTxt = (attempt.timeUsedSec != null) ? (Math.floor(attempt.timeUsedSec / 60) + ' phút ' + (attempt.timeUsedSec % 60) + ' giây') : null;
+    return h('div', { className: 'sm-overlay hv-overlay', onClick: function(e){ if(e.target === e.currentTarget) props.onClose(); } },
+      h('div', { className: 'sm-modal sm-modal-review', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Xem lại bài làm' },
+        h('div', { className: 'sm-modal-head' },
+          h('h3', null, 'Xem lại bài làm' + (props.student ? ' — ' + props.student.name : '')),
+          h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
+        h('div', { className: 'hv-sum' },
+          h('span', null, h('b', null, 'Ngày: '), fmtDate(attempt.createdAt)),
+          h('span', null, h('b', null, 'Loại: '), HV_TYPE_LABEL[attempt.type] || attempt.type || '—'),
+          h('span', null, h('b', null, 'Điểm: '), typeof attempt.scaledScore10 === 'number' ? attempt.scaledScore10.toFixed(2) : '—'),
+          h('span', null, h('b', null, 'Đúng/Tổng: '), (attempt.correctCount != null ? attempt.correctCount : '—') + '/' + (attempt.totalQuestions != null ? attempt.totalQuestions : '—')),
+          timeTxt ? h('span', null, h('b', null, 'Thời gian: '), timeTxt) : null),
+        attempt.answers == null ? h('div', { className: 'banner warn', style: { marginBottom: '12px' } }, h('span', null, 'ℹ️'),
+          h('div', null, 'Lượt làm này được lưu trước 24/9/2026 nên không có đáp án em đã chọn — chỉ xem được câu nào đúng/sai.')) : null,
+        loading ? h('p', { style: { color: 'var(--muted)', fontSize: '0.9rem' } }, 'Đang tải nội dung câu hỏi…') :
+          !rows.length ? h('p', { style: { color: 'var(--muted)', fontSize: '0.9rem' } }, 'Lượt làm này không có chi tiết từng câu.') :
+          h('div', null,
+            h('div', { className: 'hv-toolbar' },
+              h('label', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: onlyWrong, onChange: function(e){ setOnlyWrong(e.target.checked); } }), 'Chỉ hiện câu sai / bỏ trống'),
+              h('span', { style: { color: 'var(--muted)' } }, nOk + '/' + rows.length + ' câu đúng · ' + (Array.isArray(attempt.questionIds) ? 'đúng thứ tự câu hệ thống giao cho em' : 'sắp theo đề gốc (lượt làm này không lưu thứ tự câu em làm)'))),
+            shown.map(function(r, i){ return h(HvQuestion, { key: r.id, row: r, n: rows.indexOf(r) + 1 }); }),
+            onlyWrong && !shown.length ? h('p', { style: { color: 'var(--good)', fontWeight: 600 } }, '🎉 Em làm đúng hết các câu trong lượt này.') : null)
+      )
+    );
+  }
+
   function StudentsPanel(props){
     var OPCref = window.OPC;
     var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
@@ -2413,7 +2695,11 @@
     // không giữ listener không cần thiết cho cả lớp cùng lúc.
     var selectedAssignedState = React.useState([]); var selectedAssigned = selectedAssignedState[0], setSelectedAssigned = selectedAssignedState[1];
     var selectedAttemptsState = React.useState([]); var selectedAttempts = selectedAttemptsState[0], setSelectedAttempts = selectedAttemptsState[1];
+    // THÊM 4/10/2026 — lượt làm đang được mở để "Xem lại bài làm" + bật/tắt xem hết lịch sử
+    var reviewState = React.useState(null); var reviewAttempt = reviewState[0], setReviewAttempt = reviewState[1];
+    var histAllState = React.useState(false); var histAll = histAllState[0], setHistAll = histAllState[1];
     React.useEffect(function(){
+      setReviewAttempt(null); setHistAll(false);
       if(!selected || !selected.id || !OPCref){ setSelectedAssigned([]); setSelectedAttempts([]); return; }
       var unsub1 = OPCref.assignedExams ? OPCref.assignedExams.subscribeForStudent(selected.id, function(snap){
         setSelectedAssigned(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); }));
@@ -3175,19 +3461,23 @@
         // THÊM 24/9/2026 — bảng các lượt luyện tập gần nhất (mọi loại: đầu
         // vào/thích ứng/drill/đề giao/sửa câu sai), không chỉ riêng đề giao.
         h('div',{className:'sm-info-block'},
-          h('div',{className:'sm-info-title'}, '🕓 Lịch sử làm bài gần đây'),
+          h('div',{className:'sm-info-title'}, '🕓 Lịch sử làm bài' + (selectedAttempts.length ? ' (' + selectedAttempts.length + ' lượt gần nhất)' : '')),
           !selectedAttempts.length ? h('p',{style:{color:'var(--muted)', fontSize:'0.8rem'}}, 'Chưa có lượt luyện tập nào.') :
-            h('table',{className:'sm-history-table'},
-              h('thead',null, h('tr',null, h('th',null,'Ngày'), h('th',null,'Loại'), h('th',null,'Điểm'), h('th',null,'Đúng/Tổng'))),
-              h('tbody',null, selectedAttempts.slice(0, 15).map(function(a){
-                var TYPE_LABEL = { diagnostic:'Kiểm tra đầu vào', adaptive:'Luyện tập thích ứng', drill:'Luyện trọng tâm', assigned:'Đề được giao', mistakes:'Sửa câu sai' };
-                return h('tr',{key:a.id},
-                  h('td',null, fmtDate(a.createdAt)),
-                  h('td',null, TYPE_LABEL[a.type] || a.type || '—'),
-                  h('td',null, typeof a.scaledScore10 === 'number' ? a.scaledScore10.toFixed(2) : '—'),
-                  h('td',null, (a.correctCount != null ? a.correctCount : '—') + '/' + (a.totalQuestions != null ? a.totalQuestions : '—'))
-                );
-              }))
+            h('div', null,
+              h('p',{style:{color:'var(--muted)', fontSize:'0.76rem', margin:'0 0 4px'}}, 'Bấm vào một lượt để xem từng câu: đáp án em đã chọn, đáp án đúng, lời giải.'),
+              h('table',{className:'sm-history-table'},
+                h('thead',null, h('tr',null, h('th',null,'Ngày'), h('th',null,'Loại'), h('th',null,'Điểm'), h('th',null,'Đúng/Tổng'), h('th',null,''))),
+                h('tbody',null, selectedAttempts.slice(0, histAll ? 100 : 15).map(function(a){
+                  return h('tr',{key:a.id, className:'hv-row', onClick:function(){ setReviewAttempt(a); }},
+                    h('td',null, fmtDate(a.createdAt)),
+                    h('td',null, HV_TYPE_LABEL[a.type] || a.type || '—'),
+                    h('td',null, typeof a.scaledScore10 === 'number' ? a.scaledScore10.toFixed(2) : '—'),
+                    h('td',null, (a.correctCount != null ? a.correctCount : '—') + '/' + (a.totalQuestions != null ? a.totalQuestions : '—')),
+                    h('td',{style:{color:'var(--accent-strong)', fontWeight:600, whiteSpace:'nowrap'}}, '👁 Xem')
+                  );
+                }))
+              ),
+              selectedAttempts.length > 15 ? h('button',{type:'button', className:'sm-link-btn', style:{marginTop:'8px'}, onClick:function(){ setHistAll(!histAll); }}, histAll ? 'Thu gọn' : 'Xem tất cả ' + selectedAttempts.length + ' lượt') : null
             )
         ),
 
@@ -3430,7 +3720,7 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, summaryCard, searchRow, tableOrEmpty), detailModal, addModal, importModal, justApprovedModal);
+    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, summaryCard, searchRow, tableOrEmpty), detailModal, reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt, student: selected, onClose: function(){ setReviewAttempt(null); } }) : null, addModal, importModal, justApprovedModal);
   }
 
   // ================= Báo cáo Phụ huynh (AI co-pilot) =================
@@ -5640,8 +5930,10 @@
     if(q.type === 'choiceTF'){
       out.statements = (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; });
     } else if(q.type === 'shortans'){
-      var m = String(q.shortans || '').match(/-?\d+([.,]\d+)?/);
-      out.correctAnswer = m ? Number(m[0].replace(',', '.')) : null;
+      // SỬA 4/10/2026 — hiểu "1{,}73" (xem parseShortAnswer trong opc-live-data.js)
+      var pa = parseShortAnswer(q.shortans);
+      out.correctAnswer = pa ? pa.value : null;
+      out.tolerance = pa ? (0.5 * Math.pow(10, -pa.decimals) * Math.pow(10, pa.exp) + 1e-9) : 0.5;
       out.tolerance = 0.5;
       out.unit = '';
     } else {

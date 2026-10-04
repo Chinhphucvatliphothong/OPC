@@ -436,7 +436,7 @@
       var isRight = item.isFullCorrect;
       return h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px', fontSize: '0.85rem' } },
         h('span', { style: { padding: '6px 12px', borderRadius: '8px', background: 'color-mix(in srgb, var(--good) 14%, var(--surface))', color: 'var(--good)', fontWeight: 700 } },
-          'Đáp án đúng: ' + item.correctAnswer + (item.unit ? ' ' + item.unit : '')),
+          'Đáp án đúng: ' + String(item.correctAnswer).replace('.', ',') + (item.unit ? ' ' + item.unit : '')),
         h('span', { style: { padding: '6px 12px', borderRadius: '8px', fontWeight: 700, background: isRight ? 'color-mix(in srgb, var(--good) 14%, var(--surface))' : 'color-mix(in srgb, var(--critical) 12%, var(--surface))', color: isRight ? 'var(--good)' : 'var(--critical)' } },
           'Bạn trả lời: ' + (item.userAnswer === undefined || item.userAnswer === '' ? 'chưa trả lời' : item.userAnswer + (item.unit ? ' ' + item.unit : '')))
       );
@@ -1893,14 +1893,19 @@
     }
 
     // Nộp bài và chấm điểm
-    function handleSubmitExam(){
+    // SỬA 4/10/2026 — onlyQuestions (tuỳ chọn, MẢNG): chỉ chấm/lưu đúng các câu này. Dùng cho "Dừng & chấm
+    // điểm" của luyện tập thích ứng: câu hiện tại CHƯA chấm không được tính (trước đây vẫn bị tính là câu bỏ
+    // trống dù hộp thoại ghi "N-1 câu đã làm"). Hàm này cũng được gắn trực tiếp vào onClick nên tham số đầu có
+    // thể là sự kiện chuột — chỉ nhận khi là mảng.
+    function handleSubmitExam(onlyQuestions){
       if(!examSession || examSession.isSubmitted) return;
       if(submittedSessionRef.current === examSession) return; // đã nộp lượt này rồi
-      var scored = window.PrepScholarEngine.scoreExam(examSession.questions, userAnswers);
+      var sessQuestions = (Array.isArray(onlyQuestions) && onlyQuestions.length) ? onlyQuestions : examSession.questions;
+      var scored = window.PrepScholarEngine.scoreExam(sessQuestions, userAnswers);
       submittedSessionRef.current = examSession; // đặt SAU khi chấm xong để lỗi chấm (nếu có) không khoá nút
       setScoreResult(scored);
       setExamSession(function(prev){
-        return Object.assign({}, prev, { isSubmitted: true });
+        return Object.assign({}, prev, { isSubmitted: true, questions: sessQuestions });
       });
 
       // Tính toán cập nhật Mastery % theo PrepScholar
@@ -2031,6 +2036,11 @@
           // startAssignedExamReview bên dưới). Lượt làm bài TRƯỚC 24/9/2026
           // không có trường này — UI tự ẩn nút "Xem lại", chỉ hiện điểm số.
           answers: userAnswers,
+          // questionIds: THÊM 4/10/2026 — mã câu theo ĐÚNG THỨ TỰ hệ thống giao cho học sinh (luyện tập thích
+          // ứng: câu 1, 2, 3… theo lúc được chọn). "answers" lưu dạng khoá-giá trị nên Firestore không giữ thứ
+          // tự; trang admin dùng mảng này để dựng lại lịch sử theo đúng thứ tự khi xem lại bài làm. Lượt làm
+          // trước ngày này không có trường này -> admin sắp theo đề gốc và ghi chú rõ.
+          questionIds: sessQuestions.map(function(q){ return q.id; }),
           timeAllocatedSec: (examSession.initialTimeSec != null) ? examSession.initialTimeSec : null,
           timeUsedSec: (examSession.initialTimeSec != null) ? Math.max(0, examSession.initialTimeSec - timeLeft) : null
         };
@@ -2455,8 +2465,14 @@
                     type: 'button',
                     className: 'btn btn-secondary',
                     onClick: function(){
-                      askConfirm('Dừng luyện tập thích ứng và chấm điểm với ' + (adaptiveChecked ? qNo : qNo - 1) + ' câu đã làm?', function(){
-                        handleSubmitExam();
+                      var doneCount = adaptiveChecked ? qNo : qNo - 1;
+                      if(doneCount < 1){
+                        askConfirm('Bạn chưa trả lời câu nào. Thoát luyện tập thích ứng (không lưu kết quả)?', function(){ setExamSession(null); }, 'Thoát');
+                        return;
+                      }
+                      askConfirm('Dừng luyện tập thích ứng và chấm điểm với ' + doneCount + ' câu đã làm?', function(){
+                        // câu hiện tại chưa bấm "Chấm" thì không tính (đúng như thông báo ở trên)
+                        handleSubmitExam(adaptiveChecked ? examSession.questions : examSession.questions.slice(0, -1));
                       }, 'Chấm điểm');
                     }
                   }, 'Dừng & chấm điểm')

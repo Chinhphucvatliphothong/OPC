@@ -1,11 +1,11 @@
-Giữ hình TikZ và bảng khi nạp đề (immini); vẽ đường cong Bézier
+Sửa đọc đáp án trả lời ngắn "1{,}73"; admin xem lại bài làm đúng thứ tự câu đã giao
 
-- admin.html: \immini{ \begin{ex}..\end{ex} }{tikz/bảng} -> chèn hình vào PHẦN ĐỀ BÀI
-  (trước đây chèn sau \loigiai nên bị mất); đoạn chữ/bảng nằm ngay sau
-  \immini{..}{..} của câu hỏi chùm không còn bị bỏ rơi; TikZ/bảng trong đoạn
-  dùng chung được giữ nguyên dòng (không làm phẳng)
-- tikz-lite.js: thêm .. controls .. (Bézier) và \makecell
-- Gồm các bản trước: hiển thị TikZ + bảng, ưu đãi giới thiệu, tách phiên admin/học sinh,
-  thử lại tải ngân hàng đề
+- opc-live-data.js: đọc đúng \shortans{1{,}73} (trước đây ra 1); dung sai chấm suy ra từ số chữ số
+  thập phân của đáp án (1,73 -> ±0,005; trước đây cố định ±0,5)
+- prepscholar-ui.js: lượt làm lưu thêm questionIds (đúng thứ tự câu hệ thống giao, kể cả luyện tập
+  thích ứng); "Dừng & chấm điểm" của thích ứng không còn tính câu hiện tại chưa chấm; hiện đáp án
+  đúng theo dấu phẩy (1,73)
+- admin.html: bấm một lượt trong "Lịch sử làm bài" để xem từng câu (đề, phương án, đáp án em chọn,
+  đáp án đúng, đúng/sai/bỏ trống, lời giải) theo đúng thứ tự giao; lọc câu sai; tới 100 lượt gần nhất
 
 Co-Authored-By: Claude <noreply@anthropic.com>
