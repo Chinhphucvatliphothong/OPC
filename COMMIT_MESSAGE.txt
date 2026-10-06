@@ -1,10 +1,15 @@
-Lớp viết tay Apple Pencil trong admin (xem lại bài làm) + lịch sử bài làm theo thứ tự giao
+Gắn lại nano-point cho đề đã nạp (không cần xoá đề); gợi ý nano-point chính xác hơn; câu nhiều nano-point
 
-- ink-overlay.js: thanh công cụ dùng biến màu của admin (var(--accent/--surface/--line/--ink)), có màu
-  dự phòng để ink-demo.html vẫn chạy riêng
-- admin.html: nạp ink-overlay.js sau React; màn "Xem lại bài làm" bọc danh sách câu (đề + phương án + lời
-  giải) bằng InkBoard — Pencil viết, ngón tay chỉ cuộn đúng hộp thoại, nét tự xoá khi đổi lượt/lọc câu sai
-- Gộp bản trước (chưa upload): admin xem lại bài làm từng câu theo đúng thứ tự giao (questionIds), sửa đọc
-  đáp án "1{,}73", "Dừng & chấm điểm" thích ứng không tính câu chưa chấm
+- admin.html: tab "🏷️ Gắn nano-point" sửa nano-point của câu ĐÃ nạp (chip, thêm nano ở Bài khác, ⚡ gợi ý nhanh,
+  🪄 AI, đọc lại thẻ "% @nano:" từ file .tex ghép theo nội dung đề) rồi lưu bằng updateQuestions; tab "🗺️ Nano-point"
+  thêm/đổi tên/xoá nano-point; nạp đề đọc thẻ @nano, có ⚡ Nhanh, hiện độ tin cậy gợi ý
+- nano-map.js: nhập danh sách nano-point của thầy cho Chương I-IV (85 nano + khi-1.4…1.7; Từ trường, Hạt nhân thay
+  hẳn danh mục cũ; sửa chính tả; Bài 20 = Truyền tải điện năng – Máy biến áp, Bài 24 thêm "An toàn phóng xạ");
+  so khớp tên Bài không phân biệt kiểu dấu gạch; setExtra/nextNanoId/parseIdList; suggestNanos (khớp từ khoá, độ tin cậy)
+- api/ai-suggest-nano.js: bỏ cắt danh mục (8 nano/bài), chọn 1-3 nano-point ở BẤT KỲ Bài nào, trả confidence,
+  được trả rỗng khi không khớp, nhận ngữ cảnh chùm + lời giải + ứng viên
+- opc-live-data.js / prepscholar*.js: loadNanoExtra; câu có nanoIds (nhiều nano-point); mastery cập nhật cho mọi
+  nano-point (đúng: cộng đủ; sai: trừ chia -20/-10/-8); chọn câu thích ứng/luyện nano/câu tương tự theo mọi nano
+- Gộp bản trước chưa upload: lớp viết tay Apple Pencil, xem lại bài làm theo thứ tự giao, sửa đáp án 1{,}73
 
 Co-Authored-By: Claude <noreply@anthropic.com>

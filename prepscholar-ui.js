@@ -713,8 +713,11 @@
       var cancelled = false;
       var delays = [1500, 3000, 6000];
       setBankFailed(false);
+      // THÊM 5/10/2026 — nạp nano-point thầy tự thêm (settings/nanoExtra) TRƯỚC khi dựng bản đồ/ngân hàng,
+      // để tên nano-point mới hiện đúng ngay lần vào đầu tiên. Chỉ làm 1 lần mỗi lượt chạy hiệu ứng này.
       function attempt(n){
-        window.OPC_LIVE.loadRealQuestionBank().then(function(list){
+        var pre = (n === 0 && window.OPC_LIVE.loadNanoExtra) ? window.OPC_LIVE.loadNanoExtra() : Promise.resolve();
+        Promise.resolve(pre).then(function(){ return window.OPC_LIVE.loadRealQuestionBank(); }).then(function(list){
           if(cancelled) return;
           if(list && list.length){
             window.PrepScholarEngine.replaceQuestionBank(list);
@@ -1825,10 +1828,14 @@
       var res = scored.perQuestionResults[0];
       if(!res) return;
       setAdaptiveNanoMastery(function(prev){
-        if(!curQ.nanoId) return prev;
+        // SỬA 5/10/2026 — câu có 2-3 nano-point: cập nhật TẤT CẢ (bumpNanoMastery chia mức trừ khi sai)
+        var ids = window.PrepScholarEngine.nanoIdsOf(curQ);
+        if(!ids.length) return prev;
         var next = Object.assign({}, prev);
-        var cur = (next[curQ.nanoId] != null) ? next[curQ.nanoId] : window.PrepScholarEngine.MASTERY_NEUTRAL_START;
-        next[curQ.nanoId] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, curQ.level);
+        ids.forEach(function(nid){
+          var cur = (next[nid] != null) ? next[nid] : window.PrepScholarEngine.MASTERY_NEUTRAL_START;
+          next[nid] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, curQ.level, ids.length);
+        });
         return next;
       });
       setAdaptiveLastResult(res);
@@ -1922,10 +1929,11 @@
       var newNanoMastery = Object.assign({}, student.nanoMastery || {});
       scored.perQuestionResults.forEach(function(res){
         var q = res.question;
-        var nanoId = q && q.nanoId;
-        if(!nanoId) return;
-        var cur = (newNanoMastery[nanoId] != null) ? newNanoMastery[nanoId] : 50;
-        newNanoMastery[nanoId] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, q.level);
+        var ids = window.PrepScholarEngine.nanoIdsOf(q); // SỬA 5/10/2026 — nhiều nano-point/câu
+        ids.forEach(function(nanoId){
+          var cur = (newNanoMastery[nanoId] != null) ? newNanoMastery[nanoId] : 50;
+          newNanoMastery[nanoId] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, q.level, ids.length);
+        });
       });
 
       Object.keys(scored.topicStats).forEach(function(k){
@@ -2002,10 +2010,10 @@
         // nhãn thủ công gì thêm. Lượt làm bài TRƯỚC 23/9/2026 không có 2
         // trường này — computeRadar5 tự bỏ qua, không tính sai lệch.
         var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
         });
         var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, nanoId: r.question.nanoId || null, baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+          return { qId: r.question.id, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
         });
         // timeAllocatedSec/timeUsedSec: THÊM từ 23/9/2026 để tính chiều "Tính
         // nhanh" của Radar — examSession.initialTimeSec là ngân sách thời

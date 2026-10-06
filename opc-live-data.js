@@ -288,6 +288,17 @@ async function loadReferralSettings(){
   return out;
 }
 
+// THÊM 5/10/2026 — nano-point do thầy tự thêm trong admin (settings/nanoExtra, đọc công khai): gộp vào
+// OPC_NANO trước khi dựng bản đồ kiến thức/ngân hàng câu hỏi. Lỗi mạng -> dùng danh mục có sẵn, không chặn.
+async function loadNanoExtra(){
+  try{
+    var snap = await getDoc(doc(db, 'settings', 'nanoExtra'));
+    var items = snap.exists() ? ((snap.data() || {}).items || []) : [];
+    if(window.OPC_NANO && window.OPC_NANO.setExtra) window.OPC_NANO.setExtra(items);
+    return items.length;
+  }catch(e){ console.warn('Lỗi tải nano-point mở rộng:', e); return 0; }
+}
+
 async function submitRegistration(data){
   try{
     var ref = doc(collection(db, 'registrations'));
@@ -466,6 +477,8 @@ function transformQuestion(q, examMeta){
     examId: examMeta.examId,
     baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
     nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null,
+    // THÊM 5/10/2026 — TẤT CẢ nano-point của câu (đề thi thử thường gộp 2-3); nanoId ở trên = nano đầu tiên
+    nanoIds: (q.nanoPointIds && q.nanoPointIds.length) ? q.nanoPointIds.slice() : [],
     // THÊM 28/9/2026 — chương 1–4 (khoá/mở chương theo học sinh, xem
     // curriculum.js). null = chưa gắn chương -> không bao giờ hiện cho học
     // sinh (PrepScholarEngine chỉ giữ câu thuộc chương đã mở).
@@ -635,6 +648,7 @@ window.OPC_LIVE = {
   loadPeerRadar5: loadPeerRadar5,
   loadPricingPlans: loadPricingPlans,
   loadReferralSettings: loadReferralSettings,
+  loadNanoExtra: loadNanoExtra,
   parseShortAnswer: parseShortAnswer,
   loadSpecialExamList: loadSpecialExamList,
   loadSpecialExam: loadSpecialExam,

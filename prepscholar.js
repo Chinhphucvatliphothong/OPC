@@ -435,14 +435,22 @@
     // Drill, Thi thử, Ôn sổ tay câu sai) theo đúng thứ tự thời gian thật,
     // nên mastery luôn phản ánh phong độ GẦN NHẤT của học sinh.
     var nanoAgg = {};
-    function bump(nanoId, correct, level){
-      if(!nanoId) return;
-      var cur = (nanoAgg[nanoId] != null) ? nanoAgg[nanoId] : MASTERY_NEUTRAL_START;
-      nanoAgg[nanoId] = bumpNanoMastery(cur, correct, level);
+    // SỬA 5/10/2026 — câu nhiều nano-point: tra THẺ HIỆN TẠI của câu trong ngân hàng (theo mã câu) trước, nên khi
+    // thầy gắn lại/thêm nano-point thì mastery tính lại đúng cho cả lịch sử; không còn câu đó thì dùng nanoIds /
+    // nanoId đã lưu cùng lượt làm.
+    var bankById = {};
+    QUESTION_BANK.forEach(function(bq){ bankById[bq.id] = bq; });
+    function bump(rec, correct){
+      var ids = nanoIdsOf(bankById[rec.qId]);
+      if(!ids.length) ids = nanoIdsOf(rec);
+      ids.forEach(function(nanoId){
+        var cur = (nanoAgg[nanoId] != null) ? nanoAgg[nanoId] : MASTERY_NEUTRAL_START;
+        nanoAgg[nanoId] = bumpNanoMastery(cur, correct, rec.level, ids.length);
+      });
     }
     sorted.forEach(function(a){
-      (a.wrongQuestions || []).forEach(function(q){ bump(q.nanoId, false, q.level); });
-      (a.rightQuestions || []).forEach(function(q){ bump(q.nanoId, true, q.level); });
+      (a.wrongQuestions || []).forEach(function(q){ bump(q, false); });
+      (a.rightQuestions || []).forEach(function(q){ bump(q, true); });
     });
     result.nanoMastery = nanoAgg;
 
@@ -559,10 +567,27 @@
   // cập nhật tức thì lúc nộp Drill/Thi thử (prepscholar-ui.js), và chọn câu
   // kế tiếp trong Luyện tập thích ứng thời gian thực (pickAdaptiveQuestion).
   // Gom về 1 chỗ để không bao giờ lệch công thức giữa 3 nơi dùng.
-  function bumpNanoMastery(current, correct, level){
+  // SỬA 5/10/2026 — tagCount (tuỳ chọn, mặc định 1): số nano-point gắn trên CÙNG câu hỏi. Câu đề thi thử của
+  // trường/sở thường gộp 2-3 nano-point. Đúng -> mỗi nano-point được cộng đủ (câu đúng chứng tỏ đã vận dụng
+  // cả hai). Sai -> chưa biết em hổng nano-point nào nên trừ CHIA SẺ: 1 nano -20, 2 nano -10 mỗi nano, 3 nano -8
+  // mỗi nano (không dưới 8) — để không "phạt chồng" nhiều nano-point chỉ vì một câu sai.
+  function bumpNanoMastery(current, correct, level, tagCount){
     var cur = (current != null) ? current : MASTERY_NEUTRAL_START;
-    var delta = correct ? ((level === 'M3' || level === 'M4') ? 25 : 15) : -20;
+    var n = (tagCount && tagCount > 1) ? tagCount : 1;
+    var delta = correct ? ((level === 'M3' || level === 'M4') ? 25 : 15) : -Math.max(8, Math.round(20 / n));
     return Math.max(0, Math.min(100, cur + delta));
+  }
+  // THÊM 5/10/2026 — danh sách nano-point của 1 câu hỏi: ưu tiên mảng nanoIds (nhiều nano), rơi về nanoId cũ.
+  function nanoIdsOf(q){
+    if(!q) return [];
+    if(q.nanoIds && q.nanoIds.length) return q.nanoIds;
+    return q.nanoId ? [q.nanoId] : [];
+  }
+  // 2 câu "cùng kỹ năng" khi chung ít nhất 1 nano-point
+  function shareNano(a, b){
+    var x = nanoIdsOf(a), y = nanoIdsOf(b);
+    for(var i = 0; i < x.length; i++){ if(y.indexOf(x[i]) > -1) return true; }
+    return false;
   }
 
   // ============================================================
@@ -591,9 +616,10 @@
     askedIds = askedIds || {};
 
     var poolByNano = {};
+    // SỬA 5/10/2026 — câu gắn nhiều nano-point nằm trong pool của TỪNG nano-point đó
     QUESTION_BANK.forEach(function(q){
-      if(!q.nanoId || askedIds[q.id]) return;
-      (poolByNano[q.nanoId] || (poolByNano[q.nanoId] = [])).push(q);
+      if(askedIds[q.id]) return;
+      nanoIdsOf(q).forEach(function(nid){ (poolByNano[nid] || (poolByNano[nid] = [])).push(q); });
     });
     var availableNanoIds = Object.keys(poolByNano);
     if(!availableNanoIds.length) return null;
@@ -751,7 +777,7 @@
     // "5 bài tập" luyện lại đúng 1 Tag (nano-point) cụ thể — dùng cho khối
     // remediation màu Đỏ trên Trang chủ Học sinh.
     createNanoDrill: function(nanoId, count){
-      var pool = QUESTION_BANK.filter(function(q){ return q.nanoId === nanoId; });
+      var pool = QUESTION_BANK.filter(function(q){ return nanoIdsOf(q).indexOf(nanoId) > -1; });
       if(!pool.length && window.OPC_NANO){
         var nano = window.OPC_NANO.getNano(nanoId);
         if(nano) pool = QUESTION_BANK.filter(function(q){ return q.baiKey === nano.baiKey; });
@@ -770,6 +796,7 @@
     // cùng nano-point -> cùng Bài -> cùng Chủ đề. Không bao giờ bù câu khác Phần.
     // excludeIds (THÊM 1/10/2026): id các câu đã dùng ở lượt luyện trước cho
     // cùng câu sai gốc — lượt sau ra câu MỚI, chỉ lặp lại khi hết câu mới.
+    nanoIdsOf: nanoIdsOf,
     createSimilarDrill: function(question, count, excludeIds){
       if(!question) return [];
       count = count || 3;
@@ -778,7 +805,7 @@
       var part = question.part;
       var base = QUESTION_BANK.filter(function(q){ return q.id !== question.id && q.part === part; });
       var tiers = [
-        question.nanoId ? function(q){ return q.nanoId === question.nanoId; } : null,
+        nanoIdsOf(question).length ? function(q){ return shareNano(q, question); } : null,
         question.baiKey ? function(q){ return q.baiKey === question.baiKey; } : null,
         question.topicKey ? function(q){ return q.topicKey === question.topicKey; } : null
       ];
@@ -799,7 +826,7 @@
       if(!question) return 0;
       return QUESTION_BANK.filter(function(q){
         return q.id !== question.id && q.part === question.part && (
-          (question.nanoId && q.nanoId === question.nanoId) ||
+          shareNano(q, question) ||
           (question.baiKey && q.baiKey === question.baiKey) ||
           (question.topicKey && q.topicKey === question.topicKey));
       }).length;

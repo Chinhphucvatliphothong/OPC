@@ -916,6 +916,20 @@
       }
     };
 
+    // ================= Nano-point do thầy tự thêm (settings/nanoExtra) =========
+    // THÊM 5/10/2026 — doc { items:[{id, baiKey, name}] }. Đọc công khai (trang học sinh cũng đọc), chỉ admin ghi.
+    // Mục trùng id với nano có sẵn = đổi tên. Xem OPC_NANO.setExtra trong nano-map.js.
+    OPC.nanoExtra = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(doc(db, 'settings', 'nanoExtra'), function(snap){
+          onNext(snap.exists() ? snap.data() : null);
+        }, onErr);
+      },
+      save: function(items){
+        return setDoc(doc(db, 'settings', 'nanoExtra'), { items: items, updatedAt: serverTimestamp() });
+      }
+    };
+
     // ================= Khoá/mở chương theo học sinh ============================
     // THÊM 28/9/2026 — doc đơn "settings/curriculum" { defaultUnlockedChapters }
     // (chương mở mặc định cho cả lớp — "settings" đọc công khai, ghi chỉ admin,
@@ -989,6 +1003,45 @@
       .toUpperCase().replace(/[^A-Z0-9_-]/g, '');
   }
   function digitsOnly(v){ return String(v || '').replace(/\D/g, ''); }
+
+  // THÊM 5/10/2026 — gợi ý nhanh nano-point cho 1 câu bằng bộ khớp từ khoá của nano-map.js (không gọi AI, tức thì).
+  // Đọc đề + ngữ cảnh chùm + phương án + lời giải (lời giải thường nêu thẳng công thức/định luật đã dùng).
+  function quickNanoSuggest(q){
+    if(!window.OPC_NANO || !window.OPC_NANO.suggestNanos || !q) return { ids: [], confidence: 'thấp', all: [] };
+    var text = [q.groupPassage || '', q.stem || '', (q.options || []).map(function(o){ return o && o.text ? o.text : ''; }).join(' '), q.loigiai || ''].join(' ');
+    var r = window.OPC_NANO.suggestNanos(text, { dangBai: q.dangBai, max: 3 });
+    return { ids: r.map(function(x){ return x.id; }), confidence: r.length ? r[0].confidence : 'thấp', all: r };
+  }
+
+  // THÊM 5/10/2026 — ĐỒNG BỘ NANO-POINT DO THẦY TỰ THÊM (settings/nanoExtra) vào OPC_NANO cho toàn trang admin.
+  // Chỉ đăng ký 1 lần; mỗi lần Firestore đổi (kể cả khi thầy vừa bấm Lưu) gọi OPC_NANO.setExtra rồi báo các
+  // component đang dùng hook render lại để tên nano-point mới hiện ngay.
+  var nanoExtraStore = { started: false, listeners: [], loaded: false };
+  function startNanoExtraSync(){
+    if(nanoExtraStore.started) return;
+    var OPCref = window.OPC;
+    if(!OPCref || !OPCref.nanoExtra || !window.OPC_NANO) return;
+    nanoExtraStore.started = true;
+    function notify(){ nanoExtraStore.listeners.slice().forEach(function(fn){ fn(); }); }
+    OPCref.nanoExtra.subscribe(function(data){
+      window.OPC_NANO.setExtra((data && data.items) || []);
+      nanoExtraStore.loaded = true; notify();
+    }, function(err){ console.warn('Lỗi đồng bộ nano-point mở rộng:', err); nanoExtraStore.loaded = true; notify(); });
+  }
+  function useNanoExtraSync(){
+    var st = React.useState(0);
+    React.useEffect(function(){
+      startNanoExtraSync();
+      var fn = function(){ st[1](function(v){ return v + 1; }); };
+      nanoExtraStore.listeners.push(fn);
+      return function(){ nanoExtraStore.listeners = nanoExtraStore.listeners.filter(function(x){ return x !== fn; }); };
+    }, []);
+    return st[0];
+  }
+  // Lưu danh sách nano-point thêm/đổi tên (ghi đè cả danh sách trên Firestore) — trả Promise
+  function saveNanoExtraItems(items){
+    return window.OPC.nanoExtra.save(items);
+  }
   function makeReferralCode(name){
     var last = String(name || 'HS').trim().split(/\s+/).pop();
     return (normCode(last) || 'HS') + Math.floor(100 + Math.random() * 900) + 'VLY';
@@ -1756,6 +1809,14 @@
   // \begin{tabular}...\end{tabular} KHÔNG được làm phẳng xuống 1 dòng như phần chữ (dòng chú thích "%" bên trong
   // mã TikZ sẽ "nuốt" luôn phần còn lại của dòng). stash: cất các khối này ra, xử lý chữ xong rồi restore: trả về
   // nguyên vẹn (kèm xuống dòng) để màn hình học sinh (tikz-lite.js / bảng) dựng lại.
+  // THÊM 5/10/2026 — đọc dòng thẻ "% @nano: khi-1.3, khi-2.1" trong .tex (có thể 2-3 nano-point/câu, chịu được
+  // "khi -2.1"). Không phụ thuộc window.OPC_NANO để dùng được cả khi chạy thử ngoài trình duyệt.
+  function parseNanoTagIds(text){
+    var t = String(text || '').toLowerCase().replace(/([a-z])\s+-\s*(\d)/g, '$1-$2');
+    var out = [], m, re = /[a-z0-9]+(?:-[a-z0-9]+)*\.\d+/g;
+    while((m = re.exec(t)) !== null){ if(out.indexOf(m[0]) < 0) out.push(m[0]); }
+    return out;
+  }
   var FIGURE_BLOCK_RE = /\\begin\{(tikzpicture|tabular)\}[\s\S]*?\\end\{\1\}/g;
   function stashFigureBlocks(text){
     var blocks = [];
@@ -1948,6 +2009,7 @@
     var inEx = false;
     var exBuffer = [];
     var lastCommentTag = null;
+    var lastNanoIds = []; // THÊM 5/10/2026 — các mã nano đọc từ dòng "% @nano: …" ngay trước câu
     var titleCand = '';
     var preambleBuffer = [];
     var pendingGroup = null;
@@ -1977,6 +2039,9 @@
       } else if(isPartI){
         currentPart = 'I';
       }
+
+      var nanoLine = line.match(/%.*?@nano\s*:\s*(.*)$/i);
+      if(nanoLine){ lastNanoIds = parseNanoTagIds(nanoLine[1]); }
 
       var tm = line.match(tagRegex);
       if(tm){
@@ -2012,6 +2077,7 @@
           var full = exBuffer.join('\n');
           var tag = lastCommentTag || { level: 'M2', chuDeLon: 'Vật lí', dangBai: 'Chung' };
           lastCommentTag = null;
+          var nanoTagIds = lastNanoIds; lastNanoIds = [];
 
           var qType = 'choice';
           if(/\\choiceTF/i.test(full)) qType = 'choiceTF';
@@ -2099,6 +2165,7 @@
             level: tag.level,
             chuDeLon: tag.chuDeLon,
             dangBai: tag.dangBai,
+            nanoTagIds: nanoTagIds,
             stem: stem,
             options: options,
             shortans: shortansVal,
@@ -4186,6 +4253,412 @@
     );
   }
 
+
+  // THÊM 5/10/2026 — dùng chung cho màn "Gắn nano-point cho câu đã nạp"
+  function buildNanoCatalogPayloadGlobal(){
+    var N = window.OPC_NANO;
+    if(!N) return [];
+    return N.CHU_DE.map(function(cd){
+      return { chuDeKey: cd.key, chuDeName: cd.name, bai: N.getBaiByChuDe(cd.key).map(function(b){
+        return { baiKey: b.key, baiName: b.name, nano: N.getNanoByBai(b.key).map(function(n){ return { id: n.id, name: n.name }; }) };
+      }) };
+    });
+  }
+  // Gọi AI gợi ý nano-point cho 1 câu đã lưu; trả {nanoIds, confidence, reason} hoặc ném lỗi có thông báo tiếng Việt
+  async function fetchAiNano(q){
+    var resp = await fetch('/api/ai-suggest-nano', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stem: q.stem || q.raw || '', options: (q.options || []).map(function(o){ return o.key + '. ' + o.text; }),
+        level: q.level, chuDeLon: q.chuDeLon, dangBai: q.dangBai,
+        groupPassage: q.groupPassage || '', loigiai: q.loigiai || '',
+        candidates: quickNanoSuggest(q).ids, catalog: buildNanoCatalogPayloadGlobal()
+      })
+    });
+    var data = await resp.json().catch(function(){ return {}; });
+    if(!resp.ok) throw new Error((data && data.error) || 'AI gợi ý thất bại — thử lại.');
+    return data;
+  }
+  function plainPreview(text, n){
+    var t = String(text || '').replace(/\\[a-zA-Z]+/g, ' ').replace(/[$_^{}\\]/g, ' ').replace(/\s+/g, ' ').trim();
+    return t.length > n ? t.slice(0, n) + '…' : t;
+  }
+  function normStemKey(text){
+    return String(text || '').toLowerCase().replace(/\\[a-zA-Z]+/g, ' ').replace(/[^a-z0-9àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]+/g, '').slice(0, 60);
+  }
+
+  // ============================================================================
+  // THÊM 5/10/2026 — GẮN / GẮN LẠI NANO-POINT CHO CÂU ĐÃ NẠP (KHÔNG phải xoá đề rồi nạp lại).
+  // Nano-point của mỗi câu nằm trong chính tài liệu đề ("questions[i].nanoPointIds"); màn này sửa đúng trường đó
+  // bằng OPC.examBank.updateQuestions — hình ảnh, tex gốc, đáp án... không bị đụng. Lịch sử của học sinh được
+  // tính lại theo nano-point MỚI (prepscholar.js tra thẻ hiện tại của câu theo mã câu).
+  // Ba cách gắn: tay (chip + chọn thêm), gợi ý nhanh (khớp từ khoá, không AI), AI; hoặc đọc lại thẻ "% @nano:"
+  // từ file .tex đã sửa (ghép câu theo nội dung đề, không theo thứ tự).
+  // ============================================================================
+  function NanoTaggerPanel(props){
+    useNanoExtraSync();
+    var N = window.OPC_NANO, OPCref = window.OPC;
+    var examsState = React.useState([]); var exams = examsState[0], setExams = examsState[1];
+    var examIdState = React.useState(''); var examId = examIdState[0], setExamId = examIdState[1];
+    var onlyUntaggedState = React.useState(true); var onlyUntagged = onlyUntaggedState[0], setOnlyUntagged = onlyUntaggedState[1];
+    var searchState = React.useState(''); var search = searchState[0], setSearch = searchState[1];
+    var editsState = React.useState({}); var edits = editsState[0], setEdits = editsState[1];       // key -> {ids, conf, note}
+    var busyState = React.useState(null); var busy = busyState[0], setBusy = busyState[1];            // 'save' | 'ai' | key
+    var progState = React.useState(null); var prog = progState[0], setProg = progState[1];
+    var syncState = React.useState(null); var sync = syncState[0], setSync = syncState[1];            // kết quả đọc .tex
+    var stopRef = React.useRef(false);
+    var shownLimitState = React.useState(60); var shownLimit = shownLimitState[0], setShownLimit = shownLimitState[1];
+
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.examBank) return;
+      var unsub = OPCref.examBank.subscribe(function(snap){
+        setExams(snap.docs.map(function(d){ return Object.assign({}, d.data() || {}, { id: d.id }); }));
+      }, function(err){ console.error('Lỗi tải ngân hàng đề (Gắn nano-point):', err); });
+      return function(){ unsub(); };
+    }, []);
+
+    if(!N || !OPCref) return h('div', { className: 'card' }, h('p', null, 'Chưa tải được dữ liệu.'));
+
+    function keyOf(eid, idx){ return eid + '|' + idx; }
+    function curIds(exam, idx, q){
+      var k = keyOf(exam.id, idx);
+      return edits[k] ? edits[k].ids : ((q.nanoPointIds || []).slice());
+    }
+    // danh sách phẳng các câu (có kèm đề) sau khi lọc
+    var all = [];
+    exams.forEach(function(exam){
+      if(examId && exam.id !== examId) return;
+      (exam.questions || []).forEach(function(q, idx){ all.push({ exam: exam, q: q, idx: idx, key: keyOf(exam.id, idx) }); });
+    });
+    var totalQ = all.length;
+    var taggedQ = all.filter(function(it){ return curIds(it.exam, it.idx, it.q).length > 0; }).length;
+    var needle = search.trim().toLowerCase();
+    var rows = all.filter(function(it){
+      if(onlyUntagged && curIds(it.exam, it.idx, it.q).length > 0 && !edits[it.key]) return false;
+      if(!needle) return true;
+      return (plainPreview(it.q.stem, 400) + ' ' + (it.q.dangBai || '') + ' ' + (it.q.chuDeLon || '') + ' ' + (it.exam.title || '')).toLowerCase().indexOf(needle) > -1;
+    });
+    var shown = rows.slice(0, shownLimit);
+    var dirtyKeys = Object.keys(edits);
+
+    function setIds(it, ids, conf, note){
+      setEdits(function(prev){
+        var n = Object.assign({}, prev);
+        var orig = (it.q.nanoPointIds || []).join(',');
+        if(ids.join(',') === orig && !conf) delete n[it.key];
+        else n[it.key] = { ids: ids, conf: conf || '', note: note || '' };
+        return n;
+      });
+    }
+    function toggleId(it, id){
+      var ids = curIds(it.exam, it.idx, it.q).slice();
+      var i = ids.indexOf(id);
+      if(i > -1) ids.splice(i, 1); else ids.push(id);
+      setIds(it, ids, '', '');
+    }
+    function quick(it, silent){
+      var r = quickNanoSuggest(it.q);
+      if(!r.ids.length){ if(!silent) props.fireToast('Gợi ý nhanh không thấy nano-point khớp — thử AI hoặc chọn tay.', true); return 'none'; }
+      if(r.confidence === 'thấp'){ if(!silent) props.fireToast('Gợi ý nhanh chưa chắc (độ tin cậy thấp) nên chưa chọn sẵn.', true); return 'weak'; }
+      setIds(it, r.ids, r.confidence, 'Khớp từ khoá');
+      return 'ok';
+    }
+    function bulkQuick(){
+      var ok = 0, weak = 0;
+      shown.forEach(function(it){ if(curIds(it.exam, it.idx, it.q).length) return; var r = quick(it, true); if(r === 'ok') ok++; else weak++; });
+      props.fireToast('Gợi ý nhanh: ' + ok + ' câu đã gợi ý' + (weak ? ', ' + weak + ' câu chưa chắc (để trống cho thầy chọn)' : '') + '. Bấm "Lưu thay đổi" để ghi.', !ok);
+    }
+    async function ai(it, silent){
+      setBusy(it.key);
+      try{
+        var d = await fetchAiNano(it.q);
+        setIds(it, d.nanoIds || [], d.confidence || '', d.reason || (d.nanoIds && d.nanoIds.length ? '' : 'AI không thấy nano-point nào khớp'));
+        if(!silent) props.fireToast('AI đã gợi ý' + (d.confidence ? ' (độ tin cậy ' + d.confidence + ')' : '') + (d.reason ? ' — ' + d.reason : '') + '.');
+        return true;
+      }catch(err){ if(!silent) props.fireToast(err.message || 'AI gợi ý thất bại.', true); return false; }
+      finally{ setBusy(null); }
+    }
+    async function bulkAi(){
+      var targets = shown.filter(function(it){ return !curIds(it.exam, it.idx, it.q).length; });
+      if(!targets.length){ props.fireToast('Không còn câu chưa gắn trong danh sách đang hiện.', true); return; }
+      stopRef.current = false; setBusy('ai'); setProg({ done: 0, total: targets.length });
+      var okN = 0, fails = 0;
+      for(var i = 0; i < targets.length; i++){
+        if(stopRef.current) break;
+        var ok = await ai(targets[i], true);
+        if(ok){ okN++; fails = 0; } else { fails++; if(fails >= 3){ props.fireToast('AI lỗi 3 lần liên tiếp — dừng. Kiểm tra mạng / khoá API rồi thử lại.', true); break; } }
+        setProg({ done: i + 1, total: targets.length });
+      }
+      setBusy(null); setProg(null);
+      props.fireToast('AI đã gợi ý ' + okN + '/' + targets.length + ' câu. Xem lại rồi bấm "Lưu thay đổi".', !okN);
+    }
+    function discard(){ if(!dirtyKeys.length) return; if(window.confirm('Bỏ ' + dirtyKeys.length + ' thay đổi chưa lưu?')) setEdits({}); }
+    async function save(){
+      if(!dirtyKeys.length) return;
+      var byExam = {};
+      dirtyKeys.forEach(function(k){ var p = k.split('|'); var idx = Number(p[p.length - 1]); var eid = p.slice(0, -1).join('|'); (byExam[eid] || (byExam[eid] = [])).push({ idx: idx, ids: edits[k].ids }); });
+      setBusy('save');
+      try{
+        await Promise.all(Object.keys(byExam).map(function(eid){
+          var exam = exams.filter(function(e){ return e.id === eid; })[0];
+          if(!exam) return Promise.resolve();
+          var qs = (exam.questions || []).slice();
+          byExam[eid].forEach(function(c){
+            var first = c.ids.length ? N.getNano(c.ids[0]) : null;
+            qs[c.idx] = Object.assign({}, qs[c.idx], { nanoPointIds: c.ids, nanoBaiKey: first ? first.baiKey : (qs[c.idx].nanoBaiKey || '') });
+          });
+          return OPCref.examBank.updateQuestions(eid, qs);
+        }));
+        props.fireToast('Đã lưu nano-point cho ' + dirtyKeys.length + ' câu. Học sinh sẽ thấy khi tải lại trang.');
+        setEdits({});
+      }catch(err){ console.error('Lỗi lưu nano-point:', err); props.fireToast('Không lưu được — thử lại.', true); }
+      finally{ setBusy(null); }
+    }
+
+    // ---- Đọc lại thẻ @nano từ file .tex ----
+    async function onPickTex(e){
+      var f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if(!f) return;
+      var targetExams = examId ? exams.filter(function(x){ return x.id === examId; }) : exams;
+      try{
+        var parsed = parseTexBank(await f.text(), f.name, { allowEssay: true });
+        var byKey = {};
+        targetExams.forEach(function(exam){ (exam.questions || []).forEach(function(q, idx){
+          var k = normStemKey((q.groupPassage ? '' : '') + q.stem);
+          if(k) (byKey[k] || (byKey[k] = [])).push({ exam: exam, q: q, idx: idx });
+        }); });
+        var matched = [], unmatched = 0, noTag = 0, unknown = {};
+        (parsed.questions || []).forEach(function(pq, pi){
+          if(!pq.nanoTagIds || !pq.nanoTagIds.length){ noTag++; return; }
+          // báo MỌI mã nano chưa có trong bản đồ trong file (kể cả ở câu không ghép được) để thầy thêm đủ một lần
+          pq.nanoTagIds.forEach(function(id){ if(!N.getNano(id)) unknown[id] = (unknown[id] || 0) + 1; });
+          var cands = byKey[normStemKey(pq.stem)] || [];
+          if(!cands.length){ unmatched++; return; }
+          var hit = cands.filter(function(c){ return c.q.index === pq.index; })[0] || cands[0];
+          var known = pq.nanoTagIds.filter(function(id){ return !!N.getNano(id); });
+          if(known.length) matched.push({ it: { exam: hit.exam, q: hit.q, idx: hit.idx, key: keyOf(hit.exam.id, hit.idx) }, ids: known });
+        });
+        setSync({ file: f.name, total: (parsed.questions || []).length, matched: matched, unmatched: unmatched, noTag: noTag, unknown: unknown });
+      }catch(err){ console.error(err); props.fireToast('Không đọc được file .tex này.', true); }
+    }
+    function applySync(){
+      if(!sync) return;
+      setEdits(function(prev){
+        var n = Object.assign({}, prev);
+        sync.matched.forEach(function(m){
+          if((m.it.q.nanoPointIds || []).join(',') !== m.ids.join(',')) n[m.it.key] = { ids: m.ids, conf: '', note: 'Từ thẻ @nano trong .tex' };
+        });
+        return n;
+      });
+      props.fireToast('Đã đưa ' + sync.matched.length + ' câu vào danh sách thay đổi. Bấm "Lưu thay đổi" để ghi.');
+      setSync(null); setOnlyUntagged(false);
+    }
+
+    var inputStyle = { padding: '7px 10px', border: '1px solid var(--line, #d9d4c7)', borderRadius: '8px', fontSize: '0.88rem', background: 'var(--surface, #fff)', color: 'inherit' };
+    var allNanoOptions = N.CHU_DE.map(function(cd){
+      return h(React.Fragment, { key: cd.key }, N.getBaiByChuDe(cd.key).map(function(b){
+        var ns = N.getNanoByBai(b.key);
+        if(!ns.length) return null;
+        return h('optgroup', { key: b.key, label: cd.icon + ' ' + b.name }, ns.map(function(n){ return h('option', { key: n.id, value: n.id }, n.id + ' · ' + n.name); }));
+      }));
+    });
+
+    return h('div', null,
+      h('div', { className: 'card', style: { marginBottom: '14px' } },
+        h('div', { className: 'sm-toolbar' },
+          h('div', null, h('h3', null, '🏷️ Gắn nano-point cho câu đã nạp'),
+            h('p', { className: 'sm-sub' }, 'Sửa nano-point của câu hỏi ĐÃ CÓ trong ngân hàng — không cần xoá đề rồi nạp lại. Mỗi câu gắn được 1–3 nano-point (kể cả ở các Bài khác nhau).'))),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' } },
+          h('select', { value: examId, style: inputStyle, onChange: function(e){ setExamId(e.target.value); setShownLimit(60); } },
+            h('option', { value: '' }, 'Tất cả các đề (' + exams.length + ')'),
+            exams.map(function(x){ return h('option', { key: x.id, value: x.id }, (x.title || x.id) + ' · ' + (x.questions || []).length + ' câu'); })),
+          h('label', { style: { display: 'inline-flex', gap: '6px', alignItems: 'center', fontSize: '0.88rem' } },
+            h('input', { type: 'checkbox', checked: onlyUntagged, onChange: function(e){ setOnlyUntagged(e.target.checked); setShownLimit(60); } }), 'Chỉ câu chưa gắn nano-point'),
+          h('input', { type: 'text', placeholder: 'Tìm trong đề bài…', value: search, style: Object.assign({}, inputStyle, { flex: '1 1 200px' }), onChange: function(e){ setSearch(e.target.value); setShownLimit(60); } })),
+        h('div', { style: { marginTop: '10px', fontSize: '0.86rem', color: 'var(--ink-2)' } },
+          'Đã gắn ' + taggedQ + '/' + totalQ + ' câu (' + (totalQ - taggedQ) + ' câu chưa gắn)' + (dirtyKeys.length ? ' · ' + dirtyKeys.length + ' thay đổi chưa lưu' : '')),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.82rem' }, disabled: !!busy, onClick: bulkQuick, title: 'Khớp từ khoá đề + lời giải, không dùng AI. Áp cho các câu chưa gắn đang hiện.' }, '⚡ Gợi ý nhanh các câu đang hiện'),
+          busy === 'ai' ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.82rem' }, onClick: function(){ stopRef.current = true; } }, '⏹ Dừng (' + (prog ? prog.done + '/' + prog.total : '') + ')')
+            : h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.82rem' }, disabled: !!busy, onClick: bulkAi }, '🪄 AI gợi ý các câu đang hiện'),
+          h('label', { className: 'btn btn-secondary', style: { fontSize: '0.82rem', cursor: 'pointer' }, title: 'Chọn file .tex đã sửa thẻ % @nano: — ghép với câu đã nạp theo nội dung đề' }, '📄 Đọc thẻ @nano từ file .tex',
+            h('input', { type: 'file', style: { display: 'none' }, onChange: onPickTex })),
+          h('span', { style: { flex: 1 } }),
+          h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.82rem' }, disabled: !dirtyKeys.length || !!busy, onClick: discard }, 'Bỏ thay đổi'),
+          h('button', { type: 'button', className: 'btn btn-primary', disabled: !dirtyKeys.length || !!busy, onClick: save }, busy === 'save' ? 'Đang lưu…' : '💾 Lưu thay đổi' + (dirtyKeys.length ? ' (' + dirtyKeys.length + ')' : '')))
+      ),
+      sync ? h('div', { className: 'card', style: { marginBottom: '14px', borderLeft: '4px solid var(--accent)' } },
+        h('div', { style: { fontWeight: 700, marginBottom: '6px' } }, '📄 ' + sync.file + ' — đọc xong thẻ @nano'),
+        h('div', { style: { fontSize: '0.88rem', lineHeight: 1.7 } },
+          'File có ' + sync.total + ' câu · ghép được ', h('b', null, sync.matched.length), ' câu có thẻ @nano với câu đã nạp · ' + sync.unmatched + ' câu có thẻ nhưng không ghép được (nội dung đề đã khác) · ' + sync.noTag + ' câu không có thẻ @nano.',
+          Object.keys(sync.unknown).length ? h('div', { style: { color: 'var(--critical)', marginTop: '4px' } }, '⚠ Mã nano chưa có trong bản đồ (bị bỏ qua): ' + Object.keys(sync.unknown).join(', ') + ' — thêm ở tab "🗺️ Nano-point" rồi đọc lại.') : null),
+        h('div', { style: { marginTop: '8px', display: 'flex', gap: '8px' } },
+          h('button', { type: 'button', className: 'btn btn-primary', disabled: !sync.matched.length, onClick: applySync }, 'Đưa ' + sync.matched.length + ' câu vào danh sách thay đổi'),
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setSync(null); } }, 'Đóng'))) : null,
+      !totalQ ? h('div', { className: 'card' }, h('p', { style: { color: 'var(--muted)' } }, exams.length ? 'Đề này chưa có câu hỏi.' : 'Đang tải ngân hàng đề…')) :
+      !rows.length ? h('div', { className: 'card' }, h('p', { style: { color: 'var(--good)', fontWeight: 600 } }, onlyUntagged && !needle ? '🎉 Mọi câu trong phạm vi này đã có nano-point.' : 'Không có câu nào khớp bộ lọc.')) :
+      h('div', null,
+        shown.map(function(it){
+          var ids = curIds(it.exam, it.idx, it.q);
+          var ed = edits[it.key];
+          return h('div', { key: it.key, className: 'card', style: { marginBottom: '8px', padding: '10px 14px', borderLeft: ed ? '4px solid var(--accent)' : '4px solid transparent' } },
+            h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '4px' } },
+              h('b', { style: { color: 'var(--ink)' } }, 'Câu ' + (it.q.index || it.idx + 1)), ' · Phần ' + (it.q.part || '?') + ' · ' + (it.q.level || '') + ' · ' + (it.exam.title || it.exam.id) + (it.q.dangBai ? ' · ' + it.q.dangBai : '')),
+            h('div', { style: { fontSize: '0.9rem', marginBottom: '6px' } }, plainPreview(it.q.stem, 220) || '(câu không có chữ — chỉ có hình/bảng)'),
+            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' } },
+              ids.map(function(id){
+                var n = N.getNano(id);
+                return h('button', { key: id, type: 'button', className: 'eb-nano-chip active', title: 'Bấm để bỏ nano-point này', onClick: function(){ toggleId(it, id); } }, '✓ ' + id + (n ? ' · ' + n.name : ' (chưa có trong bản đồ)'));
+              }),
+              !ids.length ? h('span', { style: { fontSize: '0.8rem', color: 'var(--critical)' } }, 'chưa gắn') : null,
+              h('select', { value: '', style: Object.assign({}, inputStyle, { fontSize: '0.8rem', padding: '4px 6px' }), onChange: function(e){ if(e.target.value) toggleId(it, e.target.value); } },
+                h('option', { value: '' }, '＋ Thêm nano-point…'), allNanoOptions),
+              h('button', { type: 'button', className: 'eb-nano-ai-btn', disabled: !!busy, onClick: function(){ quick(it, false); }, title: 'Gợi ý nhanh (khớp từ khoá)' }, '⚡ Nhanh'),
+              h('button', { type: 'button', className: 'eb-nano-ai-btn', disabled: !!busy, onClick: function(){ ai(it, false); }, title: 'AI đọc câu và gợi ý' }, busy === it.key ? '⏳…' : '🪄 AI')),
+            ed && (ed.conf || ed.note) ? h('div', { style: { fontSize: '0.78rem', color: 'var(--ink-2)', fontStyle: 'italic', marginTop: '4px' } }, (ed.conf ? '[độ tin cậy: ' + ed.conf + '] ' : '') + (ed.note || '')) : null);
+        }),
+        rows.length > shown.length ? h('div', { style: { textAlign: 'center', margin: '10px 0' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setShownLimit(shownLimit + 60); } }, 'Hiện thêm (còn ' + (rows.length - shown.length) + ' câu)')) : null)
+    );
+  }
+
+  // ============================================================================
+  // THÊM 5/10/2026 — QUẢN LÝ NANO-POINT: thầy tự thêm/đổi tên nano-point cho từng Bài ngay trên admin, không cần
+  // sửa nano-map.js. Danh mục có sẵn chỉ có ~3 nano-point/bài trong khi ngân hàng .tex chi tiết hơn (vd. khi-1.4…
+  // khi-1.7). Lưu ở settings/nanoExtra; trang học sinh đọc cùng nguồn nên tên hiện đồng bộ.
+  // Câu hỏi trong .tex gắn nano bằng dòng "% @nano: khi-1.3, khi-2.1" (nhiều nano-point cách nhau phẩy).
+  // ============================================================================
+  function NanoMapPanel(props){
+    useNanoExtraSync();
+    var N = window.OPC_NANO;
+    var baiState = React.useState(''); var baiKey = baiState[0], setBaiKey = baiState[1];
+    var idState = React.useState(''); var newId = idState[0], setNewId = idState[1];
+    var nameState = React.useState(''); var newName = nameState[0], setNewName = nameState[1];
+    var bulkState = React.useState(''); var bulk = bulkState[0], setBulk = bulkState[1];
+    var editState = React.useState(null); var editing = editState[0], setEditing = editState[1]; // {id, name}
+    var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
+    if(!N) return h('div', { className: 'card' }, h('p', null, 'Chưa nạp được nano-map.js.'));
+
+    function currentItems(){ return N.getExtraItems(); }
+    function mergeItems(add){
+      var map = {}; var order = [];
+      currentItems().concat(add).forEach(function(it){ if(!map[it.id]) order.push(it.id); map[it.id] = it; });
+      return order.map(function(id){ return map[id]; });
+    }
+    function persist(items, okMsg){
+      setSaving(true);
+      return saveNanoExtraItems(items)
+        .then(function(){ props.fireToast(okMsg); return true; })
+        .catch(function(err){ console.error('Lỗi lưu nano-point:', err); props.fireToast('Không lưu được — thử lại.', true); return false; })
+        .finally(function(){ setSaving(false); });
+    }
+    function onPickBai(k){
+      setBaiKey(k);
+      setNewId(k ? N.nextNanoId(k) : '');
+    }
+    function addOne(){
+      var id = String(newId || '').trim().toLowerCase(), name = String(newName || '').trim();
+      if(!baiKey){ props.fireToast('Chọn Bài trước.', true); return; }
+      if(!N.isValidNanoId(id) || id.split('.')[0] !== baiKey){ props.fireToast('Mã phải có dạng ' + baiKey + '.số, ví dụ ' + N.nextNanoId(baiKey) + '.', true); return; }
+      if(!name){ props.fireToast('Nhập tên nano-point.', true); return; }
+      if(N.getNano(id) && !window.confirm('Mã ' + id + ' đã có. Đổi tên thành "' + name + '"?')) return;
+      persist(mergeItems([{ id: id, baiKey: baiKey, name: name }]), 'Đã lưu nano-point ' + id + '.').then(function(ok){
+        if(ok){ setNewName(''); setNewId(N.nextNanoId(baiKey)); }
+      });
+    }
+    function addBulk(){
+      var lines = String(bulk || '').split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+      if(!lines.length){ props.fireToast('Dán danh sách vào ô trước (mỗi dòng: mã | tên).', true); return; }
+      var add = [], bad = [];
+      lines.forEach(function(l){
+        var m = /^([A-Za-z0-9-]+\.\d+)\s*(?:[|:\t]|\s-\s|\s)\s*(.+)$/.exec(l);
+        if(!m){ bad.push(l); return; }
+        var id = m[1].toLowerCase(), baiK = id.split('.')[0];
+        if(!N.isValidNanoId(id) || !N.getBai(baiK)){ bad.push(l); return; }
+        add.push({ id: id, baiKey: baiK, name: m[2].trim() });
+      });
+      if(!add.length){ props.fireToast('Không dòng nào đúng dạng "mã | tên" (vd: khi-1.4 | Chuyển động Brown).', true); return; }
+      persist(mergeItems(add), 'Đã lưu ' + add.length + ' nano-point' + (bad.length ? ' (bỏ qua ' + bad.length + ' dòng sai dạng)' : '') + '.').then(function(ok){
+        if(ok) setBulk(bad.join('\n'));
+      });
+    }
+    function saveEdit(){
+      var name = String(editing.name || '').trim();
+      if(!name){ props.fireToast('Tên không được để trống.', true); return; }
+      var nano = N.getNano(editing.id);
+      persist(mergeItems([{ id: editing.id, baiKey: nano ? nano.baiKey : editing.id.split('.')[0], name: name }]), 'Đã đổi tên ' + editing.id + '.').then(function(ok){ if(ok) setEditing(null); });
+    }
+    function removeExtra(id){
+      var isExtraOnly = N.NANO.some(function(n){ return n.id === id && n._extra; });
+      var msg = isExtraOnly
+        ? 'Xoá nano-point ' + id + '? Câu hỏi đã gắn mã này sẽ không còn tên nano-point (mã vẫn nằm trong câu).'
+        : 'Khôi phục tên gốc của ' + id + '?';
+      if(!window.confirm(msg)) return;
+      persist(currentItems().filter(function(it){ return it.id !== id; }), isExtraOnly ? 'Đã xoá ' + id + '.' : 'Đã khôi phục tên gốc.');
+    }
+
+    var inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--line, #d9d4c7)', borderRadius: '8px', fontSize: '0.92rem', background: 'var(--surface, #fff)', color: 'inherit', boxSizing: 'border-box' };
+    var extraCount = N.NANO.filter(function(n){ return n._extra; }).length;
+    var renamedCount = N.NANO.filter(function(n){ return n._origName != null; }).length;
+
+    return h('div', null,
+      h('div', { className: 'card', style: { marginBottom: '16px' } },
+        h('div', { className: 'sm-toolbar' },
+          h('div', null, h('h3', null, '🗺️ Bản đồ nano-point'),
+            h('p', { className: 'sm-sub' }, 'Thêm hoặc đổi tên nano-point cho từng Bài. Trong file .tex gắn nano-point bằng dòng ',
+              h('code', null, '% @nano: khi-1.3, khi-2.1'), ' — một câu có thể có 2–3 nano-point (đề thi thử). Hiện có ' + N.NANO.length + ' nano-point (' + extraCount + ' thêm tay, ' + renamedCount + ' đổi tên).'))
+        ),
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '6px' } },
+          h('label', { style: { display: 'block', fontSize: '0.85rem' } }, 'Bài',
+            h('select', { value: baiKey, style: inputStyle, onChange: function(e){ onPickBai(e.target.value); } },
+              h('option', { value: '' }, '— chọn Bài —'),
+              N.CHU_DE.map(function(cd){
+                return h('optgroup', { key: cd.key, label: cd.icon + ' ' + cd.name },
+                  N.getBaiByChuDe(cd.key).map(function(b){ return h('option', { key: b.key, value: b.key }, b.name); }));
+              }))),
+          h('label', { style: { display: 'block', fontSize: '0.85rem' } }, 'Mã nano-point',
+            h('input', { type: 'text', value: newId, style: inputStyle, placeholder: 'vd: khi-1.8', onChange: function(e){ setNewId(e.target.value); } })),
+          h('label', { style: { display: 'block', fontSize: '0.85rem', gridColumn: 'span 2' } }, 'Tên nano-point',
+            h('input', { type: 'text', value: newName, style: inputStyle, placeholder: 'vd: Chuyển động Brown', onChange: function(e){ setNewName(e.target.value); } }))
+        ),
+        h('div', { style: { marginTop: '10px' } },
+          h('button', { type: 'button', className: 'btn btn-primary', disabled: saving, onClick: addOne }, saving ? 'Đang lưu…' : '➕ Thêm nano-point')),
+        h('details', { style: { marginTop: '14px' } },
+          h('summary', { style: { cursor: 'pointer', fontWeight: 600 } }, 'Dán nhiều nano-point một lần'),
+          h('p', { className: 'sm-sub', style: { margin: '8px 0' } }, 'Mỗi dòng một nano-point, dạng ', h('code', null, 'mã | tên'), ' (mã tự xếp vào đúng Bài theo phần trước dấu chấm). Dòng sai dạng sẽ được giữ lại trong ô để thầy sửa.'),
+          h('textarea', { rows: 6, value: bulk, style: Object.assign({}, inputStyle, { fontFamily: 'monospace' }), placeholder: 'khi-1.4 | Chuyển động Brown\nkhi-1.5 | Chất khí\nkhi-1.6 | Lượng chất (bài tập tính toán)', onChange: function(e){ setBulk(e.target.value); } }),
+          h('div', { style: { marginTop: '8px' } }, h('button', { type: 'button', className: 'btn btn-secondary', disabled: saving, onClick: addBulk }, 'Thêm các dòng trên')))
+      ),
+      N.CHU_DE.map(function(cd){
+        var bais = N.getBaiByChuDe(cd.key);
+        if(!bais.length) return null;
+        return h('details', { key: cd.key, className: 'card', style: { marginBottom: '10px' }, open: cd.key === 'khi' },
+          h('summary', { style: { cursor: 'pointer', fontWeight: 700 } }, cd.icon + ' ' + cd.name + ' · ' + bais.reduce(function(a, b){ return a + N.getNanoByBai(b.key).length; }, 0) + ' nano-point'),
+          bais.map(function(b){
+            return h('div', { key: b.key, style: { marginTop: '12px' } },
+              h('div', { style: { fontWeight: 600, fontSize: '0.9rem', marginBottom: '4px' } }, b.name),
+              N.getNanoByBai(b.key).map(function(n){
+                var isEditing = editing && editing.id === n.id;
+                var renamed = n._origName != null;
+                return h('div', { key: n.id, style: { display: 'flex', gap: '10px', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--line, #eee)', fontSize: '0.88rem', flexWrap: 'wrap' } },
+                  h('code', { style: { minWidth: '72px', color: 'var(--ink-2)' } }, n.id),
+                  isEditing
+                    ? h('input', { type: 'text', autoFocus: true, value: editing.name, style: Object.assign({}, inputStyle, { flex: 1, minWidth: '200px' }), onChange: function(e){ setEditing({ id: n.id, name: e.target.value }); }, onKeyDown: function(e){ if(e.key === 'Enter') saveEdit(); if(e.key === 'Escape') setEditing(null); } })
+                    : h('span', { style: { flex: 1, minWidth: '200px' } }, n.name,
+                        n._extra ? h('span', { style: { marginLeft: '8px', fontSize: '0.72rem', color: 'var(--good)', fontWeight: 700 } }, 'THÊM TAY') : null,
+                        renamed ? h('span', { style: { marginLeft: '8px', fontSize: '0.72rem', color: 'var(--accent-strong)', fontWeight: 700 } }, 'ĐÃ ĐỔI TÊN') : null),
+                  isEditing
+                    ? h('span', null, h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.8rem' }, disabled: saving, onClick: saveEdit }, 'Lưu'), ' ', h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ setEditing(null); } }, 'Huỷ'))
+                    : h('span', null,
+                        h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ setEditing({ id: n.id, name: n.name }); } }, 'Đổi tên'),
+                        (n._extra || renamed) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem', marginLeft: '6px' }, disabled: saving, onClick: function(){ removeExtra(n.id); } }, n._extra ? 'Xoá' : 'Khôi phục tên gốc') : null));
+              }));
+          }));
+      })
+    );
+  }
+
   function PricingPanel(props){
     var OPCref = window.OPC;
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
@@ -4822,9 +5295,36 @@
     function setRowBai(qIdx, baiKey){
       setNanoRows(function(prev){
         var next = Object.assign({}, prev);
-        next[qIdx] = { baiKey: baiKey, nanoIds: [] };
+        var old = next[qIdx] || { baiKey:'', nanoIds:[] };
+        // SỬA 5/10/2026 — đổi Bài chỉ bỏ nano-point của Bài cũ; nano-point thuộc Bài KHÁC (câu gộp nhiều nano) giữ lại
+        var keep = (old.nanoIds || []).filter(function(id){ var n = window.OPC_NANO.getNano(id); return n && n.baiKey !== old.baiKey; });
+        next[qIdx] = { baiKey: baiKey, nanoIds: keep, unknownIds: old.unknownIds || [] };
         return next;
       });
+    }
+    // THÊM 5/10/2026 — thêm nhanh 1 mã nano chưa có trong bản đồ (từ dòng @nano của .tex) và gắn vào mọi câu đang dùng mã đó
+    var unkNameState = React.useState({}); var unkNames = unkNameState[0], setUnkNames = unkNameState[1];
+    function addUnknownNano(id){
+      var name = String(unkNames[id] || '').trim();
+      var baiK = id.split('.')[0];
+      if(!window.OPC_NANO.getBai(baiK)){ props.fireToast('Mã ' + id + ' không thuộc Bài nào trong danh mục (' + baiK + ' không tồn tại).', true); return; }
+      if(!name){ props.fireToast('Nhập tên cho nano-point ' + id + ' trước khi thêm.', true); return; }
+      var map = {}; var order = [];
+      window.OPC_NANO.getExtraItems().concat([{ id: id, baiKey: baiK, name: name }]).forEach(function(it){ if(!map[it.id]) order.push(it.id); map[it.id] = it; });
+      saveNanoExtraItems(order.map(function(k){ return map[k]; })).then(function(){
+        window.OPC_NANO.setExtra(order.map(function(k){ return map[k]; })); // dùng ngay, không đợi Firestore báo lại
+        setNanoRows(function(prev){
+          var next = {};
+          Object.keys(prev).forEach(function(k){
+            var r = prev[k] || { baiKey:'', nanoIds:[] };
+            if((r.unknownIds || []).indexOf(id) > -1){
+              next[k] = Object.assign({}, r, { unknownIds: r.unknownIds.filter(function(x){ return x !== id; }), nanoIds: (r.nanoIds || []).concat([id]), baiKey: r.baiKey || baiK });
+            } else next[k] = r;
+          });
+          return next;
+        });
+        props.fireToast('Đã thêm nano-point ' + id + ' vào bản đồ.');
+      }).catch(function(err){ console.error('Lỗi thêm nano-point:', err); props.fireToast('Không lưu được nano-point — thử lại.', true); });
     }
     function bulkApplyBai(baiKey){
       if(!window.OPC_NANO) return;
@@ -5060,6 +5560,8 @@
             // sai Bài/nano-point, nhất là với câu hỏi chùm hoặc câu tình huống.
             groupPassage: q.groupPassage || '',
             loigiai: q.loigiai || '',
+            // THÊM 5/10/2026 — ứng viên do bộ khớp từ khoá chọn sẵn, làm gợi ý tham khảo cho AI
+            candidates: quickNanoSuggest(q).ids,
             catalog: buildNanoCatalogPayload()
           })
         });
@@ -5070,10 +5572,14 @@
         }
         setNanoRows(function(prev){
           var next = Object.assign({}, prev);
-          next[qIdx] = { baiKey: data.baiKey, nanoIds: data.nanoIds || [], aiReason: data.reason || '' };
+          var old = next[qIdx] || {};
+          // SỬA 5/10/2026 — AI có thể trả nano-point ở NHIỀU Bài và có độ tin cậy; mảng rỗng = AI không thấy nano-point nào khớp
+          next[qIdx] = { baiKey: data.baiKey || old.baiKey || '', nanoIds: data.nanoIds || [], unknownIds: old.unknownIds || [],
+                         aiReason: data.reason || (data.nanoIds && data.nanoIds.length ? '' : 'AI không thấy nano-point nào khớp — thầy chọn tay hoặc thêm nano-point mới.'),
+                         aiConfidence: data.confidence || '' };
           return next;
         });
-        if(!silent) props.fireToast('AI đã gợi ý cho câu ' + (qIdx + 1) + (data.reason ? ' — ' + data.reason : '') + ' — thầy xem lại giúp em.');
+        if(!silent) props.fireToast('AI đã gợi ý cho câu ' + (qIdx + 1) + (data.confidence ? ' (độ tin cậy ' + data.confidence + ')' : '') + (data.reason ? ' — ' + data.reason : '') + ' — thầy xem lại giúp em.');
         return true;
       }catch(err){
         console.error('Lỗi gọi AI gợi ý nano-point:', err);
@@ -5093,6 +5599,41 @@
     // sức đã chọn tay, trừ khi thầy tick "Ghi đè...". Dừng sớm nếu gặp 3
     // lỗi liên tiếp (nghi ngờ mất mạng / API lỗi) thay vì âm thầm chạy hết
     // cả file rồi mới biết không câu nào thành công.
+    // THÊM 5/10/2026 — GỢI Ý NHANH (không AI): áp ngay kết quả bộ khớp từ khoá cho 1 câu. Trả 'ok' | 'weak' | 'none'.
+    function applyQuickSuggest(qIdx, q, silent){
+      var r = quickNanoSuggest(q);
+      if(!r.ids.length){
+        if(!silent) props.fireToast('Bộ gợi ý nhanh không tìm thấy nano-point khớp với câu ' + (qIdx + 1) + ' — thử "🪄 AI" hoặc chọn tay.', true);
+        return 'none';
+      }
+      if(r.confidence === 'thấp'){
+        if(!silent) props.fireToast('Câu ' + (qIdx + 1) + ': gợi ý nhanh chưa chắc (độ tin cậy thấp) nên chưa chọn sẵn — thầy xem lại hoặc dùng AI.', true);
+        return 'weak';
+      }
+      setNanoRows(function(prev){
+        var next = Object.assign({}, prev);
+        var old = next[qIdx] || {};
+        var first = window.OPC_NANO.getNano(r.ids[0]);
+        next[qIdx] = { baiKey: first ? first.baiKey : (old.baiKey || ''), nanoIds: r.ids, unknownIds: old.unknownIds || [],
+                       aiReason: 'Khớp từ khoá với: ' + r.ids.map(function(id){ var n = window.OPC_NANO.getNano(id); return id + (n ? ' (' + n.name + ')' : ''); }).join('; '),
+                       aiConfidence: r.confidence };
+        return next;
+      });
+      if(!silent) props.fireToast('Gợi ý nhanh cho câu ' + (qIdx + 1) + ' (độ tin cậy ' + r.confidence + ') — thầy xem lại giúp em.');
+      return 'ok';
+    }
+    function runBulkQuickSuggest(){
+      if(!parsedAnalysis || !parsedAnalysis.questions.length) return;
+      var ok = 0, weak = 0, none = 0, skip = 0;
+      parsedAnalysis.questions.forEach(function(q, i){
+        var ex = nanoRows[i];
+        if(ex && ex.nanoIds && ex.nanoIds.length && !bulkAiOverwrite){ skip++; return; }
+        var res = applyQuickSuggest(i, q, true);
+        if(res === 'ok') ok++; else if(res === 'weak') weak++; else none++;
+      });
+      props.fireToast('Gợi ý nhanh: ' + ok + ' câu đã gợi ý' + (skip ? ', ' + skip + ' câu giữ nguyên' : '') + ((weak + none) ? ', ' + (weak + none) + ' câu chưa chắc/không khớp (cần chọn tay hoặc dùng AI)' : '') + '.', !ok);
+    }
+
     async function runBulkAiSuggest(){
       if(!parsedAnalysis || !parsedAnalysis.questions.length || bulkAiRunning) return;
       var questions = parsedAnalysis.questions;
@@ -5211,7 +5752,14 @@
         var rows = {};
         (analysis.questions || []).forEach(function(q, idx){
           var sug = (window.OPC_NANO && window.OPC_NANO.suggestForParsedQuestion) ? window.OPC_NANO.suggestForParsedQuestion(q) : { bai:null };
-          rows[idx] = { baiKey: sug.bai ? sug.bai.key : '', nanoIds: [] };
+          // THÊM 5/10/2026 — đọc sẵn dòng "% @nano: khi-1.3, khi-2.1" trong .tex: mã đã có trong bản đồ -> gắn luôn
+          // (Bài chính = Bài của nano đầu tiên); mã CHƯA có -> unknownIds để thầy thêm nhanh ngay bên dưới.
+          var known = [], unknown = [];
+          (q.nanoTagIds || []).forEach(function(id){
+            if(window.OPC_NANO && window.OPC_NANO.getNano(id)) known.push(id); else unknown.push(id);
+          });
+          var firstNano = known.length ? window.OPC_NANO.getNano(known[0]) : null;
+          rows[idx] = { baiKey: firstNano ? firstNano.baiKey : (sug.bai ? sug.bai.key : ''), nanoIds: known, unknownIds: unknown };
         });
         setNanoRows(rows);
 
@@ -5672,6 +6220,9 @@
 
                 h('div',{className:'eb-nano-bulk', style:{marginTop:8}},
                   h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.82rem'}, disabled: bulkAiRunning,
+                    title:'Bộ khớp từ khoá đọc đề + lời giải và gợi ý nano-point ngay lập tức (không gọi AI, không tốn lượt). Câu nào chưa chắc sẽ để trống cho thầy chọn.',
+                    onClick: runBulkQuickSuggest}, '⚡ Gợi ý nhanh cho các câu chưa gắn'),
+                  h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.82rem'}, disabled: bulkAiRunning,
                     title:'AI đọc từng câu và gợi ý Bài + nano-point cho TOÀN BỘ file này — kể cả đề tổng hợp nhiều chuyên đề, mỗi câu vẫn gửi đúng nội dung riêng của nó, không trộn lẫn.',
                     onClick: runBulkAiSuggest},
                     bulkAiRunning ? ('⏳ Đang gợi ý ' + bulkAiProgress.done + '/' + bulkAiProgress.total + '…') : '🪄 AI gợi ý cho tất cả câu'),
@@ -5761,6 +6312,8 @@
                               );
                             })
                           ),
+                          h('button',{type:'button', className:'eb-nano-ai-btn', title:'Gợi ý nhanh bằng khớp từ khoá (không AI, tức thì).',
+                            onClick:function(){ applyQuickSuggest(idx, q, false); }}, '⚡ Nhanh'),
                           h('button',{type:'button', className:'eb-nano-ai-btn', disabled: !!aiSuggesting[idx],
                             title:'AI đọc thẳng nội dung câu hỏi này và đề xuất Bài + nano-point phù hợp nhất.',
                             onClick:function(){ requestAiNanoSuggestion(idx, q); }},
@@ -5772,12 +6325,46 @@
                             return h('button',{key:n.id, type:'button', className:'eb-nano-chip' + (active?' active':''), onClick:function(){ toggleNano(idx, n.id); }}, (active?'✓ ':'') + n.name);
                           })
                         ) : null,
+                        // THÊM 5/10/2026 — câu gộp NHIỀU nano-point (đề thi thử trường/sở): hiện các nano đã chọn ở Bài khác
+                        // + ô chọn thêm nano-point từ bất kỳ Bài nào.
+                        (function(){
+                          var others = row.nanoIds.filter(function(id){ return !pool.some(function(n){ return n.id === id; }); });
+                          return others.length ? h('div',{className:'eb-nano-chips', style:{marginTop:'6px'}},
+                            others.map(function(id){
+                              var n = window.OPC_NANO.getNano(id);
+                              return h('button',{key:id, type:'button', className:'eb-nano-chip active', title:'Nano-point thuộc Bài khác — bấm để bỏ', onClick:function(){ toggleNano(idx, id); }}, '✓ ' + id + (n ? ' · ' + n.name : ''));
+                            })) : null;
+                        })(),
+                        h('select',{className:'eb-nano-bai-select', style:{marginTop:'6px'}, value:'', onChange:function(e){ if(e.target.value) toggleNano(idx, e.target.value); },
+                          title:'Câu có 2–3 nano-point: chọn thêm nano-point từ Bài khác'},
+                          h('option',{value:''}, '＋ Thêm nano-point (cả Bài khác)…'),
+                          window.OPC_NANO.CHU_DE.map(function(cd){
+                            return h(React.Fragment,{key:cd.key},
+                              window.OPC_NANO.getBaiByChuDe(cd.key).map(function(b){
+                                var avail = window.OPC_NANO.getNanoByBai(b.key).filter(function(n){ return row.nanoIds.indexOf(n.id) < 0; });
+                                if(!avail.length) return null;
+                                return h('optgroup',{key:b.key, label:cd.icon + ' ' + b.name},
+                                  avail.map(function(n){ return h('option',{key:n.id, value:n.id}, n.id + ' · ' + n.name); }));
+                              }));
+                          })
+                        ),
+                        (row.unknownIds && row.unknownIds.length) ? h('div',{className:'banner warn', style:{marginTop:'8px'}}, h('span',null,'⚠️'),
+                          h('div',null,
+                            h('div',{style:{fontWeight:600, marginBottom:'4px'}}, 'File .tex ghi mã nano chưa có trong bản đồ:'),
+                            row.unknownIds.map(function(id){
+                              return h('div',{key:id, style:{display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap', margin:'4px 0'}},
+                                h('code',null,id),
+                                h('input',{type:'text', placeholder:'Tên nano-point', value:unkNames[id] || '', style:{flex:'1 1 200px', padding:'6px 8px', border:'1px solid var(--line)', borderRadius:'6px', background:'var(--surface)', color:'inherit'},
+                                  onChange:function(e){ var v = e.target.value; setUnkNames(function(p){ var n = Object.assign({}, p); n[id] = v; return n; }); }}),
+                                h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.8rem'}, onClick:function(){ addUnknownNano(id); }}, 'Thêm vào bản đồ'));
+                            }))) : null,
                         // THÊM 27/9/2026: hiện lại lý do AI chọn (kể cả khi gợi
                         // ý hàng loạt — bulk suggest chạy "silent" nên KHÔNG có
                         // toast từng câu, nếu không lưu lại đây thầy sẽ mất
                         // trắng phần giải thích, chỉ còn mỗi kết quả chọn sẵn
                         // mà không rõ vì sao AI chọn vậy để xét lại nhanh).
-                        row.aiReason ? h('div',{className:'eb-hint', style:{marginTop:'4px', fontStyle:'italic'}}, '🪄 AI: ' + row.aiReason) : null
+                        row.aiReason ? h('div',{className:'eb-hint', style:{marginTop:'4px', fontStyle:'italic'}},
+                          (row.aiConfidence ? '[độ tin cậy: ' + row.aiConfidence + '] ' : '') + '🪄 ' + row.aiReason) : null
                       )
                     );
                   })
@@ -5938,6 +6525,7 @@
       examId: examId,
       baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
       nanoId: (q.nanoPointIds && q.nanoPointIds[0]) || null,
+      nanoIds: (q.nanoPointIds && q.nanoPointIds.length) ? q.nanoPointIds.slice() : [],
       chuong: window.OPC_CURRICULUM ? window.OPC_CURRICULUM.inferChuong(q) : null // THÊM 28/9/2026
     };
     if(q.type === 'choiceTF'){
@@ -7320,6 +7908,7 @@
 
   // ================= Root app (auth gate + tabs + toast) =================
   function AdminApp(){
+    useNanoExtraSync(); // THÊM 5/10/2026 — nạp nano-point thầy tự thêm cho mọi màn hình admin
     // The Firebase module script is deferred by the browser and always
     // finishes executing AFTER this classic script runs (module scripts
     // wait for the document to finish parsing; classic scripts run inline
@@ -7396,6 +7985,8 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa'),
         h('button',{type:'button', className:cx('tab-btn', tab==='curriculum' && 'active'), onClick:function(){ setTab('curriculum'); }}, '📚 Quản lý chương'),
         h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='nano' && 'active'), onClick:function(){ setTab('nano'); }}, '🗺️ Nano-point'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='nanotag' && 'active'), onClick:function(){ setTab('nanotag'); }}, '🏷️ Gắn nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
         h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG & Olympic')
       ),
@@ -7404,8 +7995,10 @@
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
             tab === 'curriculum' ? h(CurriculumPanel, {fireToast:fireToast}) : (
             tab === 'reports' ? h(ParentReportsPanel, {fireToast:fireToast}) : (
+              tab === 'nanotag' ? h(NanoTaggerPanel, {fireToast:fireToast}) : (
+              tab === 'nano' ? h(NanoMapPanel, {fireToast:fireToast}) : (
               tab === 'pricing' ? h('div', null, h(ReferralSettingsCard, {fireToast:fireToast}), h(PricingPanel, {fireToast:fireToast})) : (
-                tab === 'special' ? h(SpecialBankPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast}))
+                tab === 'special' ? h(SpecialBankPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast}))))
             )
             )
           )
