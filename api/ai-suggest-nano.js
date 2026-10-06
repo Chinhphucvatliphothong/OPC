@@ -17,36 +17,32 @@
 // ⚙️ Không cần cấu hình thêm trên Vercel — dùng chung GEMINI_API_KEY /
 // GEMINI_MODEL đã khai báo cho api/ai-tutor.js.
 
+// SỬA 5/10/2026 — viết lại cách gợi ý (phản hồi của thầy: gợi ý chưa hiệu quả). Các lỗi cũ:
+//  (1) máy chủ cắt danh mục còn 8 nano-point/bài, 10 bài/chủ đề -> nano-point thầy vừa thêm bị AI "không thấy";
+//  (2) bắt chọn ĐÚNG 1 Bài rồi 1-2 nano-point TRONG bài đó -> câu đề thi thử gộp nhiều bài không gắn được;
+//  (3) bắt buộc trả lời dù không chắc, không có độ tin cậy -> thầy không biết câu nào cần xem kỹ.
+// Nay: chọn 1-3 nano-point ở BẤT KỲ Bài nào, kèm confidence (cao/vừa/thấp); được trả mảng rỗng khi không có
+// nano-point nào thật sự khớp (thay vì ép đoán bừa).
 var SYSTEM_INSTRUCTION = [
-  'Bạn là hệ thống phân loại câu hỏi Vật Lí lớp 12 (chương trình GDPT 2018,',
-  'thi Tốt nghiệp THPT — gồm cả sách giáo khoa và sách Chuyên đề học tập)',
-  'theo danh mục "nano-point" chuẩn của FaradayAI Luyện Thi Vật Lí.',
+  'Bạn là hệ thống gắn nhãn kiến thức cho câu hỏi Vật Lí lớp 12 (chương trình GDPT 2018, thi Tốt nghiệp THPT —',
+  'gồm sách giáo khoa và sách Chuyên đề học tập) theo danh mục \"nano-point\" chuẩn của FaradayAI Luyện Thi Vật Lí.',
   '',
-  'Bạn sẽ được đưa: (1) TOÀN BỘ danh mục chuẩn, có cấu trúc Chủ đề > Bài >',
-  'nano-point, mỗi bài/nano-point kèm mã (key/id) riêng; (2) nội dung THẬT',
-  'của 1 câu hỏi cần phân loại (đề bài, có thể kèm các phương án), cùng vài',
-  'gợi ý giáo viên ghi tay khi soạn đề (chủ đề lớn, dạng bài) — LƯU Ý các',
-  'gợi ý ghi tay này CÓ THỂ không khớp đúng tên "Bài" chuẩn trong sách,',
-  'không được tin tuyệt đối, chỉ dùng làm tham khảo thêm.',
+  'Bạn được đưa: (1) TOÀN BỘ danh mục chuẩn: Chủ đề > Bài > nano-point, mỗi nano-point có mã id riêng; (2) nội dung',
+  'THẬT của 1 câu hỏi (đề, phương án, ngữ cảnh chung, lời giải nếu có); (3) gợi ý giáo viên ghi tay (chủ đề lớn, dạng',
+  'bài — CÓ THỂ sai, chỉ tham khảo); (4) có thể có danh sách \"ứng viên\" do bộ khớp từ khoá chọn sẵn (chỉ tham khảo,',
+  'không bắt buộc chọn trong đó).',
   '',
-  'Nhiệm vụ: đọc kỹ NỘI DUNG THẬT của câu hỏi (kiến thức/công thức/kỹ năng',
-  'cần dùng để giải), rồi:',
-  '1) Chọn ĐÚNG 1 "Bài" phù hợp nhất trong danh mục được cung cấp — PHẢI',
-  '   dùng đúng baiKey đã cho, không tự bịa key mới.',
-  '2) Trong đúng Bài đã chọn, chọn 1 đến 2 nano-point mô tả sát nhất kiến',
-  '   thức/kỹ năng cần dùng để giải câu hỏi này — PHẢI dùng đúng id đã cho',
-  '   trong Bài đó, không tự bịa id mới, không chọn nano-point thuộc Bài',
-  '   khác.',
-  '3) Nếu câu hỏi mơ hồ hoặc không khớp rõ với bài/nano-point nào, vẫn',
-  '   PHẢI chọn phương án gần đúng nhất trong danh mục (không được bỏ',
-  '   trống) — đây chỉ là gợi ý ban đầu, giáo viên sẽ xem lại và có thể',
-  '   sửa tay.',
+  'Nhiệm vụ: đọc kỹ KIẾN THỨC/CÔNG THỨC/KỸ NĂNG cần dùng để GIẢI câu hỏi, rồi chọn các nano-point mô tả sát nhất:',
+  '- Chọn 1 nano-point nếu câu chỉ kiểm tra 1 kỹ năng. Chọn 2 hoặc 3 nano-point CHỈ KHI lời giải thật sự cần dùng',
+  '  cả hai kiến thức (thường gặp ở đề thi thử của trường/sở: câu gộp nhiều bài). Các nano-point được phép thuộc',
+  '  các Bài/Chủ đề KHÁC NHAU. Nano-point quan trọng nhất đặt ĐẦU TIÊN trong mảng.',
+  '- PHẢI dùng đúng id có trong danh mục, không tự bịa id.',
+  '- Nếu không có nano-point nào thật sự khớp, trả \"nanoIds\": [] và confidence \"thấp\" — KHÔNG đoán bừa.',
+  '- confidence: \"cao\" = chắc chắn; \"vừa\" = khá chắc nhưng có nano-point gần giống khác; \"thấp\" = đoán/không chắc.',
   '',
-  'CHỈ trả lời bằng ĐÚNG MỘT đối tượng JSON hợp lệ, không kèm bất kỳ chữ',
-  'nào khác, không dùng markdown/code fence (không có ```), theo ĐÚNG hình',
-  'dạng: {"baiKey":"...", "nanoIds":["...","..."], "reason":"..."} — trong',
-  'đó "reason" là MỘT câu ngắn (dưới 30 từ) giải thích ngắn gọn vì sao chọn',
-  'bài/nano-point đó, viết cho giáo viên đọc lướt để xác nhận nhanh.'
+  'CHỈ trả lời bằng ĐÚNG MỘT đối tượng JSON hợp lệ, không chữ nào khác, không markdown/code fence, hình dạng:',
+  '{\"nanoIds\":[\"...\"], \"confidence\":\"cao|vừa|thấp\", \"reason\":\"...\"} — \"reason\" là MỘT câu ngắn (dưới 30 từ)',
+  'nêu kiến thức then chốt dùng để giải, viết cho giáo viên đọc lướt để xác nhận.'
 ].join('\n');
 
 function clampStr(val, max){
@@ -73,6 +69,7 @@ function buildCatalogText(catalog){
 function buildUserPrompt(d){
   var lines = [buildCatalogText(d.catalog), ''];
   lines.push('CÂU HỎI CẦN PHÂN LOẠI:');
+  if(d.groupPassage) lines.push('Ngữ cảnh chung (câu hỏi chùm): ' + d.groupPassage);
   lines.push('Đề bài: ' + d.stem);
   if(d.options && d.options.length){
     lines.push('Các phương án: ' + d.options.join(' | '));
@@ -80,8 +77,12 @@ function buildUserPrompt(d){
   if(d.level) lines.push('Mức độ nhận thức: ' + d.level);
   if(d.chuDeLon) lines.push('Gợi ý chủ đề lớn (giáo viên ghi tay, có thể không chính xác): ' + d.chuDeLon);
   if(d.dangBai) lines.push('Gợi ý dạng bài (giáo viên ghi tay, có thể không chính xác): ' + d.dangBai);
+  if(d.loigiai) lines.push('Lời giải (tham khảo kiến thức đã dùng): ' + d.loigiai);
+  if(d.candidates && d.candidates.length){
+    lines.push('Ứng viên do bộ khớp từ khoá chọn sẵn (tham khảo): ' + d.candidates.join(', '));
+  }
   lines.push('');
-  lines.push('Hãy chọn Bài và nano-point phù hợp nhất theo đúng hướng dẫn ở system instruction.');
+  lines.push('Hãy chọn nano-point phù hợp nhất theo đúng hướng dẫn ở system instruction.');
   return lines.join('\n');
 }
 
@@ -129,13 +130,13 @@ export default async function handler(req, res){
   // kết quả AI trả về (không cho AI bịa key/id lạ, giống ai-adaptive-priority.js).
   var validBai = {}; // baiKey -> true
   var nanoByBai = {}; // baiKey -> {id: true}
-  var catalog = rawCatalog.slice(0, 12).map(function(cd){
-    var bai = Array.isArray(cd && cd.bai) ? cd.bai.slice(0, 10).map(function(b){
+  var catalog = rawCatalog.slice(0, 20).map(function(cd){
+    var bai = Array.isArray(cd && cd.bai) ? cd.bai.slice(0, 40).map(function(b){
       var baiKey = clampStr(b && b.baiKey, 60);
       if(!baiKey) return null;
       validBai[baiKey] = true;
       nanoByBai[baiKey] = nanoByBai[baiKey] || {};
-      var nano = Array.isArray(b && b.nano) ? b.nano.slice(0, 8).map(function(n){
+      var nano = Array.isArray(b && b.nano) ? b.nano.slice(0, 60).map(function(n){
         var id = clampStr(n && n.id, 80);
         if(!id) return null;
         nanoByBai[baiKey][id] = true;
@@ -151,7 +152,13 @@ export default async function handler(req, res){
     return;
   }
 
+  var validNano = {}; // id -> baiKey (cho phép nano-point ở MỌI bài)
+  Object.keys(nanoByBai).forEach(function(bk){ Object.keys(nanoByBai[bk]).forEach(function(id){ validNano[id] = bk; }); });
+
   var d = {
+    groupPassage: clampStr(body.groupPassage, 1500),
+    loigiai: clampStr(body.loigiai, 1200),
+    candidates: Array.isArray(body.candidates) ? body.candidates.slice(0, 8).map(function(c){ return clampStr(c, 80); }).filter(function(c){ return validNano[c]; }) : [],
     stem: stem,
     options: Array.isArray(body.options) ? body.options.slice(0, 6).map(function(o){ return clampStr(o, 300); }) : [],
     level: clampStr(body.level, 10),
@@ -195,20 +202,21 @@ export default async function handler(req, res){
     }catch(e){ raw = ''; }
 
     var parsed = extractJson(raw);
-    var baiKey = parsed && clampStr(parsed.baiKey, 60);
-
-    // Bảo vệ: chỉ chấp nhận baiKey/nanoIds thật sự có trong danh mục gửi
-    // lên — id lạ do AI bịa ra sẽ bị loại bỏ để không làm hỏng dữ liệu.
-    if(!baiKey || !validBai[baiKey]){
-      res.status(502).json({ error: 'FaradayAI chưa chọn được Bài phù hợp trong danh mục — thử lại hoặc chọn tay.' });
+    if(!parsed){
+      res.status(502).json({ error: 'FaradayAI trả lời không đúng định dạng — thử lại hoặc chọn tay.' });
       return;
     }
-    var allowedNano = nanoByBai[baiKey] || {};
-    var nanoIds = Array.isArray(parsed.nanoIds) ? parsed.nanoIds.filter(function(id){ return allowedNano[id]; }).slice(0, 3) : [];
+    // Chỉ giữ id có thật trong danh mục gửi lên (không cho AI bịa), bỏ trùng, tối đa 3 — thứ tự = mức quan trọng
+    var seen = {};
+    var nanoIds = (Array.isArray(parsed.nanoIds) ? parsed.nanoIds : []).map(function(id){ return clampStr(id, 80); })
+      .filter(function(id){ if(!validNano[id] || seen[id]) return false; seen[id] = true; return true; }).slice(0, 3);
+    var conf = ['cao', 'vừa', 'thấp'].indexOf(parsed.confidence) > -1 ? parsed.confidence : 'thấp';
+    if(!nanoIds.length) conf = 'thấp';
 
     res.status(200).json({
-      baiKey: baiKey,
+      baiKey: nanoIds.length ? validNano[nanoIds[0]] : '',
       nanoIds: nanoIds,
+      confidence: conf,
       reason: clampStr(parsed.reason, 200) || ''
     });
   }catch(err){
