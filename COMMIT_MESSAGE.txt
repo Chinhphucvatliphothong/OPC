@@ -1,4 +1,4 @@
-Gắn lại nano-point cho đề đã nạp (không cần xoá đề); gợi ý nano-point chính xác hơn; câu nhiều nano-point
+Quan hệ tiên quyết giữa nano-point + tìm gốc lỗi; gắn lại nano-point cho đề đã nạp; gợi ý nano-point chính xác hơn; câu nhiều nano-point
 
 - admin.html: tab "🏷️ Gắn nano-point" sửa nano-point của câu ĐÃ nạp (chip, thêm nano ở Bài khác, ⚡ gợi ý nhanh,
   🪄 AI, đọc lại thẻ "% @nano:" từ file .tex ghép theo nội dung đề) rồi lưu bằng updateQuestions; tab "🗺️ Nano-point"
@@ -10,6 +10,13 @@ Gắn lại nano-point cho đề đã nạp (không cần xoá đề); gợi ý 
   được trả rỗng khi không khớp, nhận ngữ cảnh chùm + lời giải + ứng viên
 - opc-live-data.js / prepscholar*.js: loadNanoExtra; câu có nanoIds (nhiều nano-point); mastery cập nhật cho mọi
   nano-point (đúng: cộng đủ; sai: trừ chia -20/-10/-8); chọn câu thích ứng/luyện nano/câu tương tự theo mọi nano
+- nano-map.js: đồ thị tiên quyết (121 quan hệ gợi ý cho Chương I-IV, không vòng lặp), thầy sửa được qua
+  settings/nanoPrereq (setPrereqEdits, chặn vòng lặp), findRootCause (truy gốc lỗi tối đa 3 bước)
+- prepscholar.js: luyện thích ứng chuyển sang nano-point nền tảng khi nano-point đích đã Đỏ và nền tảng cũng yếu
+  (hoặc kiểm tra thử nền tảng khi yếu nặng); getRedTags kèm gốc lỗi; getLastPickInfo
+- prepscholar-ui.js: ghi chú "đang luyện nền tảng/kiểm tra thử" trong phiên thích ứng; thẻ "Cần luyện ngay" hiện
+  gốc lỗi + nút "Luyện nền tảng trước"; opc-live-data.js nạp settings/nanoPrereq
+- admin.html: nút 🔗 ở mỗi nano-point để xem/sửa tiên quyết (chặn vòng, khôi phục gợi ý ban đầu); hồ sơ học sinh hiện gốc lỗi
 - Gộp bản trước chưa upload: lớp viết tay Apple Pencil, xem lại bài làm theo thứ tự giao, sửa đáp án 1{,}73
 
 Co-Authored-By: Claude <noreply@anthropic.com>

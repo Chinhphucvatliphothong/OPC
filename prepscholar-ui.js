@@ -1007,6 +1007,10 @@
     var adaptiveChecked = adaptiveCheckedState[0];
     var setAdaptiveChecked = adaptiveCheckedState[1];
 
+    // THÊM 6/10/2026 — ghi chú "gốc lỗi" theo mã câu: khi hệ thống chuyển em sang luyện nano-point NỀN TẢNG (xem
+    // pickAdaptiveQuestion trong prepscholar.js). Dùng ref vì chỉ cần đọc lúc vẽ câu hiện tại, ghi trước khi đổi câu.
+    var adaptiveRootRef = React.useRef({});
+    function nanoNameOf(id){ var n = window.OPC_NANO && window.OPC_NANO.getNano(id); return n ? n.name : id; }
     var adaptiveLastResultState = React.useState(null); // kết quả câu vừa chấm, để hiện phản hồi tức thì
     var adaptiveLastResult = adaptiveLastResultState[0];
     var setAdaptiveLastResult = adaptiveLastResultState[1];
@@ -1790,6 +1794,9 @@
     function startAdaptiveDrill(){
       var seedMastery = Object.assign({}, student.nanoMastery || {});
       var firstQ = window.PrepScholarEngine.pickAdaptiveQuestion(seedMastery, {});
+      adaptiveRootRef.current = {};
+      var firstInfo = window.PrepScholarEngine.getLastPickInfo && window.PrepScholarEngine.getLastPickInfo();
+      if(firstQ && firstInfo && firstInfo.redirected) adaptiveRootRef.current[firstQ.id] = firstInfo;
       if(!firstQ){
         alert('Ngân hàng đề chưa có đủ câu hỏi gắn Tag để luyện thích ứng — thầy cô cần nạp thêm đề (.tex) có gắn nano-point.');
         return;
@@ -1854,6 +1861,8 @@
       var askedIds = {};
       examSession.questions.forEach(function(q){ askedIds[q.id] = true; });
       var nextQ = window.PrepScholarEngine.pickAdaptiveQuestion(adaptiveNanoMastery, askedIds, aiAdaptive.priority);
+      var nextInfo = window.PrepScholarEngine.getLastPickInfo && window.PrepScholarEngine.getLastPickInfo();
+      if(nextQ && nextInfo && nextInfo.redirected) adaptiveRootRef.current[nextQ.id] = nextInfo;
       if(!nextQ){
         handleSubmitExam(); // Hết câu hỏi khả dụng — vẫn chấm/lưu bình thường với số câu đã làm
         return;
@@ -2467,7 +2476,13 @@
                     h('h3', null, '⚡ ' + examSession.title),
                     h('p', null, 'Câu ' + qNo + ' / ' + ADAPTIVE_TARGET_COUNT + ' · Hệ thống tự chọn câu tiếp theo ngay sau khi bạn trả lời'),
                     aiAdaptive.loading ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 FaradayAI đang phân tích để định hướng lộ trình…') : null,
-                    !aiAdaptive.loading && aiAdaptive.reason ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 FaradayAI: ' + aiAdaptive.reason) : null
+                    !aiAdaptive.loading && aiAdaptive.reason ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 FaradayAI: ' + aiAdaptive.reason) : null,
+                    // THÊM 6/10/2026 — minh bạch với em: vì sao câu này thuộc nano-point nền tảng
+                    // (dùng targetId của lần chọn — câu nhiều nano-point có nano đầu tiên có thể khác nano nền tảng được nhắm tới)
+                    adaptiveRootRef.current[curQ.id] ? h('p', { className: 'ps-ai-adaptive-note' },
+                      adaptiveRootRef.current[curQ.id].reason === 'probe'
+                        ? '🔎 Em đang yếu "' + nanoNameOf(adaptiveRootRef.current[curQ.id].requestedId) + '" — hệ thống kiểm tra thử nền tảng "' + nanoNameOf(adaptiveRootRef.current[curQ.id].targetId) + '" để tìm gốc lỗi.'
+                        : '🧱 Em đang yếu "' + nanoNameOf(adaptiveRootRef.current[curQ.id].requestedId) + '" vì nền tảng "' + nanoNameOf(adaptiveRootRef.current[curQ.id].targetId) + '" chưa vững — luyện nền tảng trước.') : null
                   ),
                   h('button', {
                     type: 'button',
@@ -3313,7 +3328,12 @@
                       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' } },
                         h('div', { style: { flex: 1, minWidth: '200px' } },
                           h('div', { style: { fontWeight: 700, fontSize: '0.92rem' } }, n.name),
-                          h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '2px' } }, n.chuDeName + ' · ' + n.baiName)
+                          h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '2px' } }, n.chuDeName + ' · ' + n.baiName),
+                          // THÊM 6/10/2026 — GỐC LỖI theo quan hệ tiên quyết giữa các nano-point
+                          n.rootCause ? h('div', { style: { fontSize: '0.78rem', marginTop: '6px', color: 'var(--ink-2)' } },
+                            n.rootCause.reason === 'probe'
+                              ? '🔎 Nên kiểm tra nền tảng: ' + n.rootCause.name + ' (chưa kiểm tra)'
+                              : '🧱 Gốc lỗi có thể là nền tảng: ' + n.rootCause.name + (n.rootCause.mastery != null ? ' (đang ' + Math.round(n.rootCause.mastery) + '%)' : '')) : null
                         ),
                         h('span', { style: { fontSize: '0.78rem', fontWeight: 700, color: 'var(--critical)', background: 'color-mix(in srgb, var(--critical) 12%, transparent)', padding: '3px 8px', borderRadius: '5px', whiteSpace: 'nowrap' } }, n.mastery + '%')
                       ),
@@ -3327,7 +3347,13 @@
                           className: 'btn btn-primary',
                           style: { fontSize: '0.8rem', padding: '6px 12px' },
                           onClick: function(){ startRemediation(n); }
-                        }, (n.videoUrl || n.conceptCard) ? '🔒 Bắt đầu Vá lỗi (Video → Thẻ ghi nhớ → 5 bài tập) ➔' : '5 bài tập luyện Tag này ➔')
+                        }, (n.videoUrl || n.conceptCard) ? '🔒 Bắt đầu Vá lỗi (Video → Thẻ ghi nhớ → 5 bài tập) ➔' : '5 bài tập luyện Tag này ➔'),
+                        n.rootCause ? h('button', {
+                          type: 'button',
+                          className: 'btn btn-secondary',
+                          style: { fontSize: '0.8rem', padding: '6px 12px', marginLeft: '8px' },
+                          onClick: function(){ startRemediation(window.OPC_NANO.getNano(n.rootCause.id) || n); }
+                        }, '🧱 Luyện nền tảng trước ➔') : null
                       )
                     );
                   })

@@ -930,6 +930,21 @@
       }
     };
 
+    // ================= Quan hệ tiên quyết giữa nano-point (settings/nanoPrereq) =
+    // THÊM 6/10/2026 — doc { edits:[{id, prereqs:[…]}] }: mục ghi đè quan hệ gợi ý sẵn trong nano-map.js
+    // (mảng rỗng = không cần nano-point nào trước). Đọc công khai, chỉ admin ghi. Lưu dạng mảng (không dùng
+    // khoá "khi-2.3" làm tên trường) để tránh rắc rối dấu chấm trong tên trường Firestore.
+    OPC.nanoPrereq = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(doc(db, 'settings', 'nanoPrereq'), function(snap){
+          onNext(snap.exists() ? snap.data() : null);
+        }, onErr);
+      },
+      save: function(edits){
+        return setDoc(doc(db, 'settings', 'nanoPrereq'), { edits: edits, updatedAt: serverTimestamp() });
+      }
+    };
+
     // ================= Khoá/mở chương theo học sinh ============================
     // THÊM 28/9/2026 — doc đơn "settings/curriculum" { defaultUnlockedChapters }
     // (chương mở mặc định cho cả lớp — "settings" đọc công khai, ghi chỉ admin,
@@ -1027,6 +1042,13 @@
       window.OPC_NANO.setExtra((data && data.items) || []);
       nanoExtraStore.loaded = true; notify();
     }, function(err){ console.warn('Lỗi đồng bộ nano-point mở rộng:', err); nanoExtraStore.loaded = true; notify(); });
+    // THÊM 6/10/2026 — quan hệ tiên quyết do thầy chỉnh
+    if(OPCref.nanoPrereq){
+      OPCref.nanoPrereq.subscribe(function(data){
+        window.OPC_NANO.setPrereqEdits((data && data.edits) || []);
+        notify();
+      }, function(err){ console.warn('Lỗi đồng bộ quan hệ tiên quyết:', err); });
+    }
   }
   function useNanoExtraSync(){
     var st = React.useState(0);
@@ -1041,6 +1063,9 @@
   // Lưu danh sách nano-point thêm/đổi tên (ghi đè cả danh sách trên Firestore) — trả Promise
   function saveNanoExtraItems(items){
     return window.OPC.nanoExtra.save(items);
+  }
+  function saveNanoPrereqEdits(entries){
+    return window.OPC.nanoPrereq.save(entries);
   }
   function makeReferralCode(name){
     var last = String(name || 'HS').trim().split(/\s+/).pop();
@@ -3583,10 +3608,17 @@
                 'Top ' + nanoPreview.length + '/' + nanoTestedCount + ' nano-point (đơn vị kiến thức nhỏ nhất) học sinh đang yếu nhất, tính từ lịch sử luyện tập thật:'),
               nanoPreview.map(function(n){
                 var color = n.pct < 50 ? '#d03b3b' : (n.pct < 75 ? '#b8790a' : '#0ca30c');
-                return h('div',{key:n.id, className:'sm-nano-preview-row'},
-                  h('span',{className:'sm-nano-preview-name', title: [n.chuDeName, n.baiName].filter(Boolean).join(' › ')}, n.name),
-                  h('div',{className:'sm-nano-preview-bar'}, h('div',{className:'sm-nano-preview-fill', style:{width:n.pct+'%', background:color}})),
-                  h('span',{className:'sm-nano-preview-pct'}, n.pct+'%')
+                // THÊM 6/10/2026 — gốc lỗi theo quan hệ tiên quyết (chỉ khi nano-point này đang Đỏ)
+                var rcz = (window.OPC_NANO && window.OPC_NANO.findRootCause && n.pct < 50) ? window.OPC_NANO.findRootCause(n.id, selected.nanoMastery) : null;
+                var rootN = rcz && rcz.rootId !== n.id ? window.OPC_NANO.getNano(rcz.rootId) : null;
+                return h('div',{key:n.id},
+                  h('div',{className:'sm-nano-preview-row'},
+                    h('span',{className:'sm-nano-preview-name', title: [n.chuDeName, n.baiName].filter(Boolean).join(' › ')}, n.name),
+                    h('div',{className:'sm-nano-preview-bar'}, h('div',{className:'sm-nano-preview-fill', style:{width:n.pct+'%', background:color}})),
+                    h('span',{className:'sm-nano-preview-pct'}, n.pct+'%')),
+                  rootN ? h('div',{style:{fontSize:'0.74rem', color:'var(--ink-2)', margin:'-2px 0 6px 6px'}},
+                    rcz.reason === 'probe' ? '🔎 Nên kiểm tra nền tảng: ' + rootN.name + ' (chưa kiểm tra)'
+                      : '🧱 Gốc lỗi có thể là: ' + rootN.name + ' (đang ' + Math.round(selected.nanoMastery[rootN.id]) + '%)') : null
                 );
               })
             )
@@ -4537,6 +4569,8 @@
     var nameState = React.useState(''); var newName = nameState[0], setNewName = nameState[1];
     var bulkState = React.useState(''); var bulk = bulkState[0], setBulk = bulkState[1];
     var editState = React.useState(null); var editing = editState[0], setEditing = editState[1]; // {id, name}
+    // THÊM 6/10/2026 — chỉnh quan hệ tiên quyết: draft = { id, list:[ids] } của nano-point đang mở
+    var preqState = React.useState(null); var preqDraft = preqState[0], setPreqDraft = preqState[1];
     var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
     if(!N) return h('div', { className: 'card' }, h('p', null, 'Chưa nạp được nano-map.js.'));
 
@@ -4589,6 +4623,30 @@
       var nano = N.getNano(editing.id);
       persist(mergeItems([{ id: editing.id, baiKey: nano ? nano.baiKey : editing.id.split('.')[0], name: name }]), 'Đã đổi tên ' + editing.id + '.').then(function(ok){ if(ok) setEditing(null); });
     }
+    // ---- Quan hệ tiên quyết ----
+    function openPreq(id){ setPreqDraft({ id: id, list: N.getPrereqs(id).slice() }); }
+    function addPreq(p){
+      if(!p || !preqDraft) return;
+      if(N.wouldCreateCycle(preqDraft.id, p)){ props.fireToast('Không thêm được: sẽ tạo vòng lặp (nano-point đó đã phụ thuộc vào ' + preqDraft.id + ').', true); return; }
+      if(preqDraft.list.indexOf(p) > -1) return;
+      setPreqDraft({ id: preqDraft.id, list: preqDraft.list.concat([p]) });
+    }
+    function removePreq(p){ setPreqDraft({ id: preqDraft.id, list: preqDraft.list.filter(function(x){ return x !== p; }) }); }
+    function savePreq(restoreSeed){
+      var id = preqDraft.id;
+      var seed = N.getPrereqSeed(id);
+      var list = restoreSeed ? seed : preqDraft.list;
+      var entries = N.getPrereqEdits().filter(function(e){ return e.id !== id; });
+      // chỉ lưu khi KHÁC gợi ý ban đầu (giống hệt thì bỏ mục ghi đè cho gọn)
+      if(!restoreSeed && list.slice().sort().join(',') !== seed.slice().sort().join(',')) entries.push({ id: id, prereqs: list });
+      setSaving(true);
+      saveNanoPrereqEdits(entries).then(function(){
+        N.setPrereqEdits(entries); // dùng ngay, không đợi Firestore báo lại
+        props.fireToast(restoreSeed ? 'Đã khôi phục gợi ý ban đầu cho ' + id + '.' : 'Đã lưu quan hệ tiên quyết của ' + id + '.');
+        setPreqDraft(null);
+      }).catch(function(err){ console.error('Lỗi lưu quan hệ tiên quyết:', err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setSaving(false); });
+    }
     function removeExtra(id){
       var isExtraOnly = N.NANO.some(function(n){ return n.id === id && n._extra; });
       var msg = isExtraOnly
@@ -4607,7 +4665,8 @@
         h('div', { className: 'sm-toolbar' },
           h('div', null, h('h3', null, '🗺️ Bản đồ nano-point'),
             h('p', { className: 'sm-sub' }, 'Thêm hoặc đổi tên nano-point cho từng Bài. Trong file .tex gắn nano-point bằng dòng ',
-              h('code', null, '% @nano: khi-1.3, khi-2.1'), ' — một câu có thể có 2–3 nano-point (đề thi thử). Hiện có ' + N.NANO.length + ' nano-point (' + extraCount + ' thêm tay, ' + renamedCount + ' đổi tên).'))
+              h('code', null, '% @nano: khi-1.3, khi-2.1'), ' — một câu có thể có 2–3 nano-point (đề thi thử). Hiện có ' + N.NANO.length + ' nano-point (' + extraCount + ' thêm tay, ' + renamedCount + ' đổi tên). ',
+              '🔗 Quan hệ tiên quyết: ' + N.graphStats().edges + ' quan hệ ở ' + N.graphStats().nodesWithPrereq + ' nano-point (bấm nút 🔗 ở từng dòng để xem/sửa; dấu * = đã chỉnh so với gợi ý ban đầu).'))
         ),
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '6px' } },
           h('label', { style: { display: 'block', fontSize: '0.85rem' } }, 'Bài',
@@ -4641,7 +4700,9 @@
               N.getNanoByBai(b.key).map(function(n){
                 var isEditing = editing && editing.id === n.id;
                 var renamed = n._origName != null;
-                return h('div', { key: n.id, style: { display: 'flex', gap: '10px', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--line, #eee)', fontSize: '0.88rem', flexWrap: 'wrap' } },
+                var preqOpen = preqDraft && preqDraft.id === n.id;
+                return h(React.Fragment, { key: n.id },
+                  h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--line, #eee)', fontSize: '0.88rem', flexWrap: 'wrap' } },
                   h('code', { style: { minWidth: '72px', color: 'var(--ink-2)' } }, n.id),
                   isEditing
                     ? h('input', { type: 'text', autoFocus: true, value: editing.name, style: Object.assign({}, inputStyle, { flex: 1, minWidth: '200px' }), onChange: function(e){ setEditing({ id: n.id, name: e.target.value }); }, onKeyDown: function(e){ if(e.key === 'Enter') saveEdit(); if(e.key === 'Escape') setEditing(null); } })
@@ -4651,8 +4712,34 @@
                   isEditing
                     ? h('span', null, h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.8rem' }, disabled: saving, onClick: saveEdit }, 'Lưu'), ' ', h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ setEditing(null); } }, 'Huỷ'))
                     : h('span', null,
+                        h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem', marginRight: '6px' }, title: 'Quan hệ tiên quyết: muốn làm được nano-point này phải vững những nano-point nào trước', onClick: function(){ preqDraft && preqDraft.id === n.id ? setPreqDraft(null) : openPreq(n.id); } },
+                          '🔗 ' + N.getPrereqs(n.id).length + (N.isPrereqEdited(n.id) ? '*' : '')),
                         h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ setEditing({ id: n.id, name: n.name }); } }, 'Đổi tên'),
-                        (n._extra || renamed) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem', marginLeft: '6px' }, disabled: saving, onClick: function(){ removeExtra(n.id); } }, n._extra ? 'Xoá' : 'Khôi phục tên gốc') : null));
+                        (n._extra || renamed) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem', marginLeft: '6px' }, disabled: saving, onClick: function(){ removeExtra(n.id); } }, n._extra ? 'Xoá' : 'Khôi phục tên gốc') : null)),
+                  // ---- khung chỉnh QUAN HỆ TIÊN QUYẾT (THÊM 6/10/2026) ----
+                  preqOpen ? h('div', { style: { margin: '6px 0 10px 12px', padding: '10px 12px', border: '1px solid var(--line, #ddd)', borderLeft: '4px solid var(--accent, #9e641a)', borderRadius: '8px', background: 'var(--surface-2, #f7f5ef)' } },
+                    h('div', { style: { fontSize: '0.84rem', fontWeight: 600, marginBottom: '6px' } }, '🔗 Muốn làm được "' + n.name + '" thì phải vững những nano-point nào trước?'),
+                    h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' } },
+                      preqDraft.list.length ? preqDraft.list.map(function(pid){
+                        var pn = N.getNano(pid);
+                        return h('button', { key: pid, type: 'button', className: 'eb-nano-chip active', title: 'Bấm để bỏ', onClick: function(){ removePreq(pid); } }, '✕ ' + pid + (pn ? ' · ' + pn.name : ''));
+                      }) : h('span', { style: { fontSize: '0.82rem', color: 'var(--muted)' } }, 'Chưa có — đây là nano-point nền tảng (không cần gì trước).')),
+                    h('select', { value: '', style: inputStyle, onChange: function(e){ addPreq(e.target.value); } },
+                      h('option', { value: '' }, '＋ Thêm nano-point cần biết trước…'),
+                      N.CHU_DE.map(function(cd2){
+                        return h(React.Fragment, { key: cd2.key }, N.getBaiByChuDe(cd2.key).map(function(b2){
+                          var avail = N.getNanoByBai(b2.key).filter(function(x){ return x.id !== n.id && preqDraft.list.indexOf(x.id) < 0 && !N.wouldCreateCycle(n.id, x.id); });
+                          if(!avail.length) return null;
+                          return h('optgroup', { key: b2.key, label: cd2.icon + ' ' + b2.name }, avail.map(function(x){ return h('option', { key: x.id, value: x.id }, x.id + ' · ' + x.name); }));
+                        }));
+                      })),
+                    h('div', { style: { fontSize: '0.78rem', color: 'var(--ink-2)', marginTop: '6px' } },
+                      'Là nền cho ' + N.getDependents(n.id).length + ' nano-point khác. Nano-point tạo vòng lặp sẽ không hiện trong danh sách chọn.'),
+                    h('div', { style: { marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+                      h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.8rem' }, disabled: saving, onClick: function(){ savePreq(false); } }, saving ? 'Đang lưu…' : 'Lưu'),
+                      N.isPrereqEdited(n.id) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, disabled: saving, onClick: function(){ savePreq(true); } }, 'Khôi phục gợi ý ban đầu') : null,
+                      h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ setPreqDraft(null); } }, 'Đóng'))) : null
+                );
               }));
           }));
       })

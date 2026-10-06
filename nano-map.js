@@ -416,6 +416,8 @@
       return d !== 0 ? d : a.i - b.i;
     });
     decorated.forEach(function(d, k){ NANO[k] = d.n; });
+    // THÊM 6/10/2026 — danh sách nano-point vừa đổi: dựng lại đồ thị tiên quyết (cạnh trỏ tới nano-point mới thêm/xoá)
+    if(typeof rebuildPrereq === 'function') rebuildPrereq();
   }
   function getExtraItems(){ return extraItems.map(function(x){ return { id:x.id, baiKey:x.baiKey, name:x.name }; }); }
   function isValidNanoId(id){ return ID_RE.test(String(id || '').toLowerCase()); }
@@ -517,6 +519,232 @@
     return picked.map(function(r){ return { id: r.id, baiKey: r.baiKey, score: Math.round(r.score * 100) / 100, confidence: conf }; });
   }
 
+  // ============================================================
+  // THÊM 6/10/2026 — QUAN HỆ TIÊN QUYẾT GIỮA CÁC NANO-POINT ("muốn làm được A thì phải vững B trước").
+  // Dùng để TÌM GỐC LỖI: khi em yếu rõ ở nano-point A, hệ thống xem các nano-point tiên quyết của A — nếu có cái
+  // đã yếu thì luyện cái đó trước (đi ngược tối đa vài bước), nếu chưa có dữ liệu thì kiểm tra thử nền tảng.
+  //  - PREREQ_SEED: gợi ý ban đầu của hệ thống (121 quan hệ cho Chương I-IV) — thầy rà lại và sửa trong admin.
+  //  - Thầy sửa trong admin > "🗺️ Nano-point" -> lưu Firestore settings/nanoPrereq ({edits:[{id, prereqs:[…]}]});
+  //    trang học sinh đọc cùng nguồn rồi gọi setPrereqEdits. Mục có trong edits GHI ĐÈ hoàn toàn mục seed của
+  //    nano-point đó (mảng rỗng = "không cần nano-point nào trước").
+  //  - Luôn là đồ thị KHÔNG VÒNG: quan hệ nào tạo vòng lặp sẽ bị bỏ khi áp dụng (xem setPrereqEdits).
+  // ============================================================
+  var PREREQ_SEED = {
+    // ---- Vật lí nhiệt ----
+    'nhiet-1.2': ['nhiet-1.1'],
+    'nhiet-1.3': ['nhiet-1.1', 'nhiet-1.2'],
+    'nhiet-2.2': ['nhiet-2.1'],
+    'nhiet-2.3': ['nhiet-2.2'],
+    'nhiet-3.2': ['nhiet-3.1'],
+    'nhiet-3.3': ['nhiet-3.1'],
+    'nhiet-4.1': ['nhiet-3.1'],
+    'nhiet-4.2': ['nhiet-4.1'],
+    'nhiet-4.3': ['nhiet-4.1'],
+    'nhiet-5.1': ['nhiet-1.2'],
+    'nhiet-5.2': ['nhiet-5.1', 'nhiet-4.1'],
+    'nhiet-5.3': ['nhiet-5.1', 'nhiet-4.1'],
+    'nhiet-6.1': ['nhiet-1.2'],
+    'nhiet-6.2': ['nhiet-1.2'],
+    'nhiet-6.3': ['nhiet-6.1', 'nhiet-4.1'],
+    'nhiet-7.1': ['nhiet-4.1', 'nhiet-5.1', 'nhiet-6.1'],
+    'nhiet-7.2': ['nhiet-5.2', 'nhiet-7.1'],
+    'nhiet-7.3': ['nhiet-4.3', 'nhiet-7.1'],
+    // ---- Khí lí tưởng ----
+    'khi-1.2': ['khi-1.1'],
+    'khi-1.3': ['khi-1.1'],
+    'khi-1.4': ['khi-1.1'],
+    'khi-1.5': ['nhiet-1.1'],
+    'khi-1.6': ['khi-1.5'],
+    'khi-1.7': ['khi-1.2'],
+    'khi-2.1': ['khi-1.5'],
+    'khi-2.2': ['khi-2.1'],
+    'khi-2.3': ['khi-2.1'],
+    'khi-3.1': ['khi-1.5', 'nhiet-3.1'],
+    'khi-3.2': ['nhiet-3.1'],
+    'khi-3.3': ['khi-3.1', 'khi-3.2'],
+    'khi-4.1': ['khi-2.1', 'khi-3.1'],
+    'khi-4.2': ['khi-4.1', 'khi-1.6'],
+    'khi-4.3': ['khi-4.1', 'khi-2.2', 'khi-3.3'],
+    'khi-5.1': ['khi-1.2'],
+    'khi-5.2': ['khi-5.1', 'nhiet-3.3'],
+    'khi-5.3': ['khi-5.2'],
+    'khi-6.1': ['khi-4.2'],
+    'khi-6.2': ['khi-4.1', 'khi-2.3'],
+    'khi-6.3': ['khi-4.2', 'khi-1.6'],
+    // ---- Từ trường ----
+    'tt-1.2': ['tt-1.1'],
+    'tt-1.3': ['tt-1.2'],
+    'tt-1.4': ['tt-1.3'],
+    'tt-1.5': ['tt-1.3', 'tt-1.4'],
+    'tt-2.1': ['tt-1.2', 'tt-1.4'],
+    'tt-2.2': ['tt-2.1'],
+    'tt-2.3': ['tt-2.1', 'tt-1.4'],
+    'tt-2.4': ['tt-2.1'],
+    'tt-2.5': ['tt-2.1', 'tt-2.2'],
+    'tt-2.6': ['tt-2.5'],
+    'tt-2.7': ['tt-2.2'],
+    'tt-3.1': ['tt-2.2', 'tt-1.3'],
+    'tt-3.2': ['tt-3.1'],
+    'tt-3.3': ['tt-3.1'],
+    'tt-3.4': ['tt-3.3'],
+    'tt-3.5': ['tt-3.3', 'tt-2.2'],
+    'tt-3.6': ['tt-3.5'],
+    'tt-4.1': ['tt-3.1'],
+    'tt-4.2': ['tt-4.1'],
+    'tt-4.3': ['tt-4.1', 'tt-3.3'],
+    'tt-4.4': ['tt-4.2'],
+    'tt-5.1': ['tt-3.1'],
+    'tt-5.2': ['tt-5.1', 'tt-3.3'],
+    'tt-5.3': ['tt-5.1', 'tt-3.5'],
+    'tt-6.1': ['tt-3.1'],
+    'tt-6.2': ['tt-6.1'],
+    'tt-7.1': ['tt-4.2', 'tt-3.1'],
+    'tt-7.2': ['tt-7.1', 'tt-4.4'],
+    // ---- Vật lí hạt nhân ----
+    'hn-1.2': ['hn-1.1'],
+    'hn-1.3': ['hn-1.1', 'hn-1.2'],
+    'hn-1.4': ['hn-1.1'],
+    'hn-2.1': ['hn-1.2'],
+    'hn-2.2': ['hn-2.1', 'hn-1.3'],
+    'hn-2.3': ['hn-2.1'],
+    'hn-2.4': ['hn-2.3', 'hn-2.2'],
+    'hn-3.1': ['hn-1.2'],
+    'hn-3.2': ['hn-3.1'],
+    'hn-3.3': ['hn-3.1'],
+    'hn-3.4': ['hn-3.3'],
+    'hn-4.1': ['hn-2.3', 'hn-3.1'],
+    'hn-4.2': ['hn-3.1'],
+    'hn-4.3': ['hn-3.1', 'hn-4.1'],
+    'hn-4.4': ['hn-4.3', 'hn-3.4'],
+    'hn-4.5': ['hn-2.1'],
+    'hn-5.1': ['hn-2.2'],
+    'hn-5.2': ['hn-2.1'],
+    'hn-5.3': ['hn-3.3', 'hn-2.2']
+  };
+  var prereqEdits = {};   // id -> mảng id (thầy chỉnh)
+  var PREREQ = {};        // đồ thị hiệu lực = seed, rồi ghi đè bằng prereqEdits
+  function validPrereqList(id, list){
+    var seen = {}, out = [];
+    (list || []).forEach(function(p){
+      p = String(p || '').toLowerCase();
+      if(p && p !== id && getNano(p) && !seen[p]){ seen[p] = 1; out.push(p); }
+    });
+    return out;
+  }
+  // p có là tổ tiên (trực tiếp/gián tiếp) tiên quyết của id không, theo đồ thị graph?
+  function reachesIn(graph, from, target, guard){
+    var stack = [from], seen = {};
+    while(stack.length){
+      var u = stack.pop();
+      if(u === target) return true;
+      if(seen[u]) continue; seen[u] = 1;
+      (graph[u] || []).forEach(function(v){ stack.push(v); });
+    }
+    return false;
+  }
+  function rebuildPrereq(){
+    // Thứ tự ưu tiên: (1) quan hệ seed của các nano-point CHƯA bị thầy sửa (đã kiểm tra không vòng) được giữ nguyên;
+    // (2) cạnh do thầy sửa được thêm lần lượt — cạnh nào tạo vòng lặp thì BỎ CHÍNH CẠNH ĐÓ (không bao giờ bỏ nhầm
+    // quan hệ có sẵn của nano-point khác). Admin đã chặn tạo vòng ngay lúc sửa; đây là lớp bảo vệ cuối.
+    var out = {}, dropped = [];
+    Object.keys(PREREQ_SEED).forEach(function(id){
+      if(!Object.prototype.hasOwnProperty.call(prereqEdits, id)) out[id] = validPrereqList(id, PREREQ_SEED[id]);
+    });
+    Object.keys(prereqEdits).sort().forEach(function(id){
+      out[id] = [];
+      validPrereqList(id, prereqEdits[id]).forEach(function(p){
+        if(reachesIn(out, p, id)) dropped.push(id + ' <- ' + p);   // p đã (gián tiếp) cần id -> thêm cạnh này sẽ thành vòng
+        else out[id].push(p);
+      });
+    });
+    PREREQ = out;
+    return dropped;
+  }
+  function setPrereqEdits(entries){
+    prereqEdits = {};
+    (entries || []).forEach(function(e){
+      if(e && e.id && Array.isArray(e.prereqs)) prereqEdits[String(e.id).toLowerCase()] = e.prereqs.slice();
+    });
+    return rebuildPrereq();
+  }
+  function getPrereqEdits(){
+    return Object.keys(prereqEdits).map(function(id){ return { id: id, prereqs: prereqEdits[id].slice() }; });
+  }
+  function getPrereqs(id){ return (PREREQ[id] || []).filter(function(p){ return !!getNano(p); }); }
+  function getPrereqSeed(id){ return validPrereqList(id, PREREQ_SEED[id] || []); }
+  function isPrereqEdited(id){ return Object.prototype.hasOwnProperty.call(prereqEdits, id); }
+  // nano-point nào cần id làm nền (ngược lại của getPrereqs)
+  function getDependents(id){
+    var out = [];
+    Object.keys(PREREQ).forEach(function(k){ if(PREREQ[k].indexOf(id) > -1) out.push(k); });
+    return out;
+  }
+  // Thêm cạnh id <- p có tạo vòng không?
+  function wouldCreateCycle(id, p){
+    if(id === p) return true;
+    return reachesIn(PREREQ, p, id);
+  }
+  // Toàn bộ tổ tiên (thứ tự gần -> xa), tối đa maxDepth bước
+  function getPrereqChain(id, maxDepth){
+    var out = [], seen = {}, frontier = [id], d = 0;
+    seen[id] = 1;
+    while(frontier.length && d < (maxDepth || 3)){
+      var next = [];
+      frontier.forEach(function(u){
+        getPrereqs(u).forEach(function(p){ if(!seen[p]){ seen[p] = 1; out.push(p); next.push(p); } });
+      });
+      frontier = next; d++;
+    }
+    return out;
+  }
+  // TÌM GỐC LỖI: từ nano-point nanoId mà em đang yếu, đi NGƯỢC theo quan hệ tiên quyết tới nano-point nền tảng đáng
+  // luyện trước. Trả { rootId, path:[nanoId,…,rootId], reason:'self'|'weak'|'probe' }.
+  //  - Chỉ truy gốc khi nanoId ĐÃ có số liệu và < weakBelow (mặc định 50 = vùng Đỏ). Chưa có số liệu -> 'self'.
+  //  - Mỗi bước: nếu có tiên quyết ĐÃ có số liệu và < weakBelow -> đi tới cái thấp nhất ('weak').
+  //  - Nếu không có cái nào yếu nhưng nano-point hiện tại yếu rõ (≤ probeAtMost, mặc định 40) mà còn tiên quyết CHƯA CÓ
+  //    số liệu -> dừng ở nền tảng "ít tiên quyết nhất" trong số đó để KIỂM TRA THỬ ('probe').
+  //  - Tối đa maxDepth bước (mặc định 3), có chống vòng lặp; bỏ qua nano-point mà hasQuestions(id) trả false
+  //    (ví dụ chưa có câu hỏi trong ngân hàng để luyện).
+  function findRootCause(nanoId, nanoMastery, hasQuestions, opts){
+    opts = opts || {};
+    var weakBelow = opts.weakBelow != null ? opts.weakBelow : 50;
+    var probeAtMost = opts.probeAtMost != null ? opts.probeAtMost : 40;
+    var maxDepth = opts.maxDepth != null ? opts.maxDepth : 3;
+    var ok = hasQuestions || function(){ return true; };
+    nanoMastery = nanoMastery || {};
+    var res = { rootId: nanoId, path: [nanoId], reason: 'self' };
+    var m0 = nanoMastery[nanoId];
+    if(typeof m0 !== 'number' || m0 >= weakBelow) return res;
+    var cur = nanoId, seen = {};
+    seen[nanoId] = 1;
+    for(var depth = 0; depth < maxDepth; depth++){
+      var pres = getPrereqs(cur).filter(function(p){ return !seen[p]; });
+      var weak = pres.filter(function(p){ return typeof nanoMastery[p] === 'number' && nanoMastery[p] < weakBelow && ok(p); });
+      if(weak.length){
+        weak.sort(function(a, b){ return nanoMastery[a] - nanoMastery[b]; });
+        cur = weak[0]; seen[cur] = 1; res.path.push(cur); res.reason = 'weak';
+        continue;
+      }
+      var curM = nanoMastery[cur];
+      if(typeof curM === 'number' && curM <= probeAtMost){
+        var unk = pres.filter(function(p){ return typeof nanoMastery[p] !== 'number' && ok(p); });
+        if(unk.length){
+          unk.sort(function(a, b){ return getPrereqs(a).length - getPrereqs(b).length; });
+          cur = unk[0]; res.path.push(cur); res.reason = 'probe';
+        }
+      }
+      break;
+    }
+    res.rootId = cur;
+    return res;
+  }
+
+  function graphStats(){
+    var ids = Object.keys(PREREQ).filter(function(k){ return PREREQ[k].length; });
+    return { nodesWithPrereq: ids.length, edges: ids.reduce(function(a, k){ return a + PREREQ[k].length; }, 0) };
+  }
+  rebuildPrereq();
+
   function suggestForParsedQuestion(q){
     var chuDe = findChuDeByText(q && q.chuDeLon);
     var bai = findBaiByText(q && q.dangBai, chuDe ? chuDe.key : null) || findBaiByText(q && q.dangBai, null);
@@ -541,7 +769,18 @@
     isValidNanoId: isValidNanoId,
     nextNanoId: nextNanoId,
     parseIdList: parseIdList,
-    suggestNanos: suggestNanos
+    suggestNanos: suggestNanos,
+    // quan hệ tiên quyết (6/10/2026)
+    getPrereqs: getPrereqs,
+    getPrereqSeed: getPrereqSeed,
+    getPrereqChain: getPrereqChain,
+    getDependents: getDependents,
+    getPrereqEdits: getPrereqEdits,
+    setPrereqEdits: setPrereqEdits,
+    isPrereqEdited: isPrereqEdited,
+    wouldCreateCycle: wouldCreateCycle,
+    findRootCause: findRootCause,
+    graphStats: graphStats
   };
 
 })(window);

@@ -610,7 +610,9 @@
   // trong priorityOrder còn câu khả dụng, hàm TỰ ĐỘNG rơi về đúng thuật
   // toán cũ (sắp theo % thấp nhất) — không bao giờ chặn luồng làm bài.
   // ============================================================
+  var lastPickInfo = null;
   function pickAdaptiveQuestion(nanoMastery, askedIds, priorityOrder){
+    lastPickInfo = null;
     if(!QUESTION_BANK.length) return null;
     nanoMastery = nanoMastery || {};
     askedIds = askedIds || {};
@@ -645,6 +647,15 @@
       }
     }
     if(!targetNanoId) targetNanoId = availableNanoIds[0];
+    // THÊM 6/10/2026 — TÌM GỐC LỖI: nếu nano-point sắp luyện đã yếu rõ và có nano-point TIÊN QUYẾT cũng yếu (hoặc
+    // chưa kiểm tra mà em đang yếu rõ), chuyển sang luyện nền tảng trước. Chỉ xét nano-point còn câu hỏi khả dụng.
+    // Thông tin chuyển hướng lưu ở lastPickInfo để giao diện hiện "Đang kiểm tra nền tảng…".
+    var rc = window.OPC_NANO && window.OPC_NANO.findRootCause
+      ? window.OPC_NANO.findRootCause(targetNanoId, nanoMastery, function(id){ return !!(poolByNano[id] && poolByNano[id].length); },
+          { weakBelow: MASTERY_YELLOW_MIN })
+      : { rootId: targetNanoId, path: [targetNanoId], reason: 'self' };
+    lastPickInfo = { requestedId: targetNanoId, targetId: rc.rootId, redirected: rc.rootId !== targetNanoId, path: rc.path, reason: rc.reason };
+    targetNanoId = rc.rootId;
     var targetMastery = nanoMastery[targetNanoId] != null ? nanoMastery[targetNanoId] : MASTERY_NEUTRAL_START;
 
     var preferredLevels = targetMastery < MASTERY_YELLOW_MIN ? ['M1', 'M2'] :
@@ -685,11 +696,15 @@
     }).map(function(nn){
       var bai = window.OPC_NANO.getBai(nn.baiKey);
       var chuDe = bai ? window.OPC_NANO.getChuDe(bai.chuDeKey) : null;
+      // THÊM 6/10/2026 — gốc lỗi theo quan hệ tiên quyết (null nếu chính nano-point này là gốc)
+      var rc = window.OPC_NANO.findRootCause ? window.OPC_NANO.findRootCause(nn.id, nanoMastery, null, { weakBelow: MASTERY_YELLOW_MIN }) : null;
+      var rootNano = rc && rc.rootId !== nn.id ? window.OPC_NANO.getNano(rc.rootId) : null;
       return Object.assign({}, nn, {
         mastery: nanoMastery[nn.id],
         baiName: bai ? bai.name : '',
         chuDeKey: bai ? bai.chuDeKey : null,
-        chuDeName: chuDe ? chuDe.name : ''
+        chuDeName: chuDe ? chuDe.name : '',
+        rootCause: rootNano ? { id: rootNano.id, name: rootNano.name, reason: rc.reason, mastery: nanoMastery[rootNano.id] != null ? nanoMastery[rootNano.id] : null } : null
       });
     });
     reds.sort(function(a, b){ return a.mastery - b.mastery; });
@@ -797,6 +812,7 @@
     // excludeIds (THÊM 1/10/2026): id các câu đã dùng ở lượt luyện trước cho
     // cùng câu sai gốc — lượt sau ra câu MỚI, chỉ lặp lại khi hết câu mới.
     nanoIdsOf: nanoIdsOf,
+    getLastPickInfo: function(){ return lastPickInfo; },
     createSimilarDrill: function(question, count, excludeIds){
       if(!question) return [];
       count = count || 3;

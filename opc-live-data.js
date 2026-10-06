@@ -295,6 +295,13 @@ async function loadNanoExtra(){
     var snap = await getDoc(doc(db, 'settings', 'nanoExtra'));
     var items = snap.exists() ? ((snap.data() || {}).items || []) : [];
     if(window.OPC_NANO && window.OPC_NANO.setExtra) window.OPC_NANO.setExtra(items);
+    // THÊM 6/10/2026 — quan hệ tiên quyết do thầy chỉnh (settings/nanoPrereq). Nạp SAU nano-point mở rộng vì các cạnh
+    // có thể trỏ tới nano-point mới thêm. Lỗi/chưa có doc -> dùng gợi ý ban đầu có sẵn trong nano-map.js.
+    try{
+      var psnap = await getDoc(doc(db, 'settings', 'nanoPrereq'));
+      var edits = psnap.exists() ? ((psnap.data() || {}).edits || []) : [];
+      if(window.OPC_NANO && window.OPC_NANO.setPrereqEdits) window.OPC_NANO.setPrereqEdits(edits);
+    }catch(e2){ console.warn('Lỗi tải quan hệ tiên quyết:', e2); }
     return items.length;
   }catch(e){ console.warn('Lỗi tải nano-point mở rộng:', e); return 0; }
 }
