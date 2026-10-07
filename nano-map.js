@@ -72,7 +72,7 @@
     { key:'nhiet-4', chuDeKey:'nhiet', name:'Bài 4: Nhiệt dung riêng' },
     { key:'nhiet-5', chuDeKey:'nhiet', name:'Bài 5: Nhiệt nóng chảy riêng' },
     { key:'nhiet-6', chuDeKey:'nhiet', name:'Bài 6: Nhiệt hoá hơi riêng' },
-    { key:'nhiet-7', chuDeKey:'nhiet', name:'Bài 7: Bài tập về vật lí nhiệt' },
+    { key:'nhiet-7', chuDeKey:'nhiet', name:'Bài 7: Động cơ nhiệt - Năng suất tỏa nhiệt của nhiên liệu' },
 
     // ---- Chương II: Khí lí tưởng (Bài 8-13) ----
     { key:'khi-1', chuDeKey:'khi', name:'Bài 8: Mô hình động học phân tử chất khí' },
@@ -80,7 +80,7 @@
     { key:'khi-3', chuDeKey:'khi', name:'Bài 10: Định luật Charles' },
     { key:'khi-4', chuDeKey:'khi', name:'Bài 11: Phương trình trạng thái của khí lí tưởng' },
     { key:'khi-5', chuDeKey:'khi', name:'Bài 12: Áp suất khí theo mô hình động học phân tử' },
-    { key:'khi-6', chuDeKey:'khi', name:'Bài 13: Bài tập về khí lí tưởng' },
+    { key:'khi-6', chuDeKey:'khi', name:'Bài 13: Nội năng của khối khí' },
 
     // ---- Chương III: Từ trường (Bài 14-20) ----
     { key:'tt-1', chuDeKey:'tu-truong', name:'Bài 14: Từ trường' },
@@ -119,7 +119,7 @@
 
   // ============================================================
   // 3) NANO-POINT — đơn vị kiến thức nhỏ nhất. CẬP NHẬT 5/10/2026: Chương I-IV theo ĐÚNG danh sách nano-point thầy
-  //    đang dùng trong ngân hàng .tex (mỗi Bài 2-7 nano-point; tên đã sửa lỗi chính tả). Bài 25 + 3 Chuyên đề còn danh mục cũ (3 nano/Bài).
+  //    đang dùng trong ngân hàng .tex (mỗi Bài 1-7 nano-point; cập nhật lần 2 ngày 6/10/2026 — Nhiệt, Khí đổi nhiều; tên đã sửa lỗi chính tả). Bài 25 + 3 Chuyên đề còn danh mục cũ (3 nano/Bài).
   // ============================================================
   // Mỗi nano-point có thể có thêm 2 trường TÙY CHỌN (chưa nhập cho entry
   // nào ở dưới — chỉ khai báo chỗ cắm, KHÔNG tự bịa nội dung; giao diện
@@ -139,62 +139,74 @@
   //     conceptCard:{ formula:'$F = BIL\\sin\\alpha$', note:'...', example:'...' } }
   var NANO = [
     // ---- Chương I: Vật lí nhiệt ----
-    { id:'nhiet-1.1', baiKey:'nhiet-1', name:'Cấu trúc chất rắn/lỏng/khí theo mô hình động học phân tử' },
-    { id:'nhiet-1.2', baiKey:'nhiet-1', name:'Nhận biết quá trình nóng chảy, đông đặc, hoá hơi, ngưng tụ' },
-    { id:'nhiet-1.3', baiKey:'nhiet-1', name:'Giải thích chuyển thể qua lực tương tác phân tử' },
+    { id:'nhiet-1.1', baiKey:'nhiet-1', name:'Cấu trúc của chất' },
+    { id:'nhiet-1.2', baiKey:'nhiet-1', name:'Sự chuyển thể' },
+    { id:'nhiet-1.3', baiKey:'nhiet-1', name:'Đồ thị cấu trúc của chất - Sự chuyển thể' },
+    { id:'nhiet-1.4', baiKey:'nhiet-1', name:'Bài tập cấu trúc và sự chuyển thể' },
 
     { id:'nhiet-2.1', baiKey:'nhiet-2', name:'Khái niệm nội năng, cách làm thay đổi nội năng' },
-    { id:'nhiet-2.2', baiKey:'nhiet-2', name:'Quy ước dấu A, Q trong ΔU = A + Q' },
-    { id:'nhiet-2.3', baiKey:'nhiet-2', name:'Tính ΔU, A hoặc Q' },
+    { id:'nhiet-2.2', baiKey:'nhiet-2', name:'Định luật I Nhiệt động lực học' },
+    { id:'nhiet-2.3', baiKey:'nhiet-2', name:'Thí nghiệm sự truyền nhiệt' },
+    { id:'nhiet-2.4', baiKey:'nhiet-2', name:'Bài tập Nội năng - Định luật I nhiệt động lực học' },
+    { id:'nhiet-2.5', baiKey:'nhiet-2', name:'Lực tương tác - thế năng phân tử' },
 
-    { id:'nhiet-3.1', baiKey:'nhiet-3', name:'Thang Celsius, Kelvin, đổi T = t + 273' },
-    { id:'nhiet-3.2', baiKey:'nhiet-3', name:'Nguyên tắc hoạt động nhiệt kế' },
-    { id:'nhiet-3.3', baiKey:'nhiet-3', name:'Liên hệ nhiệt độ và động năng phân tử (định tính)' },
+    { id:'nhiet-3.1', baiKey:'nhiet-3', name:'Thang nhiệt độ' },
+    { id:'nhiet-3.2', baiKey:'nhiet-3', name:'Nhiệt kế' },
+    { id:'nhiet-3.3', baiKey:'nhiet-3', name:'Bài tập nhiệt kế - Thang nhiệt độ' },
 
-    { id:'nhiet-4.1', baiKey:'nhiet-4', name:'Q = mcΔt, ý nghĩa nhiệt dung riêng' },
-    { id:'nhiet-4.2', baiKey:'nhiet-4', name:'Đọc bảng nhiệt dung riêng, so sánh các chất' },
-    { id:'nhiet-4.3', baiKey:'nhiet-4', name:'Cân bằng nhiệt 2 chất' },
+    { id:'nhiet-4.1', baiKey:'nhiet-4', name:'Lý thuyết nhiệt dung riêng' },
+    { id:'nhiet-4.2', baiKey:'nhiet-4', name:'Thực hành đo nhiệt dung riêng' },
+    { id:'nhiet-4.3', baiKey:'nhiet-4', name:'Bài tập tính nhiệt dung riêng' },
+    { id:'nhiet-4.4', baiKey:'nhiet-4', name:'Bài toán đun nước - Bình nước nóng năng lượng mặt trời' },
+    { id:'nhiet-4.5', baiKey:'nhiet-4', name:'Bài tập phương trình cân bằng nhiệt' },
+    { id:'nhiet-4.6', baiKey:'nhiet-4', name:'Đồ thị nhiệt dung riêng' },
 
-    { id:'nhiet-5.1', baiKey:'nhiet-5', name:'Q = λm' },
-    { id:'nhiet-5.2', baiKey:'nhiet-5', name:'Đồ thị t–Q: phân biệt giai đoạn tăng nhiệt và nóng chảy' },
-    { id:'nhiet-5.3', baiKey:'nhiet-5', name:'Đun nóng tới nóng chảy hoàn toàn' },
+    { id:'nhiet-5.1', baiKey:'nhiet-5', name:'Lý thuyết nhiệt nóng chảy riêng' },
+    { id:'nhiet-5.2', baiKey:'nhiet-5', name:'Bài tập nhiệt nóng chảy' },
+    { id:'nhiet-5.3', baiKey:'nhiet-5', name:'Đồ thị nhiệt nóng chảy riêng' },
+    { id:'nhiet-5.4', baiKey:'nhiet-5', name:'Thực hành nhiệt nóng chảy riêng' },
 
-    { id:'nhiet-6.1', baiKey:'nhiet-6', name:'Q = Lm' },
-    { id:'nhiet-6.2', baiKey:'nhiet-6', name:'Phân biệt bay hơi và sôi, yếu tố ảnh hưởng tốc độ bay hơi' },
-    { id:'nhiet-6.3', baiKey:'nhiet-6', name:'Đun nóng + hoá hơi có hiệu suất' },
+    { id:'nhiet-6.1', baiKey:'nhiet-6', name:'Lý thuyết nhiệt hóa hơi' },
+    { id:'nhiet-6.2', baiKey:'nhiet-6', name:'Bài tập nhiệt hóa hơi' },
+    { id:'nhiet-6.3', baiKey:'nhiet-6', name:'Đồ thị nhiệt hoá hơi riêng' },
+    { id:'nhiet-6.4', baiKey:'nhiet-6', name:'Thực hành nhiệt hóa hơi riêng' },
 
-    { id:'nhiet-7.1', baiKey:'nhiet-7', name:'Tổng hợp nhiều giai đoạn (tăng nhiệt – nóng chảy – hoá hơi)' },
-    { id:'nhiet-7.2', baiKey:'nhiet-7', name:'Vẽ/đọc đồ thị nhiệt độ theo nhiệt lượng hoặc thời gian (nhiều giai đoạn)' },
-    { id:'nhiet-7.3', baiKey:'nhiet-7', name:'Cân bằng nhiệt nhiều chất / nhiều thiết bị đun' },
+    { id:'nhiet-7.1', baiKey:'nhiet-7', name:'Bài tập Động cơ nhiệt - Năng suất tỏa nhiệt của nhiên liệu' },
 
     // ---- Chương II: Khí lí tưởng ----
-    { id:'khi-1.1', baiKey:'khi-1', name:'Các giả thuyết thuyết động học phân tử chất khí (kể cả chuyển động Brown)' },
-    { id:'khi-1.2', baiKey:'khi-1', name:'Giải thích áp suất do phân tử va chạm thành bình (định tính)' },
-    { id:'khi-1.3', baiKey:'khi-1', name:'Phân biệt khí lí tưởng và khí thực' },
-    { id:'khi-1.4', baiKey:'khi-1', name:'Chuyển động Brown' },
-    { id:'khi-1.5', baiKey:'khi-1', name:'Chất khí (tính chất, đặc điểm)' },
-    { id:'khi-1.6', baiKey:'khi-1', name:'Lượng chất (bài tập tính toán)' },
-    { id:'khi-1.7', baiKey:'khi-1', name:'Áp suất chất khí (bài tập tính toán)' },
+    { id:'khi-1.1', baiKey:'khi-1', name:'Chuyển động Brown' },
+    { id:'khi-1.2', baiKey:'khi-1', name:'Mô hình động học phân tử – Thuyết động học phân tử' },
+    { id:'khi-1.3', baiKey:'khi-1', name:'Bài tập lượng chất - chuyển động phân tử' },
+    { id:'khi-1.4', baiKey:'khi-1', name:'Bài tập áp suất chất khí' },
 
-    { id:'khi-2.1', baiKey:'khi-2', name:'Phát biểu, công thức p1V1 = p2V2' },
-    { id:'khi-2.2', baiKey:'khi-2', name:'Đồ thị đẳng nhiệt (hyperbol p–V)' },
-    { id:'khi-2.3', baiKey:'khi-2', name:'Bài toán 2 trạng thái đẳng nhiệt' },
+    { id:'khi-2.1', baiKey:'khi-2', name:'Lý thuyết định luật Boyle' },
+    { id:'khi-2.2', baiKey:'khi-2', name:'Đồ thị đường đẳng nhiệt' },
+    { id:'khi-2.3', baiKey:'khi-2', name:'Bài tập quá trình đẳng nhiệt' },
+    { id:'khi-2.4', baiKey:'khi-2', name:'Xác định số lần bơm' },
+    { id:'khi-2.5', baiKey:'khi-2', name:'Cân bằng pit-tông' },
+    { id:'khi-2.6', baiKey:'khi-2', name:'Nguyên lý Pascal' },
+    { id:'khi-2.7', baiKey:'khi-2', name:'Thí nghiệm định luật Boyle' },
 
-    { id:'khi-3.1', baiKey:'khi-3', name:'Phát biểu, công thức V1/T1 = V2/T2' },
-    { id:'khi-3.2', baiKey:'khi-3', name:'Đổi đơn vị K ⇄ °C khi áp dụng định luật' },
-    { id:'khi-3.3', baiKey:'khi-3', name:'Đồ thị đẳng áp (V–T)' },
+    { id:'khi-3.1', baiKey:'khi-3', name:'Lý thuyết quá trình đẳng áp đẳng tích' },
+    { id:'khi-3.2', baiKey:'khi-3', name:'Bài tập quá trình đẳng áp' },
+    { id:'khi-3.3', baiKey:'khi-3', name:'Bài tập quá trình đẳng tích' },
+    { id:'khi-3.4', baiKey:'khi-3', name:'Định luật Dalton – khí đa quá trình' },
 
-    { id:'khi-4.1', baiKey:'khi-4', name:'Phương trình trạng thái pV/T = hằng số (kể cả quá trình đẳng tích p/T)' },
-    { id:'khi-4.2', baiKey:'khi-4', name:'Phương trình Clapeyron pV = nRT' },
-    { id:'khi-4.3', baiKey:'khi-4', name:'Chu trình khép kín trên đồ thị p–V, p–T, V–T' },
+    { id:'khi-4.1', baiKey:'khi-4', name:'Lý thuyết phương trình trạng thái khí lí tưởng' },
+    { id:'khi-4.2', baiKey:'khi-4', name:'Bài tập phương trình trạng thái khí lí tưởng' },
+    { id:'khi-4.3', baiKey:'khi-4', name:'Bài tập phương trình Clapeyron và Van der Waals' },
+    { id:'khi-4.4', baiKey:'khi-4', name:'Bài tập Phương trình Mendeleev với khối lượng riêng' },
+    { id:'khi-4.5', baiKey:'khi-4', name:'Bài tập hỗn hợp khí' },
+    { id:'khi-4.6', baiKey:'khi-4', name:'Đồ thị trạng thái khí lí tưởng' },
 
-    { id:'khi-5.1', baiKey:'khi-5', name:'Công thức áp suất p = (1/3)μm·v² theo động học phân tử' },
-    { id:'khi-5.2', baiKey:'khi-5', name:'Động năng tịnh tiến trung bình Wđ = (3/2)kT, tỉ lệ với T' },
-    { id:'khi-5.3', baiKey:'khi-5', name:'Tốc độ căn quân phương, liên hệ T và khối lượng mol' },
+    { id:'khi-5.1', baiKey:'khi-5', name:'Lý thuyết Áp suất khí theo mô hình động học phân tử' },
+    { id:'khi-5.2', baiKey:'khi-5', name:'Lý thuyết Quan hệ giữa động năng phân tử và nhiệt độ' },
+    { id:'khi-5.3', baiKey:'khi-5', name:'Bài tập Áp suất động năng phân tử' },
 
-    { id:'khi-6.1', baiKey:'khi-6', name:'Bình rò rỉ hoặc bơm thêm khí' },
-    { id:'khi-6.2', baiKey:'khi-6', name:'Nhiều quá trình biến đổi liên tiếp (không khép kín)' },
-    { id:'khi-6.3', baiKey:'khi-6', name:'Tính số mol / khối lượng khí trong tình huống thực tế' },
+    { id:'khi-6.1', baiKey:'khi-6', name:'Lý thuyết nội năng của khí lí tưởng' },
+    { id:'khi-6.2', baiKey:'khi-6', name:'Áp dụng định luật I nhiệt động lực học' },
+    { id:'khi-6.3', baiKey:'khi-6', name:'Bài tập Áp dụng định luật I nhiệt động lực học' },
+    { id:'khi-6.4', baiKey:'khi-6', name:'Đồ thị nhiệt động lực học của khối khí lí tưởng' },
 
     // ---- Chương III: Từ trường ----
     { id:'tt-1.1', baiKey:'tt-1', name:'Tương tác từ' },
@@ -259,7 +271,6 @@
     { id:'hn-5.1', baiKey:'hn-5', name:'Bài toán tổng hợp tính năng lượng toả ra / thu vào của phản ứng hạt nhân' },
     { id:'hn-5.2', baiKey:'hn-5', name:'So sánh độ bền vững hạt nhân qua năng lượng liên kết riêng' },
     { id:'hn-5.3', baiKey:'hn-5', name:'Bài toán kết hợp phóng xạ + năng lượng liên kết trong cùng 1 đề' },
-
     { id:'cd1-1.1', baiKey:'cd1-1', name:'Biểu thức i = I0cos(ωt+φ), u = U0cos(ωt+φ) và các đại lượng đặc trưng' },
     { id:'cd1-1.2', baiKey:'cd1-1', name:'Giá trị hiệu dụng của dòng điện, điện áp xoay chiều' },
     { id:'cd1-1.3', baiKey:'cd1-1', name:'Độ lệch pha giữa u và i trong mạch điện xoay chiều' },
@@ -523,54 +534,66 @@
   // THÊM 6/10/2026 — QUAN HỆ TIÊN QUYẾT GIỮA CÁC NANO-POINT ("muốn làm được A thì phải vững B trước").
   // Dùng để TÌM GỐC LỖI: khi em yếu rõ ở nano-point A, hệ thống xem các nano-point tiên quyết của A — nếu có cái
   // đã yếu thì luyện cái đó trước (đi ngược tối đa vài bước), nếu chưa có dữ liệu thì kiểm tra thử nền tảng.
-  //  - PREREQ_SEED: gợi ý ban đầu của hệ thống (121 quan hệ cho Chương I-IV) — thầy rà lại và sửa trong admin.
+  //  - PREREQ_SEED: gợi ý ban đầu của hệ thống (Chương I-IV; Nhiệt + Khí viết lại 6/10/2026 sau khi danh mục đổi) — thầy rà lại và sửa trong admin.
   //  - Thầy sửa trong admin > "🗺️ Nano-point" -> lưu Firestore settings/nanoPrereq ({edits:[{id, prereqs:[…]}]});
   //    trang học sinh đọc cùng nguồn rồi gọi setPrereqEdits. Mục có trong edits GHI ĐÈ hoàn toàn mục seed của
   //    nano-point đó (mảng rỗng = "không cần nano-point nào trước").
   //  - Luôn là đồ thị KHÔNG VÒNG: quan hệ nào tạo vòng lặp sẽ bị bỏ khi áp dụng (xem setPrereqEdits).
   // ============================================================
   var PREREQ_SEED = {
-    // ---- Vật lí nhiệt ----
+    // ---- Vật lí nhiệt (viết lại 6/10/2026 theo danh mục nano-point mới) ----
     'nhiet-1.2': ['nhiet-1.1'],
     'nhiet-1.3': ['nhiet-1.1', 'nhiet-1.2'],
+    'nhiet-1.4': ['nhiet-1.1', 'nhiet-1.2'],
     'nhiet-2.2': ['nhiet-2.1'],
-    'nhiet-2.3': ['nhiet-2.2'],
+    'nhiet-2.3': ['nhiet-2.1'],
+    'nhiet-2.4': ['nhiet-2.2'],
+    'nhiet-2.5': ['nhiet-1.1', 'nhiet-2.1'],
     'nhiet-3.2': ['nhiet-3.1'],
-    'nhiet-3.3': ['nhiet-3.1'],
-    'nhiet-4.1': ['nhiet-3.1'],
+    'nhiet-3.3': ['nhiet-3.1', 'nhiet-3.2'],
+    'nhiet-4.1': ['nhiet-3.1', 'nhiet-2.1'],
     'nhiet-4.2': ['nhiet-4.1'],
     'nhiet-4.3': ['nhiet-4.1'],
+    'nhiet-4.4': ['nhiet-4.3'],
+    'nhiet-4.5': ['nhiet-4.3'],
+    'nhiet-4.6': ['nhiet-4.1'],
     'nhiet-5.1': ['nhiet-1.2'],
-    'nhiet-5.2': ['nhiet-5.1', 'nhiet-4.1'],
-    'nhiet-5.3': ['nhiet-5.1', 'nhiet-4.1'],
+    'nhiet-5.2': ['nhiet-5.1'],
+    'nhiet-5.3': ['nhiet-5.1', 'nhiet-1.3'],
+    'nhiet-5.4': ['nhiet-5.1'],
     'nhiet-6.1': ['nhiet-1.2'],
-    'nhiet-6.2': ['nhiet-1.2'],
-    'nhiet-6.3': ['nhiet-6.1', 'nhiet-4.1'],
-    'nhiet-7.1': ['nhiet-4.1', 'nhiet-5.1', 'nhiet-6.1'],
-    'nhiet-7.2': ['nhiet-5.2', 'nhiet-7.1'],
-    'nhiet-7.3': ['nhiet-4.3', 'nhiet-7.1'],
-    // ---- Khí lí tưởng ----
+    'nhiet-6.2': ['nhiet-6.1'],
+    'nhiet-6.3': ['nhiet-6.1', 'nhiet-1.3'],
+    'nhiet-6.4': ['nhiet-6.1'],
+    'nhiet-7.1': ['nhiet-2.2', 'nhiet-4.3'],
+    // ---- Khí lí tưởng (viết lại 6/10/2026 theo danh mục nano-point mới) ----
     'khi-1.2': ['khi-1.1'],
-    'khi-1.3': ['khi-1.1'],
-    'khi-1.4': ['khi-1.1'],
-    'khi-1.5': ['nhiet-1.1'],
-    'khi-1.6': ['khi-1.5'],
-    'khi-1.7': ['khi-1.2'],
-    'khi-2.1': ['khi-1.5'],
+    'khi-1.3': ['khi-1.2'],
+    'khi-1.4': ['khi-1.2'],
+    'khi-2.1': ['khi-1.2'],
     'khi-2.2': ['khi-2.1'],
     'khi-2.3': ['khi-2.1'],
-    'khi-3.1': ['khi-1.5', 'nhiet-3.1'],
-    'khi-3.2': ['nhiet-3.1'],
-    'khi-3.3': ['khi-3.1', 'khi-3.2'],
+    'khi-2.4': ['khi-2.3'],
+    'khi-2.5': ['khi-2.3', 'khi-1.4'],
+    'khi-2.6': ['khi-1.4'],
+    'khi-2.7': ['khi-2.1'],
+    'khi-3.1': ['khi-2.1', 'nhiet-3.1'],
+    'khi-3.2': ['khi-3.1'],
+    'khi-3.3': ['khi-3.1'],
+    'khi-3.4': ['khi-2.3', 'khi-3.2', 'khi-3.3'],
     'khi-4.1': ['khi-2.1', 'khi-3.1'],
-    'khi-4.2': ['khi-4.1', 'khi-1.6'],
-    'khi-4.3': ['khi-4.1', 'khi-2.2', 'khi-3.3'],
+    'khi-4.2': ['khi-4.1'],
+    'khi-4.3': ['khi-4.1', 'khi-1.3'],
+    'khi-4.4': ['khi-4.3'],
+    'khi-4.5': ['khi-4.3', 'khi-3.4'],
+    'khi-4.6': ['khi-4.1', 'khi-2.2'],
     'khi-5.1': ['khi-1.2'],
-    'khi-5.2': ['khi-5.1', 'nhiet-3.3'],
-    'khi-5.3': ['khi-5.2'],
-    'khi-6.1': ['khi-4.2'],
-    'khi-6.2': ['khi-4.1', 'khi-2.3'],
-    'khi-6.3': ['khi-4.2', 'khi-1.6'],
+    'khi-5.2': ['khi-5.1', 'nhiet-3.1'],
+    'khi-5.3': ['khi-5.1', 'khi-5.2'],
+    'khi-6.1': ['khi-5.2', 'nhiet-2.1'],
+    'khi-6.2': ['khi-6.1', 'nhiet-2.2'],
+    'khi-6.3': ['khi-6.2'],
+    'khi-6.4': ['khi-6.2', 'khi-4.6'],
     // ---- Từ trường ----
     'tt-1.2': ['tt-1.1'],
     'tt-1.3': ['tt-1.2'],
