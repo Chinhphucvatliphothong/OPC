@@ -1,8 +1,6 @@
 # Prompt gắn tag nano-point – Vật lí 12 (4 chương SGK)
 
-Bản đồng bộ với `nano-map.js` ngày 05/10/2026 (danh sách nano-point của thầy + khi-1.4…khi-1.7).
-
-Thay đổi so với bản trước: (1) thêm khi-1.4…khi-1.7 ở Bài 8; (2) sửa lỗi chính tả trong tên nano-point; (3) quy tắc 5 bỏ các chỗ nhắc Bài 20/Bài 25 là "bài tập" cho khớp danh mục (Bài 20 là Truyền tải điện năng – Máy biến áp); (4) quy tắc 6 cho phép tối đa 3 mã (app đã hỗ trợ); (5) tên Bài 20 viết chuẩn.
+Bản đồng bộ với `nano-map.js` ngày 06/10/2026 (danh sách cập nhật lần 2 của thầy: 101 nano-point).
 
 Cách dùng: copy nguyên khối trong ba dấu ``` bên dưới, dán vào Claude, thay phần C ở cuối bằng câu mẫu và đề cần chuyển.
 
@@ -28,8 +26,7 @@ A. QUY TẮC CHUNG
    (mã nhiet-… đi với Vật lí nhiệt, khi-… với Khí lí tưởng,
     tt-… với Từ trường, hn-… với Vật lí hạt nhân).
 4. Chọn theo KIẾN THỨC câu hỏi kiểm tra, không theo từ khoá xuất hiện.
-5. Nano "Bài tập …" (vd. nhiet-7.x, khi-6.x, và các nano bắt đầu bằng "Bài tập"
-   ở Từ trường / Hạt nhân) chỉ dùng khi câu đúng dạng nano đó; câu thuần lí thuyết
+5. Nano có chữ "Bài tập", "Đồ thị", "Thực hành", "Thí nghiệm" chỉ dùng khi câu đúng dạng đó; câu thuần lí thuyết
    dùng nano "Lý thuyết"/khái niệm của bài tương ứng.
 6. Câu dùng nhiều kiến thức (thường là đề thi thử của trường/sở): ghi tối đa 3 mã,
    mã chính (kiến thức quyết định đúng/sai) đứng đầu; các mã có thể thuộc các bài
@@ -47,63 +44,75 @@ B. DANH MỤC BÀI VÀ NANO-POINT
 
 ---------------- B1. Vật lí nhiệt ----------------
 Bài 1: Cấu trúc của chất. Sự chuyển thể
-   nhiet-1.1 Cấu trúc chất rắn/lỏng/khí theo mô hình động học phân tử
-   nhiet-1.2 Nhận biết quá trình nóng chảy, đông đặc, hoá hơi, ngưng tụ
-   nhiet-1.3 Giải thích chuyển thể qua lực tương tác phân tử
+   nhiet-1.1 Cấu trúc của chất
+   nhiet-1.2 Sự chuyển thể
+   nhiet-1.3 Đồ thị cấu trúc của chất - Sự chuyển thể
+   nhiet-1.4 Bài tập cấu trúc và sự chuyển thể
 Bài 2: Nội năng. Định luật I của nhiệt động lực học
    nhiet-2.1 Khái niệm nội năng, cách làm thay đổi nội năng
-   nhiet-2.2 Quy ước dấu A, Q trong ΔU = A + Q
-   nhiet-2.3 Tính ΔU, A hoặc Q
+   nhiet-2.2 Định luật I Nhiệt động lực học
+   nhiet-2.3 Thí nghiệm sự truyền nhiệt
+   nhiet-2.4 Bài tập Nội năng - Định luật I nhiệt động lực học
+   nhiet-2.5 Lực tương tác - thế năng phân tử
 Bài 3: Nhiệt độ. Thang nhiệt độ – nhiệt kế
-   nhiet-3.1 Thang Celsius, Kelvin, đổi T = t + 273
-   nhiet-3.2 Nguyên tắc hoạt động nhiệt kế
-   nhiet-3.3 Liên hệ nhiệt độ và động năng phân tử (định tính)
+   nhiet-3.1 Thang nhiệt độ
+   nhiet-3.2 Nhiệt kế
+   nhiet-3.3 Bài tập nhiệt kế - Thang nhiệt độ
 Bài 4: Nhiệt dung riêng
-   nhiet-4.1 Q = mcΔt, ý nghĩa nhiệt dung riêng
-   nhiet-4.2 Đọc bảng nhiệt dung riêng, so sánh các chất
-   nhiet-4.3 Cân bằng nhiệt 2 chất
+   nhiet-4.1 Lý thuyết nhiệt dung riêng
+   nhiet-4.2 Thực hành đo nhiệt dung riêng
+   nhiet-4.3 Bài tập tính nhiệt dung riêng
+   nhiet-4.4 Bài toán đun nước - Bình nước nóng năng lượng mặt trời
+   nhiet-4.5 Bài tập phương trình cân bằng nhiệt
+   nhiet-4.6 Đồ thị nhiệt dung riêng
 Bài 5: Nhiệt nóng chảy riêng
-   nhiet-5.1 Q = λm
-   nhiet-5.2 Đồ thị t–Q: phân biệt giai đoạn tăng nhiệt và nóng chảy
-   nhiet-5.3 Đun nóng tới nóng chảy hoàn toàn
+   nhiet-5.1 Lý thuyết nhiệt nóng chảy riêng
+   nhiet-5.2 Bài tập nhiệt nóng chảy
+   nhiet-5.3 Đồ thị nhiệt nóng chảy riêng
+   nhiet-5.4 Thực hành nhiệt nóng chảy riêng
 Bài 6: Nhiệt hoá hơi riêng
-   nhiet-6.1 Q = Lm
-   nhiet-6.2 Phân biệt bay hơi và sôi, yếu tố ảnh hưởng tốc độ bay hơi
-   nhiet-6.3 Đun nóng + hoá hơi có hiệu suất
-Bài 7: Bài tập về vật lí nhiệt
-   nhiet-7.1 Tổng hợp nhiều giai đoạn (tăng nhiệt – nóng chảy – hoá hơi)
-   nhiet-7.2 Vẽ/đọc đồ thị nhiệt độ theo nhiệt lượng hoặc thời gian (nhiều giai đoạn)
-   nhiet-7.3 Cân bằng nhiệt nhiều chất / nhiều thiết bị đun
+   nhiet-6.1 Lý thuyết nhiệt hóa hơi
+   nhiet-6.2 Bài tập nhiệt hóa hơi
+   nhiet-6.3 Đồ thị nhiệt hoá hơi riêng
+   nhiet-6.4 Thực hành nhiệt hóa hơi riêng
+Bài 7: Động cơ nhiệt - Năng suất tỏa nhiệt của nhiên liệu
+   nhiet-7.1 Bài tập Động cơ nhiệt - Năng suất tỏa nhiệt của nhiên liệu
 
 ---------------- B2. Khí lí tưởng ----------------
 Bài 8: Mô hình động học phân tử chất khí
-   khi-1.1 Các giả thuyết thuyết động học phân tử chất khí (kể cả chuyển động Brown)
-   khi-1.2 Giải thích áp suất do phân tử va chạm thành bình (định tính)
-   khi-1.3 Phân biệt khí lí tưởng và khí thực
-   khi-1.4 Chuyển động Brown
-   khi-1.5 Chất khí (tính chất, đặc điểm)
-   khi-1.6 Lượng chất (bài tập tính toán)
-   khi-1.7 Áp suất chất khí (bài tập tính toán)
+   khi-1.1 Chuyển động Brown
+   khi-1.2 Mô hình động học phân tử – Thuyết động học phân tử
+   khi-1.3 Bài tập lượng chất - chuyển động phân tử
+   khi-1.4 Bài tập áp suất chất khí
 Bài 9: Định luật Boyle
-   khi-2.1 Phát biểu, công thức p1V1 = p2V2
-   khi-2.2 Đồ thị đẳng nhiệt (hyperbol p–V)
-   khi-2.3 Bài toán 2 trạng thái đẳng nhiệt
+   khi-2.1 Lý thuyết định luật Boyle
+   khi-2.2 Đồ thị đường đẳng nhiệt
+   khi-2.3 Bài tập quá trình đẳng nhiệt
+   khi-2.4 Xác định số lần bơm
+   khi-2.5 Cân bằng pit-tông
+   khi-2.6 Nguyên lý Pascal
+   khi-2.7 Thí nghiệm định luật Boyle
 Bài 10: Định luật Charles
-   khi-3.1 Phát biểu, công thức V1/T1 = V2/T2
-   khi-3.2 Đổi đơn vị K ⇄ °C khi áp dụng định luật
-   khi-3.3 Đồ thị đẳng áp (V–T)
+   khi-3.1 Lý thuyết quá trình đẳng áp đẳng tích
+   khi-3.2 Bài tập quá trình đẳng áp
+   khi-3.3 Bài tập quá trình đẳng tích
+   khi-3.4 Định luật Dalton – khí đa quá trình
 Bài 11: Phương trình trạng thái của khí lí tưởng
-   khi-4.1 Phương trình trạng thái pV/T = hằng số (kể cả quá trình đẳng tích p/T)
-   khi-4.2 Phương trình Clapeyron pV = nRT
-   khi-4.3 Chu trình khép kín trên đồ thị p–V, p–T, V–T
+   khi-4.1 Lý thuyết phương trình trạng thái khí lí tưởng
+   khi-4.2 Bài tập phương trình trạng thái khí lí tưởng
+   khi-4.3 Bài tập phương trình Clapeyron và Van der Waals
+   khi-4.4 Bài tập Phương trình Mendeleev với khối lượng riêng
+   khi-4.5 Bài tập hỗn hợp khí
+   khi-4.6 Đồ thị trạng thái khí lí tưởng
 Bài 12: Áp suất khí theo mô hình động học phân tử
-   khi-5.1 Công thức áp suất p = (1/3)μm·v² theo động học phân tử
-   khi-5.2 Động năng tịnh tiến trung bình Wđ = (3/2)kT, tỉ lệ với T
-   khi-5.3 Tốc độ căn quân phương, liên hệ T và khối lượng mol
-Bài 13: Bài tập về khí lí tưởng
-   khi-6.1 Bình rò rỉ hoặc bơm thêm khí
-   khi-6.2 Nhiều quá trình biến đổi liên tiếp (không khép kín)
-   khi-6.3 Tính số mol / khối lượng khí trong tình huống thực tế
+   khi-5.1 Lý thuyết Áp suất khí theo mô hình động học phân tử
+   khi-5.2 Lý thuyết Quan hệ giữa động năng phân tử và nhiệt độ
+   khi-5.3 Bài tập Áp suất động năng phân tử
+Bài 13: Nội năng của khối khí
+   khi-6.1 Lý thuyết nội năng của khí lí tưởng
+   khi-6.2 Áp dụng định luật I nhiệt động lực học
+   khi-6.3 Bài tập Áp dụng định luật I nhiệt động lực học
+   khi-6.4 Đồ thị nhiệt động lực học của khối khí lí tưởng
 
 ---------------- B3. Từ trường ----------------
 Bài 14: Từ trường
