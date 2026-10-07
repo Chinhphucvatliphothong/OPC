@@ -1010,6 +1010,8 @@
     // THÊM 6/10/2026 — ghi chú "gốc lỗi" theo mã câu: khi hệ thống chuyển em sang luyện nano-point NỀN TẢNG (xem
     // pickAdaptiveQuestion trong prepscholar.js). Dùng ref vì chỉ cần đọc lúc vẽ câu hiện tại, ghi trước khi đổi câu.
     var adaptiveRootRef = React.useRef({});
+    // THÊM 6/10/2026 — buộc vẽ lại sau khi em tắt mẹo "Thêm vào Màn hình chính" (xem renderDailyMissionCard)
+    var installTipTickState = React.useState(0); var setInstallTipTick = installTipTickState[1];
     function nanoNameOf(id){ var n = window.OPC_NANO && window.OPC_NANO.getNano(id); return n ? n.name : id; }
     var adaptiveLastResultState = React.useState(null); // kết quả câu vừa chấm, để hiện phản hồi tức thì
     var adaptiveLastResult = adaptiveLastResultState[0];
@@ -1606,6 +1608,59 @@
       setRemediation(null);
     }
 
+    // ============================================================
+    // THÊM 6/10/2026 — THẺ "NHIỆM VỤ HÔM NAY" trên Trang chủ (kế hoạch tính trong buildDailyPlan, prepscholar.js).
+    // Kèm 1 dòng mẹo "Thêm vào Màn hình chính" (chỉ hiện trên điện thoại/máy tính bảng khi chưa mở dạng app,
+    // tắt được; nhớ lựa chọn bằng localStorage — lỗi/bị chặn thì chỉ hiện lại lần sau, không ảnh hưởng gì).
+    // ============================================================
+    function installTipText(){
+      try{
+        var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+        if(standalone) return null;
+        if(window.localStorage && window.localStorage.getItem('faradayInstallTipDismissed') === '1') return null;
+        var ua = navigator.userAgent || '';
+        if(/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'Mẹo: bấm nút Chia sẻ trong Safari → "Thêm vào Màn hình chính" để mở FaradayAI như một app, không cần gõ địa chỉ.';
+        if(/Android/.test(ua)) return 'Mẹo: bấm menu ⋮ của trình duyệt → "Thêm vào màn hình chính" (hoặc "Cài đặt ứng dụng") để mở FaradayAI như một app.';
+      }catch(e){}
+      return null;
+    }
+    function renderDailyMissionCard(redTags){
+      // attempts chưa tải xong nhưng em đã có lịch sử -> chưa hiện (tránh nháy "Làm bài kiểm tra đầu vào" sai)
+      if(!attempts.length && (student.completedExamsCount || 0) > 0) return null;
+      var plan = window.PrepScholarEngine.buildDailyPlan({ redTags: redTags, mistakeLog: mistakeLog, attempts: attempts });
+      var tip = installTipText();
+      function run(task){
+        if(task.key === 'diagnostic') startExam('diagnostic');
+        else if(task.key === 'review') startMistakeDrill();
+        else if(task.key === 'fix'){
+          var nano = task.nanoId && window.OPC_NANO ? window.OPC_NANO.getNano(task.nanoId) : null;
+          if(nano) startRemediation(nano); else startAdaptiveDrill(5);
+        }
+        else if(task.key === 'adaptive') startAdaptiveDrill(task.count);
+      }
+      return h('div', { className: 'ps-daily-card', style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '14px 16px', marginBottom: '16px' } },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' } },
+          h('div', null,
+            h('div', { style: { fontWeight: 700, fontSize: '1rem' } }, '🎯 Nhiệm vụ hôm nay'),
+            h('div', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', marginTop: '2px' } },
+              plan.allDone ? 'Em đã xong hết nhiệm vụ hôm nay — giỏi lắm! 🎉' : ('Khoảng ' + plan.totalMinutes + ' phút · xong ' + plan.doneCount + '/' + plan.tasks.length + ' việc'))),
+          plan.streakDays > 0 ? h('span', { title: 'Số ngày liên tiếp em có làm bài', style: { fontSize: '0.82rem', fontWeight: 700, color: 'var(--accent-strong, #8a5410)', background: 'color-mix(in srgb, var(--accent, #9e641a) 12%, transparent)', padding: '4px 10px', borderRadius: '999px' } }, '🔥 ' + plan.streakDays + ' ngày liên tiếp') : null),
+        h('div', { style: { marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' } },
+          plan.tasks.map(function(task){
+            return h('div', { key: task.key, style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '10px', opacity: task.done ? 0.65 : 1 } },
+              h('span', { style: { fontSize: '1.1rem', width: '22px', textAlign: 'center' } }, task.done ? '✅' : '⬜'),
+              h('div', { style: { flex: 1, minWidth: 0 } },
+                h('div', { style: { fontWeight: 600, fontSize: '0.9rem', textDecoration: task.done ? 'line-through' : 'none' } }, task.title),
+                h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)' } }, task.sub + ' · ~' + task.minutes + ' phút')),
+              task.done ? null : h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.8rem', padding: '6px 12px', whiteSpace: 'nowrap' }, onClick: function(){ run(task); } }, 'Làm ngay ➔'));
+          })),
+        tip ? h('div', { style: { marginTop: '10px', fontSize: '0.76rem', color: 'var(--ink-2)', display: 'flex', gap: '8px', alignItems: 'flex-start' } },
+          h('span', { style: { flex: 1 } }, '📲 ' + tip),
+          h('button', { type: 'button', 'aria-label': 'Tắt mẹo', style: { border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--muted)', fontSize: '0.9rem' },
+            onClick: function(){ try{ window.localStorage.setItem('faradayInstallTipDismissed', '1'); }catch(e){} setInstallTipTick(function(v){ return v + 1; }); } }, '✕')) : null
+      );
+    }
+
     // Điểm vào quy trình Vá lỗi từ 1 Tag màu Đỏ — tự bỏ qua bước 1/2 nếu
     // Tag đó chưa có videoUrl/conceptCard thật (xem ghi chú ở nano-map.js).
     function startRemediation(nano){
@@ -1791,7 +1846,10 @@
     // Bắt đầu Luyện tập thích ứng thời gian thực (CAT-lite): chọn câu ĐẦU
     // TIÊN dựa trên mastery-theo-Tag hiện tại của học sinh (nanoMastery thật
     // nếu đã từng luyện, mức trung lập 50 cho Tag chưa từng kiểm tra).
-    function startAdaptiveDrill(){
+    // SỬA 6/10/2026 — count (tuỳ chọn, SỐ): độ dài phiên (mặc định 12). "Nhiệm vụ hôm nay" và nút "5 câu" dùng 5 câu — hợp
+    // với cách dạy theo cụm 5 câu. Hàm này cũng gắn trực tiếp vào onClick nên tham số đầu có thể là sự kiện chuột.
+    function startAdaptiveDrill(count){
+      var targetCount = (typeof count === 'number' && count > 0) ? count : ADAPTIVE_TARGET_COUNT;
       var seedMastery = Object.assign({}, student.nanoMastery || {});
       var firstQ = window.PrepScholarEngine.pickAdaptiveQuestion(seedMastery, {});
       adaptiveRootRef.current = {};
@@ -1806,13 +1864,14 @@
         title: 'Luyện tập thích ứng thời gian thực',
         questions: [firstQ],
         isSubmitted: false,
-        initialTimeSec: ADAPTIVE_TARGET_COUNT * 90
+        targetCount: targetCount,
+        initialTimeSec: targetCount * 90
       };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
       setCurQIdx(0);
-      setTimeLeft(ADAPTIVE_TARGET_COUNT * 90);
+      setTimeLeft(targetCount * 90);
       setScoreResult(null);
       setMasteryImpact(null);
       setAdaptiveNanoMastery(seedMastery);
@@ -1854,7 +1913,7 @@
     // câu khả dụng) bằng đúng luồng chấm/lưu/đồng bộ sẵn có (handleSubmitExam).
     function handleNextAdaptiveQuestion(){
       if(!examSession || examSession.type !== 'adaptive') return;
-      if(examSession.questions.length >= ADAPTIVE_TARGET_COUNT){
+      if(examSession.questions.length >= (examSession.targetCount || ADAPTIVE_TARGET_COUNT)){
         handleSubmitExam();
         return;
       }
@@ -2469,12 +2528,13 @@
               var curQ = examSession.questions[examSession.questions.length - 1];
               if(!curQ) return null;
               var qNo = examSession.questions.length;
+              var curTarget = examSession.targetCount || ADAPTIVE_TARGET_COUNT;
               var curTagMastery = adaptiveNanoMastery[curQ.nanoId];
               return h('div', { className: 'ps-exam-screen' },
                 h('div', { className: 'ps-exam-header' },
                   h('div', { className: 'ps-exam-title-group' },
                     h('h3', null, '⚡ ' + examSession.title),
-                    h('p', null, 'Câu ' + qNo + ' / ' + ADAPTIVE_TARGET_COUNT + ' · Hệ thống tự chọn câu tiếp theo ngay sau khi bạn trả lời'),
+                    h('p', null, 'Câu ' + qNo + ' / ' + curTarget + ' · Hệ thống tự chọn câu tiếp theo ngay sau khi bạn trả lời'),
                     aiAdaptive.loading ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 FaradayAI đang phân tích để định hướng lộ trình…') : null,
                     !aiAdaptive.loading && aiAdaptive.reason ? h('p', { className: 'ps-ai-adaptive-note' }, '🦉 FaradayAI: ' + aiAdaptive.reason) : null,
                     // THÊM 6/10/2026 — minh bạch với em: vì sao câu này thuộc nano-point nền tảng
@@ -2579,7 +2639,7 @@
                     type: 'button', className: 'btn btn-primary', onClick: handleCheckAdaptiveAnswer
                   }, 'Kiểm tra đáp án') : h('button', {
                     type: 'button', className: 'btn btn-primary', onClick: handleNextAdaptiveQuestion
-                  }, qNo >= ADAPTIVE_TARGET_COUNT ? 'Xem kết quả ➔' : 'Câu tiếp theo →')
+                  }, qNo >= curTarget ? 'Xem kết quả ➔' : 'Câu tiếp theo →')
                 )
               );
             })()
@@ -3251,6 +3311,8 @@
               // dữ liệu làm bài thật (xem computeRadar5 trong prepscholar.js),
               // không cần giáo viên gắn nhãn gì thêm; chiều nào chưa đủ dữ
               // liệu hiện "Chưa đủ dữ liệu" thay vì số bịa.
+              renderDailyMissionCard(redTags),
+
               h('div', { className: 'ps-hero-grid' },
                 renderLevelXPCard(student),
                 h('div', { className: 'ps-metric-card accent ps-hero-forecast' },
@@ -3314,6 +3376,7 @@
                   ),
                   h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
                     h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.8rem' }, onClick: startAdaptiveDrill }, '⚡ Luyện tập thích ứng ngay'),
+                    h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, title: 'Một cụm 5 câu (~7 phút)', onClick: function(){ startAdaptiveDrill(5); } }, '⚡ 5 câu'),
                     h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ startExam('diagnostic'); } }, '🔁 Làm lại kiểm tra đầu vào')
                   )
                 )

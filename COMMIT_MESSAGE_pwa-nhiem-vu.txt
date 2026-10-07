@@ -1,0 +1,8 @@
+Cài như app (PWA), "Nhiệm vụ hôm nay" + chuỗi ngày, luyện thích ứng 5 câu, hàng nhắc học trong admin
+
+- index.html + manifest.webmanifest + icon-*.png: "Thêm vào Màn hình chính" mở toàn màn hình (không service worker)
+- prepscholar.js: buildDailyPlan / computeStreakDays (ôn câu đến hạn, vá lỗi nền tảng, thích ứng 5 câu; chuỗi ngày)
+- prepscholar-ui.js: thẻ "🎯 Nhiệm vụ hôm nay" ở Trang chủ + mẹo cài app; startAdaptiveDrill(count), nút "⚡ 5 câu"
+- admin.html: "⏰ Hàng nhắc học" — em ≥3 ngày chưa làm bài + nút sao chép tin Zalo cho phụ huynh
+
+Co-Authored-By: Claude <noreply@anthropic.com>

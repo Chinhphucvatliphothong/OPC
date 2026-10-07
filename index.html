@@ -9,6 +9,15 @@
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<!-- THÊM 6/10/2026 — CÀI NHƯ APP (PWA): "Thêm vào Màn hình chính" -> mở toàn màn hình, không thanh địa chỉ. Chỉ có manifest + biểu tượng,
+     CỐ Ý KHÔNG có service worker (không cache offline) để mỗi lần deploy trên Vercel học sinh luôn nhận bản mới. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f5f6f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14171a" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FaradayAI">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="description" content="Nền tảng luyện thi Vật lí THPT, quản lý học sinh và ngân hàng đề thi FaradayAI">
 <meta property="og:title" content="FaradayAI Luyện Thi Vật Lí">
 <meta property="og:image" content="https://faradayai.vn/og-image.png">

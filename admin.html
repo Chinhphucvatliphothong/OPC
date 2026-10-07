@@ -1019,6 +1019,45 @@
   }
   function digitsOnly(v){ return String(v || '').replace(/\D/g, ''); }
 
+  // THÊM 6/10/2026 — HÀNG NHẮC HỌC: học sinh đang học nhưng đã ≥ N ngày chưa làm bài -> kèm tin Zalo soạn sẵn cho phụ huynh.
+  // "Lần hoạt động gần nhất" = thời điểm số liệu học tập (student_stats.updatedAt) được đồng bộ gần nhất — cập nhật mỗi
+  // lần em nộp bài (hoặc bấm "Lưu lại" khi lỗi lưu), nên sát với lần làm bài cuối. Em chưa có số liệu mà đã có đề
+  // làm (completedExamsCount > 0) thì BỎ QUA (không biết chắc) thay vì nhắc nhầm.
+  var INACTIVE_DAYS = 3;
+  function daysBetween(iso, now){
+    var d = iso ? new Date(iso) : null;
+    if(!d || isNaN(d.getTime())) return null;
+    var a = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    var b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return Math.max(0, Math.round((b - a) / 86400000));
+  }
+  function classifyInactive(students, now, minDays){
+    now = now || new Date(); minDays = minDays || INACTIVE_DAYS;
+    var out = [];
+    (students || []).forEach(function(s){
+      if(!s || s.status !== 'active') return;
+      var days = daysBetween(s.lastActiveAt, now);
+      if(days == null){
+        if(!(Number(s.completedExamsCount) > 0)) out.push({ student: s, daysAgo: null, never: true });
+        return;
+      }
+      if(days >= minDays) out.push({ student: s, daysAgo: days, never: false });
+    });
+    out.sort(function(a, b){ return (b.never ? 9999 : b.daysAgo) - (a.never ? 9999 : a.daysAgo); });
+    return out;
+  }
+  function buildReminderMessage(item){
+    var s = item.student, name = (s.name || 'em').trim();
+    var link = 'https://faradayai.vn';
+    if(item.never){
+      return 'Chào anh/chị ạ. Em ' + name + ' chưa làm bài nào trên FaradayAI. Mỗi ngày em chỉ cần khoảng 15 phút: vào ' + link +
+        ' → làm "Bài kiểm tra đầu vào" trước để hệ thống biết em đang vững/yếu chỗ nào ạ. Nhờ anh/chị nhắc em giúp. Cảm ơn anh/chị!';
+    }
+    var when = item.daysAgo >= 7 ? ('hơn ' + Math.floor(item.daysAgo / 7) + ' tuần') : (item.daysAgo + ' ngày');
+    return 'Chào anh/chị ạ. Em ' + name + ' đã ' + when + ' chưa làm bài trên FaradayAI. Hôm nay em chỉ cần khoảng 15 phút: vào ' + link +
+      ' → mục "Nhiệm vụ hôm nay" là xong ạ (ôn câu sai + vá lỗi + 5 câu luyện thích ứng). Nhờ anh/chị nhắc em giúp. Cảm ơn anh/chị!';
+  }
+
   // THÊM 5/10/2026 — gợi ý nhanh nano-point cho 1 câu bằng bộ khớp từ khoá của nano-map.js (không gọi AI, tức thì).
   // Đọc đề + ngữ cảnh chùm + phương án + lời giải (lời giải thường nêu thẳng công thức/định luật đã dùng).
   function quickNanoSuggest(q){
@@ -2867,7 +2906,8 @@
         nanoMastery: st.nanoMastery || s.nanoMastery,
         recentTrend: st.recentTrend != null ? st.recentTrend : s.recentTrend,
         recentAvgScore: st.recentAvgScore != null ? st.recentAvgScore : s.recentAvgScore,
-        priorAvgScore: st.priorAvgScore != null ? st.priorAvgScore : s.priorAvgScore
+        priorAvgScore: st.priorAvgScore != null ? st.priorAvgScore : s.priorAvgScore,
+        lastActiveAt: st.updatedAt || s.lastActiveAt // THÊM 6/10/2026 — cho "Hàng nhắc học"
       });
     });
 
@@ -3430,6 +3470,34 @@
         })
       ) : null
     );
+    // ---- HÀNG NHẮC HỌC (THÊM 6/10/2026) ----
+    var remindOpenState = React.useState(false); var remindOpen = remindOpenState[0], setRemindOpen = remindOpenState[1];
+    var inactiveList = classifyInactive(displayStudents, new Date(), INACTIVE_DAYS);
+    function copyReminder(item){
+      var msg = buildReminderMessage(item);
+      function done(){ props.fireToast('Đã sao chép tin nhắn cho ' + item.student.name + ' — dán vào Zalo phụ huynh' + (item.student.parentPhone ? ' (' + item.student.parentPhone + ')' : '') + '.'); }
+      function fallback(){ try{ window.prompt('Sao chép tin nhắn (Ctrl/Cmd+C) rồi dán vào Zalo:', msg); }catch(e){} }
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(msg).then(done, fallback); } else fallback();
+    }
+    var reminderBanner = !inactiveList.length ? null : h('div', { className: 'sm-alert-banner', style: { borderColor: 'color-mix(in srgb, var(--accent, #9e641a) 35%, var(--line))' } },
+      h('div', { className: 'sm-alert-banner-head', onClick: function(){ setRemindOpen(!remindOpen); }, role: 'button', tabIndex: 0 },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+          h('span', { style: { fontSize: '1.2rem' } }, '⏰'),
+          h('div', null,
+            h('div', { className: 'sm-alert-banner-title', style: { color: 'var(--accent-strong, #8a5410)' } }, inactiveList.length + ' học sinh ' + INACTIVE_DAYS + ' ngày trở lên chưa làm bài'),
+            h('div', { className: 'sm-alert-banner-sub' }, 'Bấm vào từng em để sao chép tin nhắn Zalo soạn sẵn cho phụ huynh.'))),
+        h('span', { className: 'sm-alert-banner-toggle', style: { color: 'var(--accent-strong, #8a5410)' } }, remindOpen ? '▲ Thu gọn' : '▼ Xem danh sách')),
+      remindOpen ? h('div', { className: 'sm-alert-banner-list' },
+        inactiveList.map(function(it){
+          return h('div', { key: it.student.id, className: 'sm-alert-row' },
+            h('div', { className: 'sm-avatar' }, initials(it.student.name)),
+            h('div', { style: { flex: 1, minWidth: 0 } },
+              h('div', { className: 'sm-alert-row-name' }, it.student.name),
+              h('div', { className: 'sm-alert-row-reasons' }, (it.never ? 'Chưa làm bài nào' : it.daysAgo + ' ngày chưa làm bài') + (it.student.parentPhone ? ' · PH: ' + it.student.parentPhone : ''))),
+            h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem', whiteSpace: 'nowrap' }, onClick: function(){ copyReminder(it); } }, '📋 Soạn tin Zalo'));
+        })
+      ) : null
+    );
     var summaryCard = renderClassSummaryCard(displayStudents);
     var searchRow = h('div',{className:'sm-search-row'},
       h('div',{className:'sm-search'}, h(IconSearch),
@@ -3832,7 +3900,7 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, summaryCard, searchRow, tableOrEmpty), detailModal, reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt, student: selected, onClose: function(){ setReviewAttempt(null); } }) : null, addModal, importModal, justApprovedModal);
+    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, reminderBanner, summaryCard, searchRow, tableOrEmpty), detailModal, reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt, student: selected, onClose: function(){ setReviewAttempt(null); } }) : null, addModal, importModal, justApprovedModal);
   }
 
   // ================= Báo cáo Phụ huynh (AI co-pilot) =================

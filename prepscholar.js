@@ -610,6 +610,77 @@
   // trong priorityOrder còn câu khả dụng, hàm TỰ ĐỘNG rơi về đúng thuật
   // toán cũ (sắp theo % thấp nhất) — không bao giờ chặn luồng làm bài.
   // ============================================================
+  // ============================================================
+  // THÊM 6/10/2026 — NHIỆM VỤ HÔM NAY (~10-15 phút) + CHUỖI NGÀY HỌC.
+  // Mục tiêu: kéo em quay lại app giữa 2 buổi học bằng một "việc nhỏ, rõ, làm xong là xong". Không thêm dữ liệu
+  // mới: dựng hoàn toàn từ Sổ tay câu sai (câu đến hạn ôn), Tag Đỏ (kèm gốc lỗi theo quan hệ tiên quyết) và lịch sử
+  // lượt làm. "Đã xong hôm nay" suy ra từ loại lượt làm trong NGÀY (giờ máy của em): 'mistakes' = ôn sổ tay;
+  // 'drill' = vá lỗi/luyện Tag; 'adaptive' = luyện thích ứng. (Chưa phân biệt được các kiểu 'drill' với nhau.)
+  // Chuỗi ngày = số ngày liên tiếp có ít nhất 1 lượt làm, tính đến hôm nay (nếu hôm nay chưa làm thì tính đến hôm
+  // qua — chuỗi vẫn "còn sống" cho tới hết hôm nay).
+  // ============================================================
+  var DAILY_ADAPTIVE_COUNT = 5;
+  function toDateSafe(v){
+    if(!v) return null;
+    var d = (typeof v.toDate === 'function') ? v.toDate() : new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function localDayKey(d){
+    var m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+  }
+  function computeStreakDays(attempts, now){
+    now = now || new Date();
+    var days = {};
+    (attempts || []).forEach(function(a){ var d = toDateSafe(a && a.createdAt); if(d) days[localDayKey(d)] = true; });
+    var cur = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+    if(!days[localDayKey(cur)]) cur.setDate(cur.getDate() - 1);   // hôm nay chưa làm: chuỗi tính tới hôm qua
+    var n = 0;
+    while(days[localDayKey(cur)]){ n++; cur.setDate(cur.getDate() - 1); }
+    return n;
+  }
+  // opts: { redTags:[…getRedTags, đã lọc chương đã mở], mistakeLog:[…], attempts:[…], now?:Date }
+  function buildDailyPlan(opts){
+    opts = opts || {};
+    var now = opts.now || new Date();
+    var attempts = opts.attempts || [];
+    var todayKey = localDayKey(now);
+    var typesToday = {};
+    attempts.forEach(function(a){
+      var d = toDateSafe(a && a.createdAt);
+      if(d && localDayKey(d) === todayKey && a.type) typesToday[a.type] = true;
+    });
+    var plan = { streakDays: computeStreakDays(attempts, now), tasks: [], needsDiagnostic: false, totalMinutes: 0, doneCount: 0, allDone: false };
+    if(!attempts.length){
+      plan.needsDiagnostic = true;
+      plan.tasks.push({ key: 'diagnostic', title: 'Làm bài kiểm tra đầu vào', sub: 'Để hệ thống biết em đang vững/yếu chỗ nào', minutes: 15, done: false });
+      plan.totalMinutes = 15;
+      return plan;
+    }
+    var due = (opts.mistakeLog || []).filter(function(m){ return m && m.dueNow; });
+    if(due.length || typesToday.mistakes){
+      var nDue = Math.min(due.length, 15);
+      plan.tasks.push({ key: 'review', title: nDue ? ('Ôn ' + nDue + ' câu sai đã đến hạn') : 'Ôn Sổ tay câu sai', sub: 'Lặp lại giãn cách 1-3-7-14 ngày',
+        minutes: Math.max(3, Math.ceil(nDue * 2.5)), n: nDue, done: !!typesToday.mistakes });
+    }
+    var red = (opts.redTags || [])[0];
+    if(red || typesToday.drill){
+      var targetNano = red, sub = '5 bài tập luyện Tag đang Đỏ';
+      if(red && red.rootCause && red.rootCause.id){
+        var rn = window.OPC_NANO && window.OPC_NANO.getNano(red.rootCause.id);
+        if(rn){ targetNano = rn; sub = 'Nền tảng của "' + red.name + '" — gốc lỗi có thể nằm ở đây'; }
+      }
+      plan.tasks.push({ key: 'fix', title: targetNano ? ('Vá lỗi: ' + targetNano.name) : 'Vá lỗi kiến thức', sub: sub, minutes: 6,
+        nanoId: targetNano ? targetNano.id : null, done: !!typesToday.drill });
+    }
+    plan.tasks.push({ key: 'adaptive', title: 'Luyện thích ứng ' + DAILY_ADAPTIVE_COUNT + ' câu', sub: 'Hệ thống tự chọn câu hợp với em', minutes: 7,
+      count: DAILY_ADAPTIVE_COUNT, done: !!typesToday.adaptive });
+    plan.doneCount = plan.tasks.filter(function(t){ return t.done; }).length;
+    plan.totalMinutes = plan.tasks.filter(function(t){ return !t.done; }).reduce(function(a, t){ return a + t.minutes; }, 0);
+    plan.allDone = plan.doneCount === plan.tasks.length;
+    return plan;
+  }
+
   var lastPickInfo = null;
   function pickAdaptiveQuestion(nanoMastery, askedIds, priorityOrder){
     lastPickInfo = null;
@@ -813,6 +884,8 @@
     // cùng câu sai gốc — lượt sau ra câu MỚI, chỉ lặp lại khi hết câu mới.
     nanoIdsOf: nanoIdsOf,
     getLastPickInfo: function(){ return lastPickInfo; },
+    buildDailyPlan: buildDailyPlan,
+    computeStreakDays: computeStreakDays,
     createSimilarDrill: function(question, count, excludeIds){
       if(!question) return [];
       count = count || 3;
