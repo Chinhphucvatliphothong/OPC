@@ -3037,6 +3037,8 @@
     }).filter(Boolean);
 
     var alertsOpenState = React.useState(false); var alertsOpen = alertsOpenState[0], setAlertsOpen = alertsOpenState[1];
+    // SỬA 7/10/2026 — hook của "Hàng nhắc học" phải nằm TRƯỚC mọi return sớm; đặt sau return làm React báo lỗi #310 và trang admin trắng
+    var remindOpenState = React.useState(false); var remindOpen = remindOpenState[0], setRemindOpen = remindOpenState[1];
 
     React.useEffect(function(){
       if(!selected && !addOpen && !importOpen) return;
@@ -3471,7 +3473,7 @@
       ) : null
     );
     // ---- HÀNG NHẮC HỌC (THÊM 6/10/2026) ----
-    var remindOpenState = React.useState(false); var remindOpen = remindOpenState[0], setRemindOpen = remindOpenState[1];
+    // (hook remindOpen khai báo ở đầu hàm, cạnh alertsOpen — KHÔNG được đặt sau lệnh return sớm "Đang tải dữ liệu học sinh…")
     var inactiveList = classifyInactive(displayStudents, new Date(), INACTIVE_DAYS);
     function copyReminder(item){
       var msg = buildReminderMessage(item);
