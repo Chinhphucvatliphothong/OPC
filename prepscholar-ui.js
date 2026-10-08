@@ -1899,6 +1899,7 @@
         updatedAt: new Date().toISOString(),
         type: 'adaptive',
         partial: true,
+        targetCount: examSession.targetCount || null, // THÊM 7/10/2026 — để Phòng dạy online hiện tiến độ "câu 3/5"
         topicKey: null,
         assignedExamId: null,
         scaledScore10: scoredP.scaledScore10,
@@ -2140,6 +2141,7 @@
           // SỬA 7/10/2026 — luyện thích ứng đã có clientId từ lúc bắt đầu phiên (bản làm dở đã lưu cùng id) nên bản nộp bài GHI ĐÈ bản dở
           clientId: examSession.clientId || ('a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
           createdAt: new Date().toISOString(),
+          targetCount: examSession.targetCount || null,
           type: examSession.type,
           topicKey: examSession.topicKey || null,
           assignedExamId: examSession.assignedExamId || null,

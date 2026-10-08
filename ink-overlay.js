@@ -402,6 +402,7 @@
     function btn(label, onClick, opts) {
       opts = opts || {};
       return h('button', {
+        key: opts.key, // SỬA 7/10/2026 — React cảnh báo thiếu key ở danh sách nút độ dày nét
         type: 'button',
         onClick: onClick,
         disabled: !!opts.disabled,
@@ -440,7 +441,7 @@
         }),
         WIDTHS.map(function (w) {
           return btn(String(w.v), function () { setWidth(w.v); },
-            { active: width === w.v, title: 'Nét ' + w.t.toLowerCase() });
+            { key: 'w' + w.v, active: width === w.v, title: 'Nét ' + w.t.toLowerCase() });
         }),
         btn('🧽 Tẩy', function () { setTool(tool === 'erase' ? 'pen' : 'erase'); },
           { active: tool === 'erase', title: 'Tẩy từng nét' }),

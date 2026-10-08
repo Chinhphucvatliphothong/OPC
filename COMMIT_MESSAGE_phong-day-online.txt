@@ -1,0 +1,10 @@
+Phòng dạy online: theo dõi trực tiếp nhóm em + hàng đợi câu sai + giảng bằng bút; gộp lưu tiến độ luyện thích ứng
+
+- admin.html: tab "🎓 Phòng dạy" — chọn em trong buổi, bắt đầu/kết thúc buổi, link Google Meet, thẻ từng em (đang làm/tạm dừng/đã nộp,
+  câu n/N, đúng/sai), hàng đợi câu sai của cả nhóm, màn giảng từng câu có InkBoard (viết bút), đánh dấu đã giảng; xem cả lượt; nhãn LÀM DỞ
+- prepscholar-ui.js: ghi targetCount; lưu tiến độ sau mỗi câu chấm (partial) — nền dữ liệu cho phòng dạy
+- prepscholar.js / opc-live-data.js: lượt làm dở không tính điểm/số đề; touchActivity
+- ink-overlay.js: thêm key cho danh sách nút (hết cảnh báo React)
+- Gộp bản "lưu tiến độ thích ứng" và bản sửa admin trắng nếu chưa úp
+
+Co-Authored-By: Claude <noreply@anthropic.com>

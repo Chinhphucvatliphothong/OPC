@@ -1023,6 +1023,53 @@
   // "Lần hoạt động gần nhất" = thời điểm số liệu học tập (student_stats.updatedAt) được đồng bộ gần nhất — cập nhật mỗi
   // lần em nộp bài (hoặc bấm "Lưu lại" khi lỗi lưu), nên sát với lần làm bài cuối. Em chưa có số liệu mà đã có đề
   // làm (completedExamsCount > 0) thì BỎ QUA (không biết chắc) thay vì nhắc nhầm.
+
+  // ============================================================================
+  // THÊM 7/10/2026 — PHÒNG DẠY ONLINE (tab "🎓 Phòng dạy"): dạy nhóm nhỏ qua Google Meet + iPad.
+  // Em làm bài ở máy mình (luyện thích ứng ⚡ 5 câu); trang này nghe trực tiếp lịch sử làm bài của các em được chọn
+  // (nhờ mỗi câu chấm xong đều lưu bản "làm dở" — xem saveAdaptiveProgress trong prepscholar-ui.js) để thầy thấy: em nào đang ở
+  // câu mấy, đúng/sai bao nhiêu, và gom CÂU SAI của cả nhóm thành hàng đợi để giảng từng câu, viết bút lên đề (InkBoard).
+  // Chỉ ĐỌC dữ liệu — không ghi gì lên Firestore; lựa chọn của thầy (nhóm em, link Meet, giờ bắt đầu buổi) lưu trên chính máy này.
+  // ============================================================================
+  var ROOM_ACTIVE_MIN = 10;          // còn "Đang làm" nếu có hoạt động trong 10 phút gần nhất
+  function attemptTimeMs(a){
+    var t = a && (a.updatedAt || a.createdAt);
+    var ms = t ? new Date(t).getTime() : NaN;
+    return ms;
+  }
+  function startOfTodayMs(now){ var d = new Date(now); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+  // Tóm tắt 1 em trong buổi dạy: các lượt có hoạt động từ sinceMs trở đi.
+  function summarizeStudentRoom(attempts, sinceMs, nowMs){
+    var inRoom = (attempts || []).filter(function(a){ var t = attemptTimeMs(a); return !isNaN(t) && t >= sinceMs; });
+    if(!inRoom.length) return { status: 'idle', latest: null, attemptCount: 0, right: 0, wrong: 0, answered: 0, target: null, minutesAgo: null };
+    var latest = inRoom.reduce(function(m, a){ return attemptTimeMs(a) > attemptTimeMs(m) ? a : m; });
+    var right = (latest.rightQuestions || []).length, wrong = (latest.wrongQuestions || []).length;
+    var minutesAgo = Math.max(0, Math.round((nowMs - attemptTimeMs(latest)) / 60000));
+    var status = latest.partial ? (minutesAgo <= ROOM_ACTIVE_MIN ? 'doing' : 'paused') : 'done';
+    return { status: status, latest: latest, attemptCount: inRoom.length, right: right, wrong: wrong,
+             answered: latest.totalQuestions != null ? latest.totalQuestions : right + wrong,
+             target: latest.targetCount || null, minutesAgo: minutesAgo };
+  }
+  // Hàng đợi câu sai của cả nhóm trong buổi: mỗi (em, câu) một dòng, theo thứ tự thời gian làm, không trùng.
+  function collectRoomWrongQueue(attemptsByStudent, studentsById, sinceMs){
+    var items = [], seen = {};
+    Object.keys(attemptsByStudent || {}).forEach(function(sid){
+      (attemptsByStudent[sid] || []).forEach(function(a){
+        var t = attemptTimeMs(a);
+        if(isNaN(t) || t < sinceMs) return;
+        (a.wrongQuestions || []).forEach(function(w){
+          if(!w || !w.qId) return;
+          var key = sid + '|' + w.qId;
+          if(seen[key]) return; seen[key] = true;
+          items.push({ key: key, studentId: sid, studentName: (studentsById[sid] && studentsById[sid].name) || sid, attemptId: a.id,
+                       qId: w.qId, nanoIds: (w.nanoIds && w.nanoIds.length) ? w.nanoIds : (w.nanoId ? [w.nanoId] : []), level: w.level || '', at: t });
+        });
+      });
+    });
+    items.sort(function(x, y){ return x.at - y.at; });
+    return items;
+  }
+
   var INACTIVE_DAYS = 3;
   function daysBetween(iso, now){
     var d = iso ? new Date(iso) : null;
@@ -4824,6 +4871,181 @@
     );
   }
 
+  // ---- Phòng dạy online: màn giảng 1 câu sai (có InkBoard để viết bút) ----
+  function TeachQuestionModal(props){
+    var items = props.items, attemptsByStudent = props.attemptsByStudent;
+    var curKeyState = React.useState(props.startKey); var curKey = curKeyState[0], setCurKey = curKeyState[1];
+    var examsState = React.useState({}); var exams = examsState[0], setExams = examsState[1];
+    var modalElState = React.useState(null); var modalEl = modalElState[0], setModalEl = modalElState[1];
+    var idx = 0;
+    for(var i = 0; i < items.length; i++){ if(items[i].key === curKey){ idx = i; break; } }
+    var item = items[idx] || null;
+    var attempt = null;
+    if(item){ attempt = (attemptsByStudent[item.studentId] || []).filter(function(a){ return a.id === item.attemptId; })[0] || null; }
+    var examId = item && hvSplitQid(item.qId) ? hvSplitQid(item.qId).examId : null;
+    React.useEffect(function(){
+      if(!examId) return;
+      var cancelled = false;
+      loadExamCached(examId).then(function(ex){ if(!cancelled) setExams(function(prev){ var n = Object.assign({}, prev); n[examId] = ex; return n; }); });
+      return function(){ cancelled = true; };
+    }, [examId]);
+    var row = null;
+    if(item && attempt && examId && exams[examId] !== undefined){
+      row = hvBuildRows(attempt, exams).filter(function(r){ return r.id === item.qId; })[0] || null;
+    }
+    function go(d){ var j = Math.max(0, Math.min(items.length - 1, idx + d)); if(items[j]) setCurKey(items[j].key); }
+    var done = item ? !!props.doneMap[item.key] : false;
+    return h('div', { className: 'sm-overlay hv-overlay', onClick: function(e){ if(e.target === e.currentTarget) props.onClose(); } },
+      h('div', { className: 'sm-modal sm-modal-review', ref: setModalEl, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Giảng câu sai' },
+        h('div', { className: 'sm-modal-head' },
+          h('h3', null, item ? ('Câu sai của ' + item.studentName + ' (' + (idx + 1) + '/' + items.length + ')') : 'Giảng câu sai'),
+          h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
+        !item ? h('p', { style: { color: 'var(--muted)' } }, 'Hàng đợi câu sai đang trống.') : h('div', null,
+          h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' } },
+            h('button', { type: 'button', className: 'btn btn-secondary', disabled: idx === 0, onClick: function(){ go(-1); } }, '← Câu trước'),
+            h('button', { type: 'button', className: 'btn btn-secondary', disabled: idx >= items.length - 1, onClick: function(){ go(1); } }, 'Câu sau →'),
+            h('button', { type: 'button', className: done ? 'btn btn-secondary' : 'btn btn-primary', onClick: function(){ props.onToggleDone(item.key); } }, done ? '✓ Đã giảng — bấm để bỏ dấu' : 'Đánh dấu đã giảng ✓'),
+            h('span', { style: { fontSize: '0.8rem', color: 'var(--muted)' } }, 'Chạm ngón tay vào "💡 Lời giải" để mở; Pencil để viết.')),
+          !row ? h('p', { style: { color: 'var(--muted)', fontSize: '0.9rem' } }, exams[examId] === undefined ? 'Đang tải nội dung câu hỏi…' : 'Không tìm thấy nội dung câu này (đề có thể đã bị xoá/sửa).') :
+            (window.InkBoard
+              ? h(window.InkBoard, { resetKey: item.key, scrollEl: modalEl }, h(HvQuestion, { row: row, n: idx + 1 }))
+              : h(HvQuestion, { row: row, n: idx + 1 }))
+        )
+      )
+    );
+  }
+
+  // ---- Phòng dạy online: bảng theo dõi trực tiếp ----
+  function TeachingRoomPanel(props){
+    useNanoExtraSync();
+    var OPCref = window.OPC;
+    function lsGet(k, d){ try{ var v = window.localStorage.getItem(k); return v == null ? d : v; }catch(e){ return d; } }
+    function lsSet(k, v){ try{ window.localStorage.setItem(k, v); }catch(e){} }
+    var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var selState = React.useState(function(){ try{ return JSON.parse(lsGet('faraday_room_students', '[]')) || []; }catch(e){ return []; } });
+    var selected = selState[0], setSelected = selState[1];
+    var sinceState = React.useState(function(){ var v = Number(lsGet('faraday_room_since', '0')); return v > 0 ? v : 0; });
+    var roomSince = sinceState[0], setRoomSince = sinceState[1];
+    var meetState = React.useState(function(){ return lsGet('faraday_room_meet', ''); });
+    var meetLink = meetState[0], setMeetLink = meetState[1];
+    var attState = React.useState({}); var attemptsByStudent = attState[0], setAttemptsByStudent = attState[1];
+    var doneState = React.useState({}); var doneMap = doneState[0], setDoneMap = doneState[1];
+    var tickState = React.useState(0); var tick = tickState[0], setTick = tickState[1];
+    var openState = React.useState(null); var openKey = openState[0], setOpenKey = openState[1];       // câu sai đang giảng
+    var reviewState = React.useState(null); var reviewAttempt = reviewState[0], setReviewAttempt = reviewState[1]; // xem lại cả lượt
+    var errState = React.useState(null); var loadErr = errState[0], setLoadErr = errState[1];
+
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.students) return;
+      var unsub = OPCref.students.subscribe(function(snap){
+        var list = [];
+        snap.forEach(function(d){ list.push(Object.assign({ id: d.id }, d.data())); });
+        setStudents(list);
+      }, function(err){ console.error('Lỗi tải danh sách học sinh (Phòng dạy):', err); setLoadErr(err); });
+      return function(){ unsub(); };
+    }, []);
+    var selKey = selected.slice().sort().join(',');
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.attempts || !selected.length) { setAttemptsByStudent({}); return; }
+      var unsubs = selected.map(function(sid){
+        return OPCref.attempts.subscribeForStudent(sid, function(snap){
+          var list = [];
+          snap.forEach(function(d){ list.push(Object.assign({ id: d.id }, d.data())); });
+          setAttemptsByStudent(function(prev){ var n = Object.assign({}, prev); n[sid] = list; return n; });
+        }, function(err){ console.error('Lỗi nghe lịch sử làm bài của ' + sid + ':', err); });
+      });
+      return function(){ unsubs.forEach(function(u){ try{ u(); }catch(e){} }); };
+    }, [selKey]);
+    React.useEffect(function(){
+      var t = setInterval(function(){ setTick(function(v){ return v + 1; }); }, 30000); // cập nhật "x phút trước"
+      return function(){ clearInterval(t); };
+    }, []);
+
+    var studentsById = {}; students.forEach(function(s){ studentsById[s.id] = s; });
+    var activeStudents = students.filter(function(s){ return s.status === 'active'; });
+    var nowMs = Date.now();
+    var sinceMs = roomSince || startOfTodayMs(nowMs);
+    var summaries = {}; selected.forEach(function(sid){ summaries[sid] = summarizeStudentRoom(attemptsByStudent[sid], sinceMs, nowMs); });
+    var queue = collectRoomWrongQueue(attemptsByStudent, studentsById, sinceMs).filter(function(it){ return selected.indexOf(it.studentId) > -1; });
+    var pending = queue.filter(function(it){ return !doneMap[it.key]; });
+
+    function toggleStudent(id){
+      var next = selected.indexOf(id) > -1 ? selected.filter(function(x){ return x !== id; }) : selected.concat([id]);
+      setSelected(next); lsSet('faraday_room_students', JSON.stringify(next));
+    }
+    function startRoom(){ var v = Date.now(); setRoomSince(v); lsSet('faraday_room_since', String(v)); setDoneMap({}); props.fireToast('Đã bắt đầu buổi dạy — chỉ tính hoạt động từ bây giờ.'); }
+    function endRoom(){ setRoomSince(0); lsSet('faraday_room_since', '0'); setDoneMap({}); props.fireToast('Đã kết thúc buổi — đang xem hoạt động từ 00:00 hôm nay.'); }
+    function toggleDone(key){ setDoneMap(function(prev){ var n = Object.assign({}, prev); if(n[key]) delete n[key]; else n[key] = true; return n; }); }
+    function fmtClock(ms){ var d = new Date(ms); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+    var STATUS = {
+      idle:   { label: 'Chưa làm trong buổi', color: 'var(--muted)', dot: '⚪' },
+      doing:  { label: 'Đang làm', color: 'var(--good)', dot: '🟢' },
+      paused: { label: 'Tạm dừng', color: 'var(--accent-strong, #8a5410)', dot: '🟠' },
+      done:   { label: 'Đã nộp bài', color: 'var(--ink-2)', dot: '✅' }
+    };
+    var inputStyle = { padding: '8px 10px', border: '1px solid var(--line, #d9d4c7)', borderRadius: '8px', fontSize: '0.9rem', background: 'var(--surface, #fff)', color: 'inherit' };
+
+    return h('div', null,
+      h('div', { className: 'card', style: { marginBottom: '14px' } },
+        h('div', { className: 'sm-toolbar' },
+          h('div', null, h('h3', null, '🎓 Phòng dạy online'),
+            h('p', { className: 'sm-sub' }, 'Chọn các em đang học cùng buổi. Em làm "⚡ 5 câu" ở máy mình; thầy xem trực tiếp em đang ở câu mấy, rồi giảng từng câu sai và viết bút lên đề. Chia sẻ toàn màn hình iPad qua Google Meet.'))),
+        loadErr ? h('div', { className: 'banner warn', style: { marginBottom: '10px' } }, h('span', null, '⚠️'), h('div', null, 'Không tải được danh sách học sinh — kiểm tra mạng rồi tải lại trang.')) : null,
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '10px' } },
+          h('span', { style: { fontSize: '0.85rem', fontWeight: 600 } }, 'Em trong buổi:'),
+          activeStudents.length ? activeStudents.map(function(s){
+            var on = selected.indexOf(s.id) > -1;
+            return h('button', { key: s.id, type: 'button', className: 'eb-nano-chip' + (on ? ' active' : ''), style: { padding: '6px 12px', minHeight: '36px' }, onClick: function(){ toggleStudent(s.id); } }, (on ? '✓ ' : '') + s.name);
+          }) : h('span', { style: { fontSize: '0.85rem', color: 'var(--muted)' } }, 'Chưa có học sinh đang học.')),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' } },
+          roomSince
+            ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: endRoom }, '⏹ Kết thúc buổi')
+            : h('button', { type: 'button', className: 'btn btn-primary', onClick: startRoom }, '▶ Bắt đầu buổi dạy'),
+          h('span', { style: { fontSize: '0.82rem', color: 'var(--ink-2)' } }, roomSince ? ('Buổi bắt đầu lúc ' + fmtClock(roomSince) + ' — chỉ tính hoạt động từ đó.') : 'Chưa bấm "Bắt đầu" — đang tính hoạt động từ 00:00 hôm nay.'),
+          h('span', { style: { flex: 1 } }),
+          h('input', { type: 'url', placeholder: 'Dán link Google Meet…', value: meetLink, style: Object.assign({}, inputStyle, { width: '230px', maxWidth: '100%' }), onChange: function(e){ setMeetLink(e.target.value); lsSet('faraday_room_meet', e.target.value); } }),
+          h('button', { type: 'button', className: 'btn btn-secondary', disabled: !/^https?:\/\//.test(meetLink.trim()), onClick: function(){ window.open(meetLink.trim(), '_blank', 'noopener'); } }, 'Mở Meet ↗'))
+      ),
+      !selected.length ? h('div', { className: 'card' }, h('p', { style: { color: 'var(--muted)', fontSize: '0.92rem' } }, 'Chọn ít nhất một em ở trên để bắt đầu theo dõi.')) : h('div', null,
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginBottom: '14px' } },
+          selected.map(function(sid){
+            var st = studentsById[sid]; if(!st) return null;
+            var sm = summaries[sid], meta = STATUS[sm.status];
+            var myWrong = queue.filter(function(it){ return it.studentId === sid; });
+            var myPending = myWrong.filter(function(it){ return !doneMap[it.key]; });
+            return h('div', { key: sid, className: 'card', style: { padding: '12px 14px' } },
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
+                h('b', null, st.name),
+                h('span', { style: { fontSize: '0.78rem', fontWeight: 700, color: meta.color } }, meta.dot + ' ' + meta.label)),
+              sm.status === 'idle' ? h('p', { style: { fontSize: '0.85rem', color: 'var(--muted)', margin: '10px 0 0' } }, 'Em chưa làm câu nào từ lúc ' + fmtClock(sinceMs) + '.') : h('div', null,
+                h('div', { style: { fontSize: '1.5rem', fontWeight: 700, margin: '8px 0 2px' } }, 'Câu ' + sm.answered + (sm.target ? '/' + sm.target : '')),
+                h('div', { style: { fontSize: '0.85rem', color: 'var(--ink-2)' } },
+                  h('span', { style: { color: 'var(--good)', fontWeight: 700 } }, '✓ ' + sm.right), '  ',
+                  h('span', { style: { color: 'var(--critical)', fontWeight: 700 } }, '✗ ' + sm.wrong), '  · hoạt động ' + (sm.minutesAgo <= 0 ? 'vừa xong' : sm.minutesAgo + ' phút trước') + (sm.status === 'done' && typeof sm.latest.scaledScore10 === 'number' ? ' · điểm ' + sm.latest.scaledScore10.toFixed(2) : ''))),
+              h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' } },
+                myWrong.length ? h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.8rem' }, onClick: function(){ setOpenKey((myPending[0] || myWrong[0]).key); } }, '🖊️ Giảng câu sai (' + myPending.length + '/' + myWrong.length + ')') : null,
+                sm.latest ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ setReviewAttempt({ attempt: sm.latest, student: st }); } }, 'Xem cả lượt') : null));
+          })),
+        h('div', { className: 'card' },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' } },
+            h('h3', { style: { margin: 0, fontSize: '1rem' } }, '📋 Hàng đợi câu sai (' + pending.length + ' chưa giảng / ' + queue.length + ')'),
+            pending.length ? h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.85rem' }, onClick: function(){ setOpenKey(pending[0].key); } }, '▶ Bắt đầu giảng từ câu đầu') : null),
+          !queue.length ? h('p', { style: { fontSize: '0.88rem', color: 'var(--muted)', margin: 0 } }, 'Chưa có câu sai nào trong buổi. Khi em chấm câu sai, câu đó sẽ hiện ở đây ngay (không cần tải lại).') :
+            queue.map(function(it){
+              var done = !!doneMap[it.key];
+              return h('div', { key: it.key, style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 4px', borderBottom: '1px solid var(--line)', opacity: done ? 0.55 : 1, flexWrap: 'wrap' } },
+                h('b', { style: { minWidth: '110px' } }, it.studentName),
+                h('span', { style: { flex: 1, minWidth: '180px', fontSize: '0.85rem', color: 'var(--ink-2)' } },
+                  it.level ? it.level + ' · ' : '', it.nanoIds.length ? it.nanoIds.map(function(id){ var n = window.OPC_NANO && window.OPC_NANO.getNano(id); return n ? n.name : id; }).join(' + ') : 'câu ' + it.qId),
+                done ? h('span', { style: { fontSize: '0.78rem', color: 'var(--good)', fontWeight: 700 } }, '✓ đã giảng') : null,
+                h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, onClick: function(){ setOpenKey(it.key); } }, done ? 'Mở lại' : 'Mở câu này'));
+            }))
+      ),
+      openKey && queue.length ? h(TeachQuestionModal, { items: queue, startKey: openKey, attemptsByStudent: attemptsByStudent, doneMap: doneMap, onToggleDone: toggleDone, onClose: function(){ setOpenKey(null); } }) : null,
+      reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt.attempt, student: reviewAttempt.student, onClose: function(){ setReviewAttempt(null); } }) : null
+    );
+  }
+
   function PricingPanel(props){
     var OPCref = window.OPC;
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
@@ -8150,6 +8372,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa'),
         h('button',{type:'button', className:cx('tab-btn', tab==='curriculum' && 'active'), onClick:function(){ setTab('curriculum'); }}, '📚 Quản lý chương'),
         h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='room' && 'active'), onClick:function(){ setTab('room'); }}, '🎓 Phòng dạy'),
         h('button',{type:'button', className:cx('tab-btn', tab==='nano' && 'active'), onClick:function(){ setTab('nano'); }}, '🗺️ Nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='nanotag' && 'active'), onClick:function(){ setTab('nanotag'); }}, '🏷️ Gắn nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
@@ -8160,10 +8383,11 @@
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
             tab === 'curriculum' ? h(CurriculumPanel, {fireToast:fireToast}) : (
             tab === 'reports' ? h(ParentReportsPanel, {fireToast:fireToast}) : (
+              tab === 'room' ? h(TeachingRoomPanel, {fireToast:fireToast}) : (
               tab === 'nanotag' ? h(NanoTaggerPanel, {fireToast:fireToast}) : (
               tab === 'nano' ? h(NanoMapPanel, {fireToast:fireToast}) : (
               tab === 'pricing' ? h('div', null, h(ReferralSettingsCard, {fireToast:fireToast}), h(PricingPanel, {fireToast:fireToast})) : (
-                tab === 'special' ? h(SpecialBankPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast}))))
+                tab === 'special' ? h(SpecialBankPanel, {fireToast:fireToast}) : h(PersonalizedExamGeneratorPanel, {fireToast:fireToast})))))
             )
             )
           )
