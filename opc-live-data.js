@@ -180,6 +180,15 @@ async function saveAttempt(studentId, attempt){
     return saveErrorInfo(e);
   }
 }
+// THÊM 7/10/2026 — đánh dấu "em vừa hoạt động" (lastActivityAt) vào student_stats bằng merge (không đụng các trường khác),
+// để trang admin / "Hàng nhắc học" không coi em đang làm dở là "chưa làm bài". Lỗi thì bỏ qua (không quan trọng).
+async function touchActivity(studentId){
+  if(!studentId) return false;
+  try{
+    await setDoc(doc(db, 'student_stats', String(studentId)), { lastActivityAt: new Date().toISOString() }, { merge: true });
+    return true;
+  }catch(e){ console.warn('Không ghi được lastActivityAt:', e && e.code); return false; }
+}
 // Lưu nốt các bài còn tồn trên máy này của em (gọi ngay sau khi đăng nhập).
 async function flushPendingAttempts(studentId){
   var list = readPending().filter(function(x){ return x && x.studentId === studentId && x.record; });
@@ -656,6 +665,7 @@ window.OPC_LIVE = {
   loadPricingPlans: loadPricingPlans,
   loadReferralSettings: loadReferralSettings,
   loadNanoExtra: loadNanoExtra,
+  touchActivity: touchActivity,
   parseShortAnswer: parseShortAnswer,
   loadSpecialExamList: loadSpecialExamList,
   loadSpecialExam: loadSpecialExam,

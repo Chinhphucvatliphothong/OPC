@@ -2796,9 +2796,11 @@
         h('div', { className: 'hv-sum' },
           h('span', null, h('b', null, 'Ngày: '), fmtDate(attempt.createdAt)),
           h('span', null, h('b', null, 'Loại: '), HV_TYPE_LABEL[attempt.type] || attempt.type || '—'),
-          h('span', null, h('b', null, 'Điểm: '), typeof attempt.scaledScore10 === 'number' ? attempt.scaledScore10.toFixed(2) : '—'),
+          h('span', null, h('b', null, 'Điểm: '), attempt.partial ? '— (chưa nộp)' : (typeof attempt.scaledScore10 === 'number' ? attempt.scaledScore10.toFixed(2) : '—')),
           h('span', null, h('b', null, 'Đúng/Tổng: '), (attempt.correctCount != null ? attempt.correctCount : '—') + '/' + (attempt.totalQuestions != null ? attempt.totalQuestions : '—')),
           timeTxt ? h('span', null, h('b', null, 'Thời gian: '), timeTxt) : null),
+        attempt.partial ? h('div', { className: 'banner warn', style: { marginBottom: '12px' } }, h('span', null, '⏸️'),
+          h('div', null, 'Lượt này em CHƯA nộp bài (thoát giữa chừng hoặc còn đang làm). Chỉ gồm ' + (attempt.totalQuestions != null ? attempt.totalQuestions : 'các') + ' câu em đã bấm "Kiểm tra đáp án"; chưa tính vào điểm trung bình.')) : null,
         attempt.answers == null ? h('div', { className: 'banner warn', style: { marginBottom: '12px' } }, h('span', null, 'ℹ️'),
           h('div', null, 'Lượt làm này được lưu trước 24/9/2026 nên không có đáp án em đã chọn — chỉ xem được câu nào đúng/sai.')) : null,
         loading ? h('p', { style: { color: 'var(--muted)', fontSize: '0.9rem' } }, 'Đang tải nội dung câu hỏi…') :
@@ -2907,7 +2909,13 @@
         recentTrend: st.recentTrend != null ? st.recentTrend : s.recentTrend,
         recentAvgScore: st.recentAvgScore != null ? st.recentAvgScore : s.recentAvgScore,
         priorAvgScore: st.priorAvgScore != null ? st.priorAvgScore : s.priorAvgScore,
-        lastActiveAt: st.updatedAt || s.lastActiveAt // THÊM 6/10/2026 — cho "Hàng nhắc học"
+        // THÊM 6/10/2026 — cho "Hàng nhắc học"; SỬA 7/10/2026: lấy mốc MỚI HƠN giữa updatedAt (đồng bộ số liệu khi nộp bài) và
+        // lastActivityAt (em vừa chấm câu đầu của 1 phiên luyện thích ứng, có thể chưa nộp) — em đang làm dở không bị coi là "chưa làm bài"
+        lastActiveAt: (function(){
+          var a = st.updatedAt || null, b = st.lastActivityAt || null;
+          if(a && b) return new Date(a) >= new Date(b) ? a : b;
+          return a || b || s.lastActiveAt;
+        })()
       });
     });
 
@@ -3645,8 +3653,8 @@
                 h('tbody',null, selectedAttempts.slice(0, histAll ? 100 : 15).map(function(a){
                   return h('tr',{key:a.id, className:'hv-row', onClick:function(){ setReviewAttempt(a); }},
                     h('td',null, fmtDate(a.createdAt)),
-                    h('td',null, HV_TYPE_LABEL[a.type] || a.type || '—'),
-                    h('td',null, typeof a.scaledScore10 === 'number' ? a.scaledScore10.toFixed(2) : '—'),
+                    h('td',null, (HV_TYPE_LABEL[a.type] || a.type || '—'), a.partial ? h('span',{title:'Em chưa nộp bài — chỉ gồm các câu đã chấm', style:{marginLeft:'6px', fontSize:'0.7rem', fontWeight:700, color:'var(--accent-strong, #8a5410)'}}, 'LÀM DỞ') : null),
+                    h('td',null, a.partial ? '—' : (typeof a.scaledScore10 === 'number' ? a.scaledScore10.toFixed(2) : '—')),
                     h('td',null, (a.correctCount != null ? a.correctCount : '—') + '/' + (a.totalQuestions != null ? a.totalQuestions : '—')),
                     h('td',{style:{color:'var(--accent-strong)', fontWeight:600, whiteSpace:'nowrap'}}, '👁 Xem')
                   );

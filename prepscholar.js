@@ -411,6 +411,11 @@
     if(!attempts.length) return result;
 
     var sorted = attempts.slice().sort(function(a, b){ return new Date(a.createdAt) - new Date(b.createdAt); });
+    // THÊM 7/10/2026 — LƯỢT LÀM DỞ (partial:true): luyện thích ứng lưu tiến độ sau MỖI câu chấm, nên em thoát giữa chừng
+    // vẫn còn dữ liệu. Lượt dở được tính cho mastery/nano-point, chuyên đề và Sổ tay câu sai (đó là câu em đã thật sự
+    // làm), nhưng KHÔNG tính vào số đề đã làm, điểm TB/cao nhất, xu hướng, điểm dự đoán, Radar, XP (chưa nộp bài).
+    // Khi em nộp bài, bản ghi cùng clientId ghi đè bản dở nên không bao giờ tính trùng.
+    var finals = sorted.filter(function(a){ return !a.partial; });
 
     // Mastery theo chuyên đề: cộng dồn earnedScore/maxScore từ mọi lượt.
     var topicAgg = {};
@@ -456,8 +461,8 @@
 
     // Điểm dự đoán: trung bình tối đa 5 lượt Thi thử/Chẩn đoán gần nhất;
     // nếu chưa từng thi, tạm lấy trung bình mọi lượt luyện gần nhất.
-    var examLike = sorted.filter(function(a){ return a.type === 'exam' || a.type === 'diagnostic'; });
-    var pool = (examLike.length ? examLike : sorted).slice(-5);
+    var examLike = finals.filter(function(a){ return a.type === 'exam' || a.type === 'diagnostic'; });
+    var pool = (examLike.length ? examLike : finals).slice(-5);
     var scores = pool.map(function(a){ return Number(a.scaledScore10); }).filter(function(n){ return !isNaN(n); });
     if(scores.length) result.predicted = Math.round((scores.reduce(function(s, n){ return s + n; }, 0) / scores.length) * 10) / 10;
 
@@ -509,15 +514,15 @@
     result.mistakeTotal = result.mistakeLog.length;
     result.mistakeLog = result.mistakeLog.slice(0, 15);
 
-    result.radar5 = computeRadar5(sorted);
-    result.levelXp = computeLevelXP(sorted);
+    result.radar5 = computeRadar5(finals);
+    result.levelXp = computeLevelXP(finals);
     result.currentChuDe = getCurrentChuDe(result.mastery);
 
     // Đề đã làm / Điểm TB / Điểm cao nhất — tính trên MỌI lượt nộp bài thật
     // (Kiểm tra đầu vào, Drill, Thi thử, Luyện thích ứng, Đề được giao...),
     // không phân biệt loại, để khớp đúng nghĩa "Đề đã làm" trên trang admin.
-    result.completedExamsCount = sorted.length;
-    var scoreVals = sorted.map(function(a){ return Number(a.scaledScore10); }).filter(function(n){ return !isNaN(n); });
+    result.completedExamsCount = finals.length;
+    var scoreVals = finals.map(function(a){ return Number(a.scaledScore10); }).filter(function(n){ return !isNaN(n); });
     if(scoreVals.length){
       result.averageScore = Math.round((scoreVals.reduce(function(s, n){ return s + n; }, 0) / scoreVals.length) * 10) / 10;
       result.highestScore = Math.max.apply(null, scoreVals);
@@ -648,7 +653,7 @@
     var typesToday = {};
     attempts.forEach(function(a){
       var d = toDateSafe(a && a.createdAt);
-      if(d && localDayKey(d) === todayKey && a.type) typesToday[a.type] = true;
+      if(d && localDayKey(d) === todayKey && a.type && !a.partial) typesToday[a.type] = true; // lượt làm dở không tính là xong nhiệm vụ
     });
     var plan = { streakDays: computeStreakDays(attempts, now), tasks: [], needsDiagnostic: false, totalMinutes: 0, doneCount: 0, allDone: false };
     if(!attempts.length){

@@ -1865,6 +1865,8 @@
         questions: [firstQ],
         isSubmitted: false,
         targetCount: targetCount,
+        clientId: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), // THÊM 7/10/2026 — id bản ghi của phiên (lưu tiến độ + nộp bài dùng chung)
+        startedAtIso: new Date().toISOString(),
         initialTimeSec: targetCount * 90
       };
       setExamSession(session);
@@ -1880,6 +1882,40 @@
       // Xin AI sắp xếp ưu tiên Tag cho các câu TIẾP THEO (không chặn câu đầu
       // tiên — câu đầu luôn dùng ngay thuật toán rule-based ở trên).
       fetchAiAdaptivePriority(seedMastery);
+    }
+
+    // THÊM 7/10/2026 — LƯU TIẾN ĐỘ LUYỆN THÍCH ỨNG SAU MỖI CÂU ĐÃ CHẤM. Trước đây chỉ lưu khi nộp (đủ số câu hoặc bấm "Dừng &
+    // chấm điểm") nên em đóng trang giữa chừng là MẤT hết, admin cũng không thấy em đã làm gì. Nay mỗi câu chấm xong ghi bản
+    // "làm dở" (partial:true) vào đúng doc students/{id}/attempts/{clientId}; khi nộp bài, bản ghi đầy đủ cùng clientId ghi đè.
+    // Lỗi mạng: saveAttempt tự giữ bản ghi trên máy và lưu lại sau (xem opc-live-data.js) — không làm phiền em bằng cảnh báo.
+    function saveAdaptiveProgress(sessQuestions, answersNow){
+      if(!student || !student.isLive || !window.OPC_LIVE || !window.OPC_LIVE.saveAttempt) return;
+      if(!examSession || !examSession.clientId || !sessQuestions || !sessQuestions.length) return;
+      var scoredP = window.PrepScholarEngine.scoreExam(sessQuestions, answersNow);
+      var lists = buildAttemptQuestionLists(scoredP);
+      var rec = {
+        clientId: examSession.clientId,
+        createdAt: examSession.startedAtIso || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        type: 'adaptive',
+        partial: true,
+        topicKey: null,
+        assignedExamId: null,
+        scaledScore10: scoredP.scaledScore10,
+        correctCount: scoredP.correctCount,
+        totalQuestions: scoredP.totalQuestions,
+        topicStats: scoredP.topicStats,
+        wrongQuestions: lists.wrongQuestions,
+        rightQuestions: lists.rightQuestions,
+        answers: answersNow,
+        questionIds: sessQuestions.map(function(q){ return q.id; })
+      };
+      var firstOfSession = sessQuestions.length === 1;
+      window.OPC_LIVE.saveAttempt(student.id, rec).then(function(r){
+        if(r && r.ok === false) console.warn('Chưa lưu được tiến độ luyện thích ứng (sẽ tự thử lại):', r.error);
+        // lần chấm đầu tiên của phiên: đánh dấu "em vừa hoạt động" để admin/Hàng nhắc học không coi em là chưa làm bài
+        if(firstOfSession && window.OPC_LIVE.touchActivity) window.OPC_LIVE.touchActivity(student.id);
+      });
     }
 
     // Chấm NGAY câu hỏi thích ứng hiện tại (câu cuối cùng trong
@@ -1906,6 +1942,7 @@
       });
       setAdaptiveLastResult(res);
       setAdaptiveChecked(true);
+      saveAdaptiveProgress(examSession.questions, userAnswers);
     }
 
     // Chọn và nối thêm câu hỏi TIẾP THEO dựa trên adaptiveNanoMastery vừa cập
@@ -1968,6 +2005,18 @@
     }
 
     // Nộp bài và chấm điểm
+    // THÊM 7/10/2026 — dựng danh sách câu sai/câu đúng (kèm nanoId(s), mức, phần, có ảnh…) từ kết quả chấm — dùng CHUNG
+    // cho bản ghi nộp bài (handleSubmitExam) và bản ghi tiến độ làm dở của luyện thích ứng (saveAdaptiveProgress).
+    function buildAttemptQuestionLists(scored){
+      var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
+        return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+      });
+      var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
+        return { qId: r.question.id, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+      });
+      return { wrongQuestions: wrongQuestions, rightQuestions: rightQuestions };
+    }
+
     // SỬA 4/10/2026 — onlyQuestions (tuỳ chọn, MẢNG): chỉ chấm/lưu đúng các câu này. Dùng cho "Dừng & chấm
     // điểm" của luyện tập thích ứng: câu hiện tại CHƯA chấm không được tính (trước đây vẫn bị tính là câu bỏ
     // trống dù hộp thoại ghi "N-1 câu đã làm"). Hàm này cũng được gắn trực tiếp vào onClick nên tham số đầu có
@@ -2077,12 +2126,8 @@
         // liệu câu hỏi đã có sẵn (q.part, q.images), KHÔNG cần giáo viên gắn
         // nhãn thủ công gì thêm. Lượt làm bài TRƯỚC 23/9/2026 không có 2
         // trường này — computeRadar5 tự bỏ qua, không tính sai lệch.
-        var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
-        });
-        var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
-          return { qId: r.question.id, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
-        });
+        var lists = buildAttemptQuestionLists(scored);
+        var wrongQuestions = lists.wrongQuestions, rightQuestions = lists.rightQuestions;
         // timeAllocatedSec/timeUsedSec: THÊM từ 23/9/2026 để tính chiều "Tính
         // nhanh" của Radar — examSession.initialTimeSec là ngân sách thời
         // gian lúc bắt đầu (xem các hàm start*), timeLeft là số giây còn lại
@@ -2092,7 +2137,8 @@
         var attemptRecord = {
           // clientId + createdAt: THÊM 1/10/2026 — lưu lại nhiều lần vẫn chỉ ra 1 doc, và
           // giờ nộp bài được giữ nguyên dù lưu muộn (xem saveAttempt trong opc-live-data.js).
-          clientId: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+          // SỬA 7/10/2026 — luyện thích ứng đã có clientId từ lúc bắt đầu phiên (bản làm dở đã lưu cùng id) nên bản nộp bài GHI ĐÈ bản dở
+          clientId: examSession.clientId || ('a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
           createdAt: new Date().toISOString(),
           type: examSession.type,
           topicKey: examSession.topicKey || null,

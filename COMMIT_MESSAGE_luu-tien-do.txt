@@ -1,0 +1,9 @@
+Lưu tiến độ luyện thích ứng sau mỗi câu chấm (không mất dữ liệu khi thoát giữa chừng); sửa trang admin trắng
+
+- prepscholar-ui.js: phiên thích ứng có clientId; mỗi câu chấm ghi bản "làm dở" (partial) vào students/{id}/attempts/{clientId},
+  nộp bài ghi đè cùng id; dùng chung buildAttemptQuestionLists
+- opc-live-data.js: touchActivity (student_stats.lastActivityAt, merge)
+- prepscholar.js: lượt dở tính cho mastery/Sổ tay nhưng không tính điểm TB/số đề/dự đoán/Radar/XP/nhiệm vụ hôm nay
+- admin.html: nhãn "LÀM DỞ" + giải thích; Hàng nhắc học dùng mốc hoạt động mới nhất; SỬA hook sau return gây trắng trang
+
+Co-Authored-By: Claude <noreply@anthropic.com>
