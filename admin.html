@@ -1531,6 +1531,8 @@
       '.toolbar select,.toolbar input[type=number]{font:inherit;padding:3px 6px;border-radius:6px;border:1px solid #4b5563;background:#1f2530;color:#fff;}' +
       '.toolbar input[type=number]{width:62px;}' +
       '.toolbar button{margin-left:auto;cursor:pointer;font:700 14px "Be Vietnam Pro",sans-serif;padding:8px 18px;border-radius:8px;border:0;background:#e6c27a;color:#14181f;}' +
+      '.toolbar button.tb-reset{margin-left:auto;background:transparent;color:#e6c27a;border:1px solid #6b5a33;font-weight:600;}' +
+      '.toolbar button.tb-reset + button{margin-left:0;}' +
       '.toolbar .tb-hint{flex-basis:100%;font-size:12px;color:#a8a29e;}' +
       '.sheet{width:180mm;max-width:calc(100vw - 24px);margin:18px auto 40px;background:#fff;padding:12mm 10mm;box-shadow:0 4px 24px rgba(0,0,0,.12);position:relative;}' +
       '.watermark{position:fixed;top:50%;left:50%;width:95mm;transform:translate(-50%,-50%);opacity:.045;pointer-events:none;z-index:0;}' +
@@ -1546,6 +1548,12 @@
       '.code-box b{font-size:12pt;}' +
       '.doc-title{text-align:center;font-size:1.32em;margin:16px 0 2px;text-transform:uppercase;letter-spacing:.01em;}' +
       '.doc-sub{text-align:center;font-style:italic;font-size:.93em;color:#333;}' +
+      '.doc-note{text-align:center;font-size:.93em;color:#333;margin-top:1px;}' +
+      '[contenteditable]{outline:none;border-radius:3px;}' +
+      '@media screen{[contenteditable]:hover{box-shadow:0 0 0 1px #d9b46a;background:#fffaf0;}' +
+        '[contenteditable]:focus{box-shadow:0 0 0 2px #b0812f;background:#fffaf0;}' +
+        '[contenteditable]:empty:before{content:attr(data-ph);color:#b8a98a;font-style:italic;text-transform:none;}}' +
+      '@media print{.doc-note:empty{display:none;} .code-box:has(b:empty){display:none;}}' +
       '.student-box{display:grid;grid-template-columns:1fr auto;gap:10px;margin:12px 0 14px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:#fbfaf7;}' +
       '.student-box .row{display:flex;gap:6px;align-items:baseline;margin:3px 0;}' +
       '.dots{flex:1;min-width:30mm;border-bottom:1px dotted #555;height:1em;}' +
@@ -1600,6 +1608,19 @@
       'function setOpt(cls,on){document.body.classList.toggle(cls,!!on);}' +
       'function setFs(v){document.body.classList.remove("fs-11","fs-13");if(v!=="12")document.body.classList.add("fs-"+v);layoutOpts();}' +
       'function setDur(v){var e=document.getElementById("dur");if(e)e.textContent=v||"…";}' +
+      // SỬA 9/10/2026 — tiêu đề tự sửa: nhớ theo từng đề (localStorage cùng nguồn với trang admin), tên file PDF theo tiêu đề
+      'var ED_KEY=' + JSON.stringify(cfg.storeKey ? 'faraday_print_' + cfg.storeKey : '') + ',ED_DEF=null;' +
+      'function edEls(){return Array.prototype.slice.call(document.querySelectorAll("[data-ed]"));}' +
+      'function syncTitle(){var t=document.querySelector(".doc-title");if(t&&t.textContent.trim())document.title=t.textContent.trim()+" — FaradayAI.vn";}' +
+      'function edSave(){if(!ED_KEY)return;var o={};edEls().forEach(function(e){o[e.getAttribute("data-ed")]=e.innerHTML;});try{localStorage.setItem(ED_KEY,JSON.stringify(o));}catch(x){}}' +
+      'function edReset(){if(ED_DEF)edEls().forEach(function(e){var k=e.getAttribute("data-ed");if(k in ED_DEF)e.innerHTML=ED_DEF[k];});try{localStorage.removeItem(ED_KEY);}catch(x){}syncTitle();}' +
+      'var ED_INIT=false;function edInit(){if(ED_INIT||!document.querySelector(".doc-note"))return;ED_INIT=true;ED_DEF={};edEls().forEach(function(e){ED_DEF[e.getAttribute("data-ed")]=e.innerHTML;});' +
+        'var saved=null;try{saved=ED_KEY&&JSON.parse(localStorage.getItem(ED_KEY)||"null");}catch(x){}' +
+        'if(saved)edEls().forEach(function(e){var k=e.getAttribute("data-ed");if(typeof saved[k]==="string")e.innerHTML=saved[k];});syncTitle();' +
+        'edEls().forEach(function(e){e.addEventListener("input",function(){if(!e.textContent.trim())e.innerHTML="";syncTitle();edSave();});' +
+          'e.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();e.blur();}});' +
+          'e.addEventListener("paste",function(ev){ev.preventDefault();var t=(ev.clipboardData||window.clipboardData).getData("text");document.execCommand("insertText",false,t.replace(/\\s+/g," "));});});}' +
+      'document.addEventListener("DOMContentLoaded",edInit);[50,300,1000].forEach(function(t){setTimeout(edInit,t);});' +
       // Tab được ghi bằng document.write nên sự kiện "load" không chắc xảy ra → xếp lại nhiều nhịp cho chắc
       'document.addEventListener("DOMContentLoaded",layoutOpts);[300,1200,3000].forEach(function(t){setTimeout(layoutOpts,t);});' +
       'if(document.fonts&&document.fonts.ready)document.fonts.ready.then(layoutOpts);' +
@@ -1624,20 +1645,22 @@
         '<label><input type="checkbox" checked onchange="setOpt(\'no-wm\',!this.checked)"> Logo chìm</label>' +
         '<label>Cỡ chữ <select onchange="setFs(this.value)"><option value="11">Nhỏ</option><option value="12" selected>Vừa</option><option value="13">Lớn</option></select></label>' +
         '<label>Thời gian <input type="number" min="5" max="180" value="' + (cfg.durationMin || 50) + '" oninput="setDur(this.value)"> phút</label>' +
+        '<button type="button" class="tb-reset" onclick="edReset()" title="Trả tiêu đề, mã đề, ghi chú về như lúc tạo tự động">↺ Tiêu đề tự động</button>' +
         '<button type="button" onclick="layoutOpts();window.print()">In / Lưu PDF</button>' +
-        '<span class="tb-hint">Mặc định là bản phát cho học sinh (không đáp án). Hộp thoại in: chọn khổ A4, lề Mặc định, bật “Đồ hoạ nền” → “Lưu dưới dạng PDF”. Trên iPad: Chia sẻ → In → Chia sẻ → Lưu vào Tệp.</span>' +
+        '<span class="tb-hint">✏️ Bấm thẳng vào nhãn đề, mã đề, tiêu đề, dòng mô tả hoặc dòng ghi chú để sửa (tự nhớ cho lần xuất sau của đề này). Mặc định là bản phát cho học sinh (không đáp án). Hộp thoại in: chọn khổ A4, lề Mặc định, bật “Đồ hoạ nền” → “Lưu dưới dạng PDF”. Trên iPad: Chia sẻ → In → Chia sẻ → Lưu vào Tệp.</span>' +
       '</div>' +
       '<img class="watermark" src="' + ((cfg.logos && cfg.logos.mark) || (origin + '/logo-mark.svg')) + '" alt="">' +
       '<main class="sheet">' +
         '<header class="doc-head">' +
           '<div><img class="brand-logo" src="' + ((cfg.logos && cfg.logos.horizontal) || (origin + '/logo-horizontal.svg')) + '" alt="FaradayAI">' +
           '<div class="brand-sub"><b>FaradayAI.vn</b> · Luyện thi Tốt nghiệp THPT môn Vật lí</div></div>' +
-          '<div class="exam-id"><div class="exam-kicker">' + escapeHtmlPDF(cfg.kicker || 'Đề luyện tập') + '</div>' +
-          (cfg.examCode ? '<div class="code-box">Mã đề <b>' + escapeHtmlPDF(cfg.examCode) + '</b></div>' : '') + '</div>' +
+          // SỬA 9/10/2026 — các dòng tiêu đề sửa trực tiếp được (contenteditable, data-ed = khoá lưu)
+          '<div class="exam-id"><div class="exam-kicker" contenteditable="true" spellcheck="false" data-ed="kicker" data-ph="Nhãn đề">' + escapeHtmlPDF(cfg.kicker || 'Đề luyện tập') + '</div>' +
+          '<div class="code-box">Mã đề <b contenteditable="true" spellcheck="false" data-ed="code" data-ph="…">' + escapeHtmlPDF(cfg.examCode || '') + '</b></div></div>' +
         '</header>' +
-        '<h1 class="doc-title">' + escapeHtmlPDF(cfg.heading || 'Đề luyện thi Vật lí 12') + '</h1>' +
-        '<div class="doc-sub">Môn: Vật lí 12 · Thời gian làm bài: <span id="dur">' + (cfg.durationMin || 50) + '</span> phút, không kể thời gian phát đề · ' + qs.length + ' câu' +
-          (cfg.note ? ' · ' + escapeHtmlPDF(cfg.note) : '') + '</div>' +
+        '<h1 class="doc-title" contenteditable="true" spellcheck="false" data-ed="title" data-ph="Nhập tiêu đề đề thi">' + escapeHtmlPDF(cfg.heading || 'Đề luyện thi Vật lí 12') + '</h1>' +
+        '<div class="doc-sub" contenteditable="true" spellcheck="false" data-ed="sub">Môn: Vật lí 12 · Thời gian làm bài: <span id="dur">' + (cfg.durationMin || 50) + '</span> phút, không kể thời gian phát đề · ' + qs.length + ' câu</div>' +
+        '<div class="doc-note" contenteditable="true" spellcheck="false" data-ed="note" data-ph="＋ Thêm dòng ghi chú (vd. Kiểm tra 15 phút — Lớp 12A1)">' + escapeHtmlPDF(cfg.note || '') + '</div>' +
         '<div class="student-box"><div>' + studentRow + '</div><div class="score-box">ĐIỂM<div></div></div></div>' +
         bodyHtml +
         '<section class="answer-section">' +
@@ -1695,6 +1718,7 @@
       logos: logos,
       docTitle: seqLabel + ' — ' + ((student && student.name) || '') + ' — FaradayAI.vn',
       kicker: seqLabel + (ae.sourceType === 'soTruong' ? ' · Đề Sở/Trường' : ''),
+      storeKey: 'ae_' + ((student && student.id) || '') + '_' + (ae.id || ae.examCode || ae.seq || ''),
       heading: ae.title || 'Đề luyện thi cá nhân hoá',
       examCode: ae.examCode || '',
       studentName: (student && student.name) || '',
@@ -1717,6 +1741,7 @@
         logos: logos,
         docTitle: (exam.title || 'Đề') + ' — FaradayAI.vn',
         kicker: exam.examKind === 'soTruong' ? 'Đề Sở/Trường' : 'Đề luyện tập',
+        storeKey: 'bank_' + exam.id,
         heading: exam.title || 'Đề luyện thi Vật lí 12',
         examCode: '',
         studentName: '',
