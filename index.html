@@ -290,6 +290,17 @@
   .about-fact{ background: var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; box-shadow: var(--shadow); }
   .about-fact .v{ font-family:"Literata",serif; font-weight:700; font-size:1.7rem; color: var(--accent); line-height:1.1; }
   .about-fact .l{ font-size:0.84rem; color: var(--ink-2); margin-top:6px; line-height:1.45; }
+  .about-split{ display:grid; grid-template-columns: 1.25fr 1fr; gap: 18px; margin-top: 30px; }
+  @media (max-width: 900px){ .about-split{ grid-template-columns: 1fr; } }
+  .about-col{ background: var(--surface); border:1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 12px; padding: 22px 24px; box-shadow: var(--shadow); }
+  .about-col.teacher{ background: var(--surface-2); }
+  .about-pct{ font-family:"Literata",serif; font-weight:700; font-size:2rem; color: var(--accent); line-height:1; }
+  .about-col h3{ font-family:"Be Vietnam Pro",sans-serif; font-size:1.02rem; font-weight:700; margin-top:8px; }
+  .about-col p{ color: var(--ink-2); font-size:0.92rem; line-height:1.6; margin-top:8px; }
+  .about-col ul{ list-style:none; padding:0; margin:12px 0 0; display:grid; gap:10px; }
+  .about-col li{ position:relative; padding-left:18px; color: var(--ink-2); font-size:0.92rem; line-height:1.6; }
+  .about-col li:before{ content:""; position:absolute; left:2px; top:0.62em; width:7px; height:7px; border-radius:50%; background: var(--accent); }
+  .about-col li b{ color: var(--ink); }
   .about-name{ margin-top: 36px; background: var(--navy); color: var(--on-navy); border-radius: 14px; padding: 24px 26px; display:grid; grid-template-columns: 1fr 1.6fr; gap: 26px; }
   @media (max-width: 900px){ .about-name{ grid-template-columns: 1fr; } }
   .about-name h3{ font-family:"Literata",serif; font-size:1.3rem; line-height:1.35; }
@@ -797,8 +808,6 @@
       <a href="#luyen-thi-prepscholar" style="font-weight:700; color:var(--accent-strong);">⚡ Luyện thi PrepScholar</a>
       <a href="#gioi-thieu">Giới thiệu</a>
       <a href="#cach-hoat-dong">Cách hoạt động</a>
-      <a href="#tao-de">Tạo đề</a>
-      <a href="#quan-ly-hoc-sinh">Quản lý học sinh</a>
       <a href="#giang-day">Giảng dạy</a>
       <a href="#ban-do-nang-luc">Bản đồ năng lực</a>
       <a href="#lo-trinh">Lộ trình tuần</a>
@@ -812,10 +821,10 @@
 <header class="hero">
   <div class="wrap">
     <div class="eyebrow">Mô hình luyện thi theo chuyên đề · Vật Lí 12</div>
-    <h1>Luyện đúng chuyên đề đang yếu, thay vì làm đề tràn lan.</h1>
-    <p class="lede">FaradayAI chấm điểm đề chẩn đoán theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — thay vì phát một bộ đề chung cho cả lớp rồi chờ đến khi kiểm tra mới biết học sinh yếu ở đâu.</p>
+    <h1>Luyện đúng chuyên đề đang yếu, được thiết kế giúp em đạt thành tích Xuất Sắc.</h1>
+    <p class="lede">FaradayAI chấm điểm đề chẩn đoán theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — phương pháp học tập cá nhân hoá dành cho mọi học sinh, trí tuệ nhân tạo (AI) tự điều chỉnh theo thời gian thực dựa trên điểm mạnh và điểm yếu của từng em.</p>
     <div class="hero-ctas">
-      <a class="btn btn-primary" href="#tao-de">Thử công cụ tạo đề ↓</a>
+      <a class="btn btn-primary" href="#gioi-thieu">Tìm hiểu phương pháp ↓</a>
       <a class="btn btn-ghost" href="#lien-he">Đăng ký học</a>
     </div>
     <figure class="wave-figure">
@@ -849,18 +858,39 @@
 <section id="gioi-thieu">
   <div class="wrap">
     <div class="kicker">Giới thiệu về chúng tôi</div>
-    <h2 class="section-title">FaradayAI — học thích ứng bằng AI, có thầy đồng hành</h2>
+    <h2 class="section-title">FaradayAI: Nền tảng học thích ứng — Trí tuệ nhân tạo dẫn lối, người thầy đồng hành</h2>
     <div class="about-grid">
       <div class="about-text">
-        <p><b>FaradayAI</b> (faradayai.vn) là nền tảng luyện thi Tốt nghiệp THPT môn Vật lí theo mô hình <b>học tập thích ứng bằng trí tuệ nhân tạo</b>, do một giáo viên đang trực tiếp luyện thi Vật lí 12 xây dựng và vận hành. Thay vì phát một bộ đề chung cho cả lớp, FaradayAI tìm ra chính xác từng em đang hổng kiến thức ở đâu, vì sao hổng, và nên luyện gì tiếp theo.</p>
-        <p>Cốt lõi của hệ thống là <b>bản đồ kiến thức chia nhỏ đến từng nano-point</b>, tức đơn vị kiến thức nhỏ nhất có thể kiểm tra riêng. Các nano-point được nối với nhau bằng quan hệ tiên quyết và “gốc lỗi”. Khi học sinh làm sai, hệ thống lần ngược về đúng phần kiến thức gốc bị hổng thay vì chỉ bắt làm lại câu đó. Mọi câu hỏi trong ngân hàng đề đều được gắn nano-point và mức độ nhận thức M1–M4 theo chuẩn của Bộ GD&amp;ĐT.</p>
-        <p>FaradayAI vận hành theo tỉ lệ <b>khoảng 70% hệ thống, 30% giáo viên</b>. AI lo phần việc lặp lại: chấm chẩn đoán, chọn câu đúng chỗ yếu, nhắc ôn lại câu sai theo nhịp giãn cách và gửi báo cáo cho phụ huynh mỗi tuần. Nhờ vậy, thầy dành thời gian cho phần máy chưa làm thay được: giảng lại phần học sinh còn vướng, chữa câu sai trực tiếp bằng bút trên màn hình trong buổi học online, và điều chỉnh lộ trình theo tình hình thực tế của từng em.</p>
+        <p><b>FaradayAI</b> (faradayai.vn) là nền tảng luyện thi Tốt nghiệp THPT môn Vật lí ứng dụng mô hình <b>học tập thích ứng</b>, được sáng lập và vận hành bởi chính một giáo viên đang trực tiếp luyện thi Vật lí 12. Thay cho cách “một bộ đề chung cho cả lớp”, FaradayAI xây dựng lộ trình riêng cho từng học sinh: định vị chính xác từng lỗ hổng kiến thức, tìm ra nguyên nhân gốc và chỉ ra bước luyện tập tiếp theo.</p>
+        <p>Điểm khác biệt nằm ở công thức vận hành: <b>khoảng 70% do hệ thống tự động đảm nhận, 30% do giáo viên trực tiếp huấn luyện.</b></p>
       </div>
       <div class="about-facts">
         <div class="about-fact"><div class="v">4</div><div class="l">chủ đề thi tốt nghiệp: Vật lí nhiệt, Khí lí tưởng, Từ trường, Vật lí hạt nhân</div></div>
         <div class="about-fact"><div class="v">100+</div><div class="l">nano-point kiến thức của 4 chương thi, nối với nhau bằng quan hệ tiên quyết và gốc lỗi</div></div>
         <div class="about-fact"><div class="v">M1–M4</div><div class="l">bốn mức độ nhận thức gắn cho từng câu trong ngân hàng đề</div></div>
         <div class="about-fact"><div class="v">Mỗi tuần</div><div class="l">lộ trình được cập nhật lại và báo cáo được gửi cho phụ huynh</div></div>
+      </div>
+    </div>
+    <div class="about-split">
+      <div class="about-col">
+        <div class="about-pct">70%</div>
+        <h3>Trí tuệ nhân tạo đảm nhận phần việc lặp lại</h3>
+        <ul>
+          <li><b>Truy vết tận gốc bằng nano-point.</b> Bản đồ kiến thức được chia nhỏ đến từng nano-point — đơn vị kiến thức nhỏ nhất có thể kiểm tra độc lập — liên kết với nhau bằng quan hệ tiên quyết và “gốc lỗi”.</li>
+          <li><b>Lấp lỗ hổng thông minh.</b> Khi học sinh làm sai, hệ thống không bắt làm lại một cách máy móc mà lần ngược về đúng phần kiến thức gốc bị hổng để củng cố.</li>
+          <li><b>Tối ưu chu trình luyện tập.</b> Tự động chấm bài chẩn đoán, chọn câu hỏi đánh trúng điểm yếu và nhắc ôn lại câu sai theo nhịp giãn cách khoa học.</li>
+          <li><b>Đo lường chuẩn xác.</b> Mỗi câu hỏi trong ngân hàng đề được gắn nano-point và phân loại theo 4 mức độ nhận thức M1–M4 theo chuẩn của Bộ GD&amp;ĐT.</li>
+          <li><b>Minh bạch tiến độ.</b> Lộ trình được cập nhật tự động; phụ huynh nhận báo cáo chi tiết mỗi tuần.</li>
+        </ul>
+      </div>
+      <div class="about-col teacher">
+        <div class="about-pct">30%</div>
+        <h3>Dấu ấn người thầy — huấn luyện viên thấu hiểu</h3>
+        <p>Khi AI đã gánh phần việc lặp lại, thầy dành trọn thời gian cho những giá trị sư phạm mà máy móc không thay thế được:</p>
+        <ul>
+          <li><b>Tháo gỡ điểm nghẽn.</b> Thầy trực tiếp giảng lại những khái niệm khó, những vướng mắc trong tư duy của học sinh — chữa bài bằng bút ngay trên màn hình trong buổi học online.</li>
+          <li><b>Linh hoạt chiến thuật.</b> Không cứng nhắc theo máy, thầy là người cầm trịch, chủ động điều chỉnh lộ trình bám sát tâm lý và tiến bộ thực tế của từng em.</li>
+        </ul>
       </div>
     </div>
     <div class="about-name">
@@ -917,7 +947,8 @@
   </div>
 </section>
 
-<section id="tao-de" style="background:var(--surface-2); border-block:1px solid var(--line);">
+<!-- SỬA 9/10/2026 — ẩn 2 khu "Bên trong công cụ" (Tạo đề, Quản lý học sinh) khỏi trang giới thiệu; giữ code để bật lại: xoá thuộc tính hidden -->
+<section id="tao-de" hidden style="background:var(--surface-2); border-block:1px solid var(--line);">
   <div class="wrap">
     <div class="demo-label"><span class="dot"></span>Minh hoạ tương tác — giao diện điều khiển dành cho giáo viên</div>
     <div class="kicker">Bên trong công cụ</div>
@@ -927,7 +958,7 @@
   </div>
 </section>
 
-<section id="quan-ly-hoc-sinh" style="background:var(--surface-2); border-block:1px solid var(--line);">
+<section id="quan-ly-hoc-sinh" hidden style="background:var(--surface-2); border-block:1px solid var(--line);">
   <div class="wrap">
     <div class="demo-label"><span class="dot"></span>Minh hoạ tương tác — bảng điều khiển dành cho giáo viên</div>
     <div class="kicker">Bên trong công cụ</div>
