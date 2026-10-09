@@ -1552,7 +1552,10 @@
         questions: questions,
         isSubmitted: false,
         initialTimeSec: questions.length * 120,
-        assignedExamId: ae.id
+        assignedExamId: ae.id,
+        // THÊM 9/10/2026 — id bản ghi của phiên: lưu tiến độ "làm dở" (Phòng dạy của thầy xem trực tiếp) + nộp bài dùng chung 1 doc
+        clientId: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        startedAtIso: new Date().toISOString()
       };
       setExamSession(session);
       setUserAnswers({});
@@ -1919,6 +1922,62 @@
       });
     }
 
+    // THÊM 9/10/2026 — LƯU TIẾN ĐỘ ĐỀ THẦY GIAO khi em đang làm (để tab "🎓 Phòng dạy" của thầy thấy em đang ở câu mấy,
+    // câu nào đã làm sai). Chỉ chấm các câu EM ĐÃ TRẢ LỜI; lưu chậm 2 giây sau lần chọn cuối (tránh ghi liên tục).
+    // assignedExamId để null + liveAssignedExamId = id đề: bản dở KHÔNG bị coi là "đã làm đề giao" ở trang học sinh;
+    // khi nộp bài, bản ghi đầy đủ cùng clientId ghi đè (assignedExamId thật).
+    var assignedSaveTimerRef = React.useRef(0);
+    function answeredOf(qs, answersNow){
+      return (qs || []).filter(function(q){
+        var ua = answersNow ? answersNow[q.id] : undefined;
+        if(ua === undefined || ua === null || ua === '' || ua === 'Chưa chọn') return false;
+        if(typeof ua === 'object') return Object.keys(ua).length > 0;
+        return String(ua).trim() !== '';
+      });
+    }
+    function saveAssignedProgress(sess, answersNow){
+      if(!student || !student.isLive || !window.OPC_LIVE || !window.OPC_LIVE.saveAttempt) return;
+      if(!sess || sess.type !== 'assigned' || sess.isSubmitted || sess.reviewOnly || !sess.clientId) return;
+      var done = answeredOf(sess.questions, answersNow);
+      if(!done.length) return;
+      var scoredP = window.PrepScholarEngine.scoreExam(done, answersNow);
+      var lists = buildAttemptQuestionLists(scoredP);
+      var rec = {
+        clientId: sess.clientId,
+        createdAt: sess.startedAtIso || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        type: 'assigned',
+        partial: true,
+        targetCount: sess.questions.length,
+        topicKey: null,
+        assignedExamId: null,
+        liveAssignedExamId: sess.assignedExamId || null,
+        examTitle: sess.title || '',
+        scaledScore10: scoredP.scaledScore10,
+        correctCount: scoredP.correctCount,
+        totalQuestions: scoredP.totalQuestions,
+        topicStats: scoredP.topicStats,
+        wrongQuestions: lists.wrongQuestions,
+        rightQuestions: lists.rightQuestions,
+        answers: answersNow,
+        questionIds: sess.questions.map(function(q){ return q.id; })
+      };
+      window.OPC_LIVE.saveAttempt(student.id, rec).then(function(r){
+        if(r && r.ok === false) console.warn('Chưa lưu được tiến độ đề được giao (sẽ tự thử lại):', r.error);
+      });
+    }
+    React.useEffect(function(){
+      if(!examSession || examSession.type !== 'assigned' || examSession.isSubmitted || examSession.reviewOnly) return;
+      var sess = examSession, ans = userAnswers;
+      if(assignedSaveTimerRef.current) clearTimeout(assignedSaveTimerRef.current);
+      assignedSaveTimerRef.current = setTimeout(function(){
+        assignedSaveTimerRef.current = 0;
+        if(submittedSessionRef.current === sess) return; // đã nộp — bản nộp đầy đủ đã/đang ghi
+        saveAssignedProgress(sess, ans);
+      }, 2000);
+      return function(){ if(assignedSaveTimerRef.current){ clearTimeout(assignedSaveTimerRef.current); assignedSaveTimerRef.current = 0; } };
+    }, [userAnswers, examSession]);
+
     // Chấm NGAY câu hỏi thích ứng hiện tại (câu cuối cùng trong
     // examSession.questions) và cập nhật adaptiveNanoMastery tức thì — đây
     // chính là bước "thích ứng trong lúc làm bài" mà Diagnostic/Drill/Thi thử
@@ -2145,6 +2204,7 @@
           type: examSession.type,
           topicKey: examSession.topicKey || null,
           assignedExamId: examSession.assignedExamId || null,
+          examTitle: examSession.title || '', // THÊM 9/10/2026 — Phòng dạy hiện tên đề
           scaledScore10: scored.scaledScore10,
           correctCount: scored.correctCount,
           totalQuestions: scored.totalQuestions,
