@@ -1425,7 +1425,8 @@
     return String(v).replace('.', ',');
   }
   function pdfQuestionHtml(q, num){
-    var out = '<div class="q-card">';
+    // THÊM 10/10/2026 — nút ▦ (chỉ hiện trên màn hình) bật/tắt khung ô li dưới từng câu để viết tay khi quay video
+    var out = '<div class="q-card"><button type="button" class="q-ruled-btn" onclick="toggleRuled(this)" title="Bật/tắt khung ô li dưới câu này">▦ Ô li</button>';
     out += '<div class="q-stem"><span class="q-num">Câu ' + num + '.</span> ' + latexToHtmlPDF(q.stem) + '</div>';
     out += pdfImagesHtml(q.images);
     if(q.part === 'II' && q.statements && q.statements.length){
@@ -1443,7 +1444,7 @@
         return '<div class="q-opt' + (isCorrect ? ' is-correct' : '') + '"><b class="opt-key">' + escapeHtmlPDF(o.key) + '.</b> ' + latexToHtmlPDF(o.text) + '</div>';
       }).join('') + '</div>';
     }
-    out += '</div>';
+    out += '<div class="q-ruled"></div></div>';
     return out;
   }
   // Đáp án ngắn gọn của 1 câu (dùng cho bảng đáp án + phần lời giải)
@@ -1517,14 +1518,12 @@
 
     var fill = function(v){ return v ? '<b>' + escapeHtmlPDF(v) + '</b>' : '<span class="dots"></span>'; };
     var css =
-      '@page{size:A4;margin:14mm 15mm 16mm;' +
-        '@bottom-left{content:"FaradayAI.vn · Luyện thi Vật lí 12";font:8.5pt "Be Vietnam Pro",Arial,sans-serif;color:#8a6d2f;}' +
-        '@bottom-right{content:"Trang " counter(page) "/" counter(pages);font:8.5pt "Be Vietnam Pro",Arial,sans-serif;color:#555;}}' +
       ':root{--ink:#14181f;--gold:#b0812f;--gold-soft:#f6efe1;--line:#d6d3cc;}' +
       '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
       'html{background:#e9e7e2;}' +
-      'body{margin:0;font-family:"Times New Roman",Times,serif;color:var(--ink);line-height:1.45;font-size:12.5pt;}' +
-      'body.fs-11{font-size:11.5pt;} body.fs-13{font-size:13.5pt;}' +
+      // SỬA 10/10/2026 — cỡ chữ: Nhỏ 11pt · Vừa 12pt (mặc định) · Lớn 13pt
+      'body{margin:0;font-family:"Times New Roman",Times,serif;color:var(--ink);line-height:1.45;font-size:12pt;}' +
+      'body.fs-11{font-size:11pt;} body.fs-13{font-size:13pt;}' +
       '.toolbar{position:sticky;top:0;z-index:20;background:#14181f;color:#f3f0e8;font:14px "Be Vietnam Pro",system-ui,sans-serif;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.25);}' +
       '.toolbar .tb-title{font-weight:700;color:#e6c27a;margin-right:6px;}' +
       '.toolbar label{display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;}' +
@@ -1596,6 +1595,25 @@
       '.sol-item{margin:0 0 9px;break-inside:avoid;text-align:justify;}' +
       '.sol-ans{font:700 .8em "Be Vietnam Pro",Arial,sans-serif;color:#166534;background:#e7f6ec;padding:0 6px;border-radius:3px;}' +
       '.katex{font-size:1.05em;}' +
+      // THÊM 10/10/2026 — khung ô li dưới câu hỏi (vở ô li: ô 8 mm, 4 dòng li 2 mm, lề đỏ)
+      '.q-ruled{display:none;position:relative;height:var(--ruled-h,50mm);margin:6px 0 2px;border:1px solid #b9c6e4;border-radius:3px;background-color:#fff;' +
+        'background-image:linear-gradient(to right,rgba(70,100,180,.42) 1px,transparent 1px),linear-gradient(to bottom,rgba(70,100,180,.5) 1px,transparent 1px),linear-gradient(to bottom,rgba(70,100,180,.2) 1px,transparent 1px);' +
+        'background-size:8mm 8mm,8mm 8mm,100% 2mm;background-position:-1px -1px,-1px -1px,0 -1px;}' +
+      '.q-ruled:before{content:"";position:absolute;top:0;bottom:0;left:16mm;border-left:1.5px solid rgba(225,29,72,.6);}' +
+      '.q-card.ruled .q-ruled{display:block;}' +
+      '.q-ruled-btn{position:absolute;right:-2px;top:-2px;z-index:3;font:600 11px "Be Vietnam Pro",Arial,sans-serif;padding:2px 7px;border-radius:6px;border:1px solid #c9bfa8;background:#fffaf0;color:#8a6d2f;cursor:pointer;opacity:.55;}' +
+      '.q-card:hover .q-ruled-btn,.q-card.ruled .q-ruled-btn{opacity:1;} .q-card.ruled .q-ruled-btn{background:#b0812f;color:#fff;border-color:#b0812f;}' +
+      '.q-card .q-stem{padding-right:46px;}' +
+      // THÊM 10/10/2026 — đầu đề của trường (thay logo FaradayAI)
+      '.brand-school{display:none;align-items:center;gap:10px;}' +
+      'body.mode-school .brand-school{display:flex;} body.mode-school .brand-fa{display:none;} body.mode-school .watermark{display:none;}' +
+      'body.mode-school{--gold:#3a3a3a;--gold-soft:#f1f1ef;}' +
+      '.school-logo{height:17mm;max-width:40mm;object-fit:contain;display:none;} .school-logo.has{display:block;}' +
+      '.school-text{text-align:center;font-family:"Times New Roman",Times,serif;font-weight:700;font-size:11.5pt;line-height:1.35;text-transform:uppercase;}' +
+      '.school-l2{display:inline-block;border-bottom:1.5px solid var(--ink);padding:0 4px 1px;}' +
+      '.toolbar button.tb-mini,.toolbar .tb-file{margin-left:0;cursor:pointer;font:600 13px "Be Vietnam Pro",sans-serif;padding:4px 10px;border-radius:6px;border:1px solid #4b5563;background:#1f2530;color:#fff;}' +
+      'body:not(.mode-school) .tb-school{display:none !important;} .tb-school{display:flex;gap:6px;align-items:center;}' +
+      '@media print{.q-ruled-btn{display:none !important;} .q-card .q-stem{padding-right:0;}}' +
       '@media print{html{background:#fff;} .toolbar{display:none !important;} .sheet{width:auto;max-width:none;margin:0;padding:0;box-shadow:none;}}' +
       '@media (max-width:700px){.sheet{padding:16px 12px;} .student-box{grid-template-columns:1fr;}}';
 
@@ -1611,7 +1629,7 @@
       // SỬA 9/10/2026 — tiêu đề tự sửa: nhớ theo từng đề (localStorage cùng nguồn với trang admin), tên file PDF theo tiêu đề
       'var ED_KEY=' + JSON.stringify(cfg.storeKey ? 'faraday_print_' + cfg.storeKey : '') + ',ED_DEF=null;' +
       'function edEls(){return Array.prototype.slice.call(document.querySelectorAll("[data-ed]"));}' +
-      'function syncTitle(){var t=document.querySelector(".doc-title");if(t&&t.textContent.trim())document.title=t.textContent.trim()+" — FaradayAI.vn";}' +
+      'function syncTitle(){var t=document.querySelector(".doc-title");if(t&&t.textContent.trim())document.title=t.textContent.trim()+(document.body&&document.body.classList.contains("mode-school")?"":" — FaradayAI.vn");}' +
       'function edSave(){if(!ED_KEY)return;var o={};edEls().forEach(function(e){o[e.getAttribute("data-ed")]=e.innerHTML;});try{localStorage.setItem(ED_KEY,JSON.stringify(o));}catch(x){}}' +
       'function edReset(){if(ED_DEF)edEls().forEach(function(e){var k=e.getAttribute("data-ed");if(k in ED_DEF)e.innerHTML=ED_DEF[k];});try{localStorage.removeItem(ED_KEY);}catch(x){}syncTitle();}' +
       'var ED_INIT=false;function edInit(){if(ED_INIT||!document.querySelector(".doc-note"))return;ED_INIT=true;ED_DEF={};edEls().forEach(function(e){ED_DEF[e.getAttribute("data-ed")]=e.innerHTML;});' +
@@ -1632,28 +1650,35 @@
     return '<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<title>' + escapeHtmlPDF(cfg.docTitle || 'Đề luyện thi — FaradayAI.vn') + '</title>' +
       // Script đặt TRƯỚC các thẻ <link> CSS: script nằm sau stylesheet đang tải sẽ bị chặn chạy trong tab document.write
-      '<script>' + script + '<\/script>' +
+      '<script>' + script + '(' + printTabRuntime.toString() + ')(' + JSON.stringify({ storeKey: cfg.storeKey || '' }).replace(/</g, '\\u003c') + ');<\/script>' +
       '<link rel="icon" href="' + origin + '/favicon.svg">' +
       '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap">' +
       '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">' +
-      '<style>' + css + '</style></head><body class="fs-12">' +
+      '<style>' + css + '</style><style id="pagecss">' + printPageCss('fa', '') + '</style></head><body class="fs-12">' +
       '<div class="toolbar">' +
         '<span class="tb-title">🖨️ Bản in đề · FaradayAI.vn</span>' +
         '<label><input type="checkbox" onchange="setOpt(\'show-key\',this.checked)"> Bảng đáp án (trang cuối)</label>' +
         (hasSolution ? '<label><input type="checkbox" onchange="setOpt(\'show-sol\',this.checked)"> Lời giải chi tiết</label>' : '') +
         '<label><input type="checkbox" onchange="setOpt(\'mark-ans\',this.checked)"> Đánh dấu đáp án trong đề (bản của thầy)</label>' +
         '<label><input type="checkbox" checked onchange="setOpt(\'no-wm\',!this.checked)"> Logo chìm</label>' +
-        '<label>Cỡ chữ <select onchange="setFs(this.value)"><option value="11">Nhỏ</option><option value="12" selected>Vừa</option><option value="13">Lớn</option></select></label>' +
+        '<label>Đầu đề <select id="brandSel" onchange="setBrand(this.value)"><option value="fa">Logo FaradayAI</option><option value="school">Tên trường / logo riêng</option></select></label>' +
+        '<span class="tb-school"><label class="tb-file">🖼 Chọn logo trường<input type="file" accept="image/*" style="display:none" onchange="pickLogo(this)"></label><button type="button" class="tb-mini" onclick="clearLogo()">Bỏ logo</button></span>' +
+        '<label><input type="checkbox" id="ruledAll" onchange="ruledAll(this.checked)"> Ô li dưới mọi câu</label>' +
+        '<label>Khung ô li cao <select id="ruledH" onchange="setRuledH(this.value)"><option value="30">3 cm</option><option value="50" selected>5 cm</option><option value="80">8 cm</option><option value="130">13 cm</option></select></label>' +
+        '<label>Cỡ chữ <select id="fsSel" onchange="setFs(this.value)"><option value="11">Nhỏ</option><option value="12" selected>Vừa (12)</option><option value="13">Lớn</option></select></label>' +
         '<label>Thời gian <input type="number" min="5" max="180" value="' + (cfg.durationMin || 50) + '" oninput="setDur(this.value)"> phút</label>' +
         '<button type="button" class="tb-reset" onclick="edReset()" title="Trả tiêu đề, mã đề, ghi chú về như lúc tạo tự động">↺ Tiêu đề tự động</button>' +
         '<button type="button" onclick="layoutOpts();window.print()">In / Lưu PDF</button>' +
-        '<span class="tb-hint">✏️ Bấm thẳng vào nhãn đề, mã đề, tiêu đề, dòng mô tả hoặc dòng ghi chú để sửa (tự nhớ cho lần xuất sau của đề này). Mặc định là bản phát cho học sinh (không đáp án). Hộp thoại in: chọn khổ A4, lề Mặc định, bật “Đồ hoạ nền” → “Lưu dưới dạng PDF”. Trên iPad: Chia sẻ → In → Chia sẻ → Lưu vào Tệp.</span>' +
+        '<span class="tb-hint">✏️ Bấm thẳng vào nhãn đề, mã đề, tiêu đề, dòng mô tả, dòng ghi chú hoặc tên trường để sửa (tự nhớ cho lần xuất sau). Nút ▦ Ô li ở góc mỗi câu: bật/tắt khung ô li riêng câu đó. Mặc định là bản phát cho học sinh (không đáp án). Hộp thoại in: chọn khổ A4, lề Mặc định, bật “Đồ hoạ nền” → “Lưu dưới dạng PDF”. Trên iPad: Chia sẻ → In → Chia sẻ → Lưu vào Tệp.</span>' +
       '</div>' +
       '<img class="watermark" src="' + ((cfg.logos && cfg.logos.mark) || (origin + '/logo-mark.svg')) + '" alt="">' +
       '<main class="sheet">' +
         '<header class="doc-head">' +
-          '<div><img class="brand-logo" src="' + ((cfg.logos && cfg.logos.horizontal) || (origin + '/logo-horizontal.svg')) + '" alt="FaradayAI">' +
+          '<div class="brand-fa"><img class="brand-logo" src="' + ((cfg.logos && cfg.logos.horizontal) || (origin + '/logo-horizontal.svg')) + '" alt="FaradayAI">' +
           '<div class="brand-sub"><b>FaradayAI.vn</b> · Luyện thi Tốt nghiệp THPT môn Vật lí</div></div>' +
+          '<div class="brand-school"><img class="school-logo" alt="">' +
+            '<div class="school-text"><div class="school-l1" contenteditable="true" spellcheck="false" data-br="l1" data-ph="TRƯỜNG …">TRƯỜNG TH – THCS – THPT</div>' +
+            '<div class="school-l2" contenteditable="true" spellcheck="false" data-br="l2" data-ph="TÊN TRƯỜNG">LÊ THÁNH TÔNG</div></div></div>' +
           // SỬA 9/10/2026 — các dòng tiêu đề sửa trực tiếp được (contenteditable, data-ed = khoá lưu)
           '<div class="exam-id"><div class="exam-kicker" contenteditable="true" spellcheck="false" data-ed="kicker" data-ph="Nhãn đề">' + escapeHtmlPDF(cfg.kicker || 'Đề luyện tập') + '</div>' +
           '<div class="code-box">Mã đề <b contenteditable="true" spellcheck="false" data-ed="code" data-ph="…">' + escapeHtmlPDF(cfg.examCode || '') + '</b></div></div>' +
@@ -1671,6 +1696,108 @@
       '</main>' +
       '</body></html>';
   }
+  // THÊM 10/10/2026 — chân trang theo đầu đề (FaradayAI / tên trường). @page không đổi được theo class nên ghi lại cả khối.
+  function printPageCss(mode, schoolName){
+    var left = mode === 'school' ? String(schoolName || '') : 'FaradayAI.vn · Luyện thi Vật lí 12';
+    left = left.replace(/[\\"]/g, '').replace(/\s+/g, ' ').trim();
+    return '@page{size:A4;margin:14mm 15mm 16mm;' +
+      '@bottom-left{content:"' + left + '";font:8.5pt "Be Vietnam Pro",Arial,sans-serif;color:' + (mode === 'school' ? '#555' : '#8a6d2f') + ';}' +
+      '@bottom-right{content:"Trang " counter(page) "/" counter(pages);font:8.5pt "Be Vietnam Pro",Arial,sans-serif;color:#555;}}';
+  }
+  // THÊM 10/10/2026 — mã chạy TRONG tab in (chèn nguyên văn bằng toString, KHÔNG dùng biến ngoài hàm này):
+  //  • Đầu đề: logo FaradayAI ↔ tên trường + logo trường (ảnh thầy chọn, thu nhỏ rồi lưu trên máy) — nhớ cho mọi đề.
+  //  • Khung ô li dưới câu: bật tất cả / từng câu (nút ▦), chọn chiều cao — nhớ theo từng đề.
+  //  • Nhớ cỡ chữ đã chọn.
+  function printTabRuntime(conf){
+    var PREF_KEY = 'faraday_print_prefs', BRAND_KEY = 'faraday_print_brand';
+    var RULED_KEY = conf.storeKey ? 'faraday_print_ruled_' + conf.storeKey : '';
+    function lsGet(k){ try{ return JSON.parse(localStorage.getItem(k) || 'null'); }catch(e){ return null; } }
+    function lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ alert('Không lưu được trên máy này (bộ nhớ trình duyệt đầy hoặc đang ở chế độ ẩn danh).'); } }
+    function pageCss(mode, name){
+      name = String(name || '').replace(/[\\"]/g, '').replace(/\s+/g, ' ').trim();
+      var left = mode === 'school' ? name : 'FaradayAI.vn · Luyện thi Vật lí 12';
+      return '@page{size:A4;margin:14mm 15mm 16mm;@bottom-left{content:"' + left + '";font:8.5pt "Be Vietnam Pro",Arial,sans-serif;color:' + (mode === 'school' ? '#555' : '#8a6d2f') + ';}' +
+        '@bottom-right{content:"Trang " counter(page) "/" counter(pages);font:8.5pt "Be Vietnam Pro",Arial,sans-serif;color:#555;}}';
+    }
+    function brandEls(){ return Array.prototype.slice.call(document.querySelectorAll('[data-br]')); }
+    function schoolName(){ return brandEls().map(function(e){ return e.textContent.trim(); }).filter(Boolean).join(' '); }
+    function saveBrand(){
+      var b = lsGet(BRAND_KEY) || {};
+      b.mode = document.body.classList.contains('mode-school') ? 'school' : 'fa';
+      brandEls().forEach(function(e){ b[e.getAttribute('data-br')] = e.innerHTML; });
+      lsSet(BRAND_KEY, b);
+    }
+    function applyBrand(mode){
+      document.body.classList.toggle('mode-school', mode === 'school');
+      var st = document.getElementById('pagecss'); if(st) st.textContent = pageCss(mode, schoolName());
+      var sel = document.getElementById('brandSel'); if(sel) sel.value = mode;
+      if(window.syncTitle) window.syncTitle();
+    }
+    window.setBrand = function(mode){ applyBrand(mode); saveBrand(); };
+    window.pickLogo = function(input){
+      var f = input.files && input.files[0]; input.value = '';
+      if(!f) return;
+      var rd = new FileReader();
+      rd.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var H = 240, sc = Math.min(1, H / img.naturalHeight), c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          var url = c.toDataURL('image/png');
+          var el = document.querySelector('.school-logo'); if(el){ el.src = url; el.classList.add('has'); }
+          var b = lsGet(BRAND_KEY) || {}; b.logo = url; lsSet(BRAND_KEY, b);
+        };
+        img.onerror = function(){ alert('Không đọc được ảnh này. Hãy chọn ảnh PNG hoặc JPG.'); };
+        img.src = rd.result;
+      };
+      rd.readAsDataURL(f);
+    };
+    window.clearLogo = function(){
+      var el = document.querySelector('.school-logo'); if(el){ el.removeAttribute('src'); el.classList.remove('has'); }
+      var b = lsGet(BRAND_KEY) || {}; delete b.logo; lsSet(BRAND_KEY, b);
+    };
+    function cards(){ return Array.prototype.slice.call(document.querySelectorAll('.sheet .q-card')); }
+    function saveRuled(){
+      if(!RULED_KEY) return;
+      var on = []; cards().forEach(function(c, i){ if(c.classList.contains('ruled')) on.push(i); });
+      var hs = document.getElementById('ruledH');
+      lsSet(RULED_KEY, { on: on, h: hs ? hs.value : '50' });
+    }
+    function syncAllBox(){ var all = document.getElementById('ruledAll'), cs = cards(); if(all) all.checked = cs.length > 0 && cs.every(function(c){ return c.classList.contains('ruled'); }); }
+    window.toggleRuled = function(btn){ var c = btn.closest('.q-card'); if(c) c.classList.toggle('ruled'); syncAllBox(); saveRuled(); };
+    window.ruledAll = function(on){ cards().forEach(function(c){ c.classList.toggle('ruled', !!on); }); saveRuled(); };
+    window.setRuledH = function(v){ document.body.style.setProperty('--ruled-h', (Number(v) || 50) + 'mm'); var hs = document.getElementById('ruledH'); if(hs) hs.value = String(v); saveRuled(); };
+    var origFs = window.setFs;
+    window.setFs = function(v){ if(origFs) origFs(v); var sel = document.getElementById('fsSel'); if(sel) sel.value = v; var p = lsGet(PREF_KEY) || {}; p.fs = v; lsSet(PREF_KEY, p); };
+    var inited = false;
+    function init(){
+      if(inited || !document.querySelector('.doc-note')) return;
+      inited = true;
+      var p = lsGet(PREF_KEY);
+      if(p && p.fs && p.fs !== '12') window.setFs(p.fs);
+      var b = lsGet(BRAND_KEY);
+      if(b){
+        brandEls().forEach(function(e){ var k = e.getAttribute('data-br'); if(typeof b[k] === 'string') e.innerHTML = b[k]; });
+        if(b.logo){ var el = document.querySelector('.school-logo'); if(el){ el.src = b.logo; el.classList.add('has'); } }
+      }
+      applyBrand(b && b.mode === 'school' ? 'school' : 'fa');
+      brandEls().forEach(function(e){
+        e.addEventListener('input', function(){ if(!e.textContent.trim()) e.innerHTML = ''; var st = document.getElementById('pagecss'); if(st) st.textContent = pageCss('school', schoolName()); saveBrand(); });
+        e.addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); e.blur(); } });
+        e.addEventListener('paste', function(ev){ ev.preventDefault(); var t = (ev.clipboardData || window.clipboardData).getData('text'); document.execCommand('insertText', false, t.replace(/\s+/g, ' ')); });
+      });
+      var r = RULED_KEY ? lsGet(RULED_KEY) : null;
+      if(r){
+        if(r.h) window.setRuledH(r.h);
+        var cs = cards(); (r.on || []).forEach(function(i){ if(cs[i]) cs[i].classList.add('ruled'); });
+        syncAllBox();
+      }
+    }
+    document.addEventListener('DOMContentLoaded', init);
+    [60, 350, 1100].forEach(function(t){ setTimeout(init, t); });
+  }
+
   // Mở tab in ĐỒNG BỘ ngay lúc bấm (tránh bị chặn popup), rồi mới ghi nội dung (có thể sau khi tải ảnh xong).
   function openPrintWindow(){
     var win = window.open('', '_blank');
