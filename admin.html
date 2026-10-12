@@ -2527,6 +2527,8 @@
     var loopRef = React.useRef({ running: false, timer: 0, lastKey: '', streak: 0, acceptedKey: '', busy: false, lostFrames: 0 });
     var camState = React.useState('off'); var cam = camState[0], setCam = camState[1];   // off | starting | on | error
     var camErrState = React.useState(''); var camErr = camErrState[0], setCamErr = camErrState[1];
+    var torchOkState = React.useState(false); var torchOk = torchOkState[0], setTorchOk = torchOkState[1];
+    var torchOnState = React.useState(false); var torchOn = torchOnState[0], setTorchOn = torchOnState[1];
     var hintState = React.useState('Bấm "Bật camera", đặt phiếu dưới máy cho thấy trọn 4 ô vuông đen.'); var hint = hintState[0], setHint = hintState[1];
     var logState = React.useState([]); var log = logState[0], setLog = logState[1];
     var fileBusyState = React.useState(''); var fileBusy = fileBusyState[0], setFileBusy = fileBusyState[1];
@@ -2558,58 +2560,91 @@
         pushLog({ ok: !unsureN, warn: !!unsureN, text: 'SBD ' + st.sbd + ' · ' + st.name + ' · mã ' + version.code + ' → ' + r.score.toFixed(2) + ' điểm (' + r.correct + '/' + r.total + ')' + (unsureN ? ' · ⚠ ' + unsureN + ' chỗ cần xem lại' : '') + (again ? ' · (quét lại)' : '') });
       }catch(err){ console.error(err); ctBeep(false); pushLog({ bad: true, text: 'Lưu thất bại (' + st.name + '): ' + (err && err.message) }); }
     }
-    function answersKey(res){ return [res.id && res.id.sbd ? res.id.sbd.text : '', res.id && res.id.code ? res.id.code.text : '', JSON.stringify(res.answers)].join('|'); }
-
-    function drawOverlay(res, vw, vh){
+    // SỬA 13/10/2026 — QUÉT TRỰC TIẾP kiểu ZipGrade: khung ngắm có 4 ô góc, chỉ tìm mốc trong 4 ô góc (không nhiễu nền),
+    // báo góc nào đã bắt được; phiếu đứng yên ≥3 khung hình → cộng dồn độ tối các ô qua nhiều khung rồi mới chấm.
+    function drawOverlay(r, sc, vw, vh){
       var ov = overlayRef.current; if(!ov) return;
       if(ov.width !== vw || ov.height !== vh){ ov.width = vw; ov.height = vh; }
       var c = ov.getContext('2d'); c.clearRect(0, 0, ov.width, ov.height);
-      if(!res || !res.markers) return;
-      c.lineWidth = Math.max(3, vw / 300); c.strokeStyle = res.ok ? '#22c55e' : '#f59e0b';
-      c.beginPath(); [0, 1, 3, 2, 0].forEach(function(i, j){ var m = res.markers[i]; if(j) c.lineTo(m[0], m[1]); else c.moveTo(m[0], m[1]); }); c.stroke();
+      var g = r.guide, lw = Math.max(3, vw / 320);
+      // làm tối vùng ngoài khung ngắm
+      c.fillStyle = 'rgba(0,0,0,0.35)';
+      c.beginPath(); c.rect(0, 0, vw, vh); c.rect(g.x / sc, g.y / sc, g.w / sc, g.h / sc); c.fill('evenodd');
+      c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = lw * 0.6; c.strokeRect(g.x / sc, g.y / sc, g.w / sc, g.h / sc);
+      var all = r.found.every(Boolean);
+      g.pts.forEach(function(p, i){
+        var half = g.win * 0.5 / sc, ok = r.found[i];
+        c.strokeStyle = ok ? '#22c55e' : '#f59e0b'; c.lineWidth = lw * (ok ? 1.4 : 1);
+        c.strokeRect(p[0] / sc - half, p[1] / sc - half, half * 2, half * 2);
+      });
+      if(r.markers){
+        c.strokeStyle = all ? '#22c55e' : '#f59e0b'; c.lineWidth = lw;
+        c.beginPath(); [0, 1, 3, 2, 0].forEach(function(i, j){ var m = r.markers[i]; if(j) c.lineTo(m[0] / sc, m[1] / sc); else c.moveTo(m[0] / sc, m[1] / sc); }); c.stroke();
+      }
     }
     function tick(){
       var lp = loopRef.current; if(!lp.running) return;
       var v = videoRef.current;
-      if(!v || v.readyState < 2 || lp.busy){ lp.timer = setTimeout(tick, 200); return; }
-      var vw = v.videoWidth, vh = v.videoHeight, sc = Math.min(1, 1280 / Math.max(vw, vh));
+      if(!v || v.readyState < 2 || !v.videoWidth || lp.busy){ lp.timer = setTimeout(tick, 150); return; }
+      var vw = v.videoWidth, vh = v.videoHeight, sc = Math.min(1, 1600 / Math.max(vw, vh));
       var cv = workRef.current || (workRef.current = document.createElement('canvas'));
-      cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
+      if(cv.width !== Math.round(vw * sc)){ cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc); }
       var ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(v, 0, 0, cv.width, cv.height);
-      var res = null;
-      try{ res = OMR.readSheet(ctx.getImageData(0, 0, cv.width, cv.height), L); }catch(e){ res = null; }
-      if(res && res.ok){
-        drawOverlay({ ok: true, markers: res.markers.map(function(m){ return [m[0] / sc, m[1] / sc]; }) }, vw, vh);
-        var key = answersKey(res);
+      var r = null;
+      try{ r = OMR.liveFrame(ctx.getImageData(0, 0, cv.width, cv.height), L, lp.prevMarkers || null); }catch(e){ console.warn(e); r = null; }
+      if(!r){ lp.timer = setTimeout(tick, 120); return; }
+      drawOverlay(r, sc, vw, vh);
+      var nFound = r.found.filter(Boolean).length;
+      if(r.markers){
         lp.lostFrames = 0;
-        if(key === lp.lastKey) lp.streak++; else { lp.lastKey = key; lp.streak = 1; }
-        if(lp.streak >= 2 && key !== lp.acceptedKey){
-          lp.acceptedKey = key; lp.busy = true;
-          setHint('✅ Đã đọc — lật sang phiếu kế tiếp.');
-          accept(res).then(function(){ lp.busy = false; lp.timer = setTimeout(tick, 350); });
-          return;
-        }
-        if(key !== lp.acceptedKey) setHint('Giữ yên máy…');
+        // phiếu có đứng yên không? (mốc dịch < 1,5% bề rộng khung ngắm so với khung trước)
+        var moved = lp.prevMarkers ? Math.max.apply(null, r.markers.map(function(m, i){ return Math.hypot(m[0] - lp.prevMarkers[i][0], m[1] - lp.prevMarkers[i][1]); })) : 1e9;
+        lp.prevMarkers = r.markers;
+        if(moved > r.guide.w * 0.015) lp.buf = [];
+        lp.buf = (lp.buf || []).concat([r.vals]).slice(-4);
+        if(lp.buf.length >= 3){
+          var avg = r.vals.map(function(_, i){ var s2 = 0; lp.buf.forEach(function(vv){ s2 += vv[i]; }); return s2 / lp.buf.length; });
+          var dec = OMR.decideValues(L, avg);
+          var idKey = (dec.id && dec.id.sbd ? dec.id.sbd.text : '') + '|' + (dec.id && dec.id.code ? dec.id.code.text : '');
+          if(idKey !== lp.acceptedKey){
+            lp.acceptedKey = idKey; lp.busy = true; lp.buf = [];
+            setHint('✅ Đã chấm — lật sang phiếu kế tiếp.');
+            accept(dec).then(function(){ lp.busy = false; lp.timer = setTimeout(tick, 250); });
+            return;
+          }
+          setHint('✅ Phiếu này đã chấm — lật sang phiếu kế tiếp.');
+        } else setHint('Giữ yên máy… (' + lp.buf.length + '/3)');
       } else {
-        drawOverlay(null, vw, vh);
-        lp.lostFrames++;
-        if(lp.lostFrames > 2){ lp.acceptedKey = ''; setHint('Đưa phiếu vào khung — thấy trọn 4 ô vuông đen, đủ sáng.'); }
+        lp.prevMarkers = null; lp.buf = [];
+        lp.lostFrames = (lp.lostFrames || 0) + 1;
+        if(lp.lostFrames > 4) lp.acceptedKey = '';   // phiếu đã rời khung → cho phép chấm lại cùng em nếu thầy đưa lại
+        setHint(nFound ? ('Đã bắt ' + nFound + '/4 góc — đưa 4 ô vuông đen vào 4 ô góc của khung') : 'Đưa phiếu vào khung: 4 ô vuông đen nằm trong 4 ô góc, đủ sáng.');
       }
-      lp.timer = setTimeout(tick, 220);
+      lp.timer = setTimeout(tick, 60);
     }
     async function startCam(){
       setCam('starting'); setCamErr('');
       try{
-        var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
         streamRef.current = stream;
-        var v = videoRef.current; v.srcObject = stream; v.setAttribute('playsinline', ''); v.muted = true; await v.play();
-        setCam('on'); setHint('Đưa phiếu vào khung — thấy trọn 4 ô vuông đen.');
+        var v = videoRef.current; v.srcObject = stream; v.setAttribute('playsinline', ''); v.setAttribute('autoplay', ''); v.muted = true; await v.play();
+        try{
+          var track = stream.getVideoTracks()[0], caps = track.getCapabilities ? track.getCapabilities() : {};
+          if(caps.focusMode && caps.focusMode.indexOf('continuous') > -1) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){});
+          setTorchOk(!!caps.torch);
+        }catch(e2){}
+        setCam('on'); setHint('Đưa phiếu vào khung: 4 ô vuông đen nằm trong 4 ô góc.');
         ctBeep(true);
         loopRef.current.running = true; tick();
       }catch(err){
         console.error(err); setCam('error');
         setCamErr(err && err.name === 'NotAllowedError' ? 'Trình duyệt chưa được phép dùng camera — bấm "Cho phép" (Safari: Cài đặt › Safari › Camera).' : ('Không mở được camera: ' + (err && err.message)));
       }
+    }
+    function toggleTorch(){
+      var s0 = streamRef.current; if(!s0) return;
+      var on = !torchOn;
+      s0.getVideoTracks()[0].applyConstraints({ advanced: [{ torch: on }] }).then(function(){ setTorchOn(on); }).catch(function(){});
     }
     function stopCam(){
       var lp = loopRef.current; lp.running = false; clearTimeout(lp.timer);
@@ -2638,6 +2673,7 @@
     }
 
     var done = roster.filter(function(s){ return resultsRef.current[s.id]; }).length;
+    var narrow = (window.innerWidth || 1000) < 820;
     return h('div', { style: { position: 'fixed', inset: 0, zIndex: 1000, background: '#0b0e13', color: '#f3f0e8', display: 'flex', flexDirection: 'column' } },
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderBottom: '1px solid #262b33', flexWrap: 'wrap' } },
         h('b', null, '📷 Quét phiếu — ' + test.title + ' · Lớp ' + test.lop),
@@ -2646,16 +2682,18 @@
         h('label', { style: { cursor: 'pointer', padding: '7px 12px', border: '1px solid #3b4250', borderRadius: '8px', fontSize: '0.88rem' } }, fileBusy || '📁 Chấm từ ảnh có sẵn',
           h('input', { type: 'file', accept: 'image/*', multiple: true, style: { display: 'none' }, onChange: onFiles })),
         h('button', { type: 'button', onClick: function(){ stopCam(); props.onClose(); }, style: { padding: '8px 16px', borderRadius: '8px', border: 0, background: '#e6c27a', fontWeight: 700, cursor: 'pointer' } }, 'Xong')),
-      h('div', { style: { flex: 1, display: 'flex', minHeight: 0, flexWrap: 'wrap' } },
-        h('div', { style: { flex: '2 1 420px', position: 'relative', background: '#000', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-          h('video', { ref: videoRef, playsInline: true, muted: true, style: { maxWidth: '100%', maxHeight: '100%', display: cam === 'on' ? 'block' : 'none' } }),
-          h('canvas', { ref: overlayRef, style: { position: 'absolute', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%', display: cam === 'on' ? 'block' : 'none' } }),
-          cam !== 'on' ? h('div', { style: { textAlign: 'center', padding: '20px' } },
+      // SỬA 13/10/2026 — khung camera co giãn vừa màn hình (điện thoại dọc: camera trên, nhật ký dưới)
+      h('div', { style: { flex: 1, display: 'flex', minHeight: 0, flexDirection: narrow ? 'column' : 'row' } },
+        h('div', { style: { flex: narrow ? '0 0 68vh' : '2 1 0', position: 'relative', background: '#000', minHeight: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+          h('video', { ref: videoRef, playsInline: true, muted: true, autoPlay: true, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', visibility: cam === 'on' ? 'visible' : 'hidden' } }),
+          h('canvas', { ref: overlayRef, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', display: cam === 'on' ? 'block' : 'none' } }),
+          (cam === 'on' && torchOk) ? h('button', { type: 'button', onClick: toggleTorch, style: { position: 'absolute', top: '10px', right: '10px', padding: '8px 12px', borderRadius: '999px', border: 0, background: torchOn ? '#fde047' : 'rgba(0,0,0,.55)', color: torchOn ? '#111' : '#fff', fontWeight: 700, cursor: 'pointer' } }, '🔦 Đèn') : null,
+          cam !== 'on' ? h('div', { style: { textAlign: 'center', padding: '20px', position: 'relative', zIndex: 2 } },
             h('button', { type: 'button', onClick: startCam, disabled: cam === 'starting', style: { padding: '14px 28px', fontSize: '1.1rem', borderRadius: '12px', border: 0, background: '#22c55e', color: '#04120a', fontWeight: 800, cursor: 'pointer' } }, cam === 'starting' ? 'Đang mở camera…' : '▶ Bật camera'),
             camErr ? h('p', { style: { color: '#fca5a5', marginTop: '12px', maxWidth: '420px' } }, camErr) : null,
-            h('p', { style: { color: '#9ca3af', marginTop: '12px', maxWidth: '460px', fontSize: '0.9rem' } }, 'Đặt điện thoại cố định phía trên, lật lần lượt từng phiếu bên dưới. Máy tự nhận khi thấy đủ 4 ô vuông đen và đọc ổn định — kêu "tít" là xong, lật phiếu kế.')) : null,
+            h('p', { style: { color: '#9ca3af', marginTop: '12px', maxWidth: '460px', fontSize: '0.9rem' } }, 'Cầm máy song song mặt phiếu, cách khoảng 25–35 cm. Đưa phiếu sao cho 4 ô vuông đen nằm trong 4 ô góc của khung (ô góc chuyển xanh). Giữ yên ~1 giây — kêu "tít" là xong, lật phiếu kế.')) : null,
           cam === 'on' ? h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: '10px 14px', background: 'linear-gradient(transparent, rgba(0,0,0,.75))', fontWeight: 700, fontSize: '1.05rem' } }, hint) : null),
-        h('div', { style: { flex: '1 1 300px', overflowY: 'auto', padding: '10px 12px', borderLeft: '1px solid #262b33', maxHeight: '100%' } },
+        h('div', { style: { flex: narrow ? '1 1 0' : '1 1 0', minWidth: narrow ? 0 : '280px', minHeight: 0, overflowY: 'auto', padding: '10px 12px', borderLeft: narrow ? 0 : '1px solid #262b33', borderTop: narrow ? '1px solid #262b33' : 0 } },
           !log.length ? h('p', { style: { color: '#9ca3af', fontSize: '0.88rem' } }, 'Kết quả từng phiếu sẽ hiện ở đây.') :
             log.map(function(it, i){
               return h('div', { key: log.length - i, style: { padding: '8px 10px', marginBottom: '6px', borderRadius: '8px', fontSize: '0.88rem', lineHeight: 1.45,

@@ -328,24 +328,12 @@
     return set;
   }
 
-  // Đọc phiếu. L = layoutSheet(...) của đề; img = ImageData
-  function readSheet(img, L) {
-    var w = img.width, h = img.height;
-    var gray = toGray(img);
-    var mk = findMarkers(gray, w, h);
-    if (!mk) return { ok: false, error: 'Không tìm thấy đủ 4 ô vuông đen ở 4 góc phiếu. Chụp lại: thấy trọn cả 4 góc, phiếu phẳng, đủ sáng, không bị bóng che.' };
+  // Đo độ tối từng ô tô (lõi ô so với vòng nền xung quanh) khi đã biết vị trí 4 mốc trong ảnh (dst)
+  function measureValues(gray, w, h, L, dst) {
     var src = L.markers.map(function (m) { return [m.cx, m.cy]; });
-    var dst = mk.map(function (c) { return [c.cx, c.cy]; });
     var H = homography(src, dst);
-    if (!H) return { ok: false, error: 'Không định vị được phiếu (4 góc thẳng hàng?). Chụp lại thẳng hơn.' };
-    // kiểm tra tỉ lệ: khoảng cách mốc trong ảnh phải khớp tỉ lệ phiếu (sai nhiều = nhận nhầm mốc / nhầm loại phiếu)
-    var topLen = Math.hypot(dst[1][0] - dst[0][0], dst[1][1] - dst[0][1]);
-    var leftLen = Math.hypot(dst[2][0] - dst[0][0], dst[2][1] - dst[0][1]);
-    var ratio = (leftLen / topLen) / ((L.H - MK) / (L.W - MK));
-    if (ratio < 0.7 || ratio > 1.4) return { ok: false, error: 'Tỉ lệ phiếu trong ảnh không khớp với đề đã chọn (có thể chọn nhầm đề, hoặc ảnh bị cắt mất phần dưới phiếu).' };
+    if (!H) return null;
     var S = sampler(gray, w, h);
-
-    // độ tối từng ô: lõi ô so với vòng nền xung quanh
     var vals = L.bubbles.map(function (b) {
       var core = [], ring = [];
       var rc = b.r * 0.55, steps = 4;
@@ -361,9 +349,14 @@
       }
       ring.sort(function (x, y) { return x - y; });
       var ref = ring[Math.floor(ring.length * 0.7)] || 255;
-      var mean = core.reduce(function (s, v) { return s + v; }, 0) / core.length;
+      var mean = core.reduce(function (s2, v) { return s2 + v; }, 0) / core.length;
       return Math.max(0, Math.min(1, 1 - mean / Math.max(30, ref)));
     });
+    return { H: H, vals: vals };
+  }
+
+  // Từ độ tối các ô → đáp án từng câu (+ SBD, mã đề) và các chỗ "chưa chắc"
+  function decideValues(L, vals) {
     // ngưỡng: đa số ô để trống → trung vị ≈ độ tối ô trống (vạch viền + chữ in mờ)
     var sorted = vals.slice().sort(function (a, b) { return a - b; });
     var base = sorted[Math.floor(sorted.length * 0.5)] || 0;
@@ -383,7 +376,7 @@
       (groups[key] = groups[key] || []).push(i);
     });
     var res = { I: [], II: [], III: [] }, unsure = { I: {}, II: {}, III: {} };
-    // Số báo danh / mã đề (phiếu chấm cả lớp): mỗi cột 1 chữ số; cột để trống thì bỏ qua (vd chỉ tô 2 cột "0","7" → 7)
+    // Số báo danh / mã đề: mỗi cột 1 chữ số
     function readDigits(kind) {
       var str = '', ok = true, ncol = 0;
       for (var c = 0; c < 6; c++) {
@@ -422,11 +415,102 @@
       res.III[q3] = str;
       if (bad) unsure.III[q3] = 'Cần xem lại';
     }
-    return {
-      ok: true, answers: res, unsure: unsure, threshold: T, baseline: base, id: idInfo,
-      markers: dst, values: vals,
-      project: H
-    };
+    return { ok: true, answers: res, unsure: unsure, threshold: T, baseline: base, id: idInfo, values: vals };
+  }
+
+  function ratioOk(L, dst) {
+    var topLen = Math.hypot(dst[1][0] - dst[0][0], dst[1][1] - dst[0][1]);
+    var leftLen = Math.hypot(dst[2][0] - dst[0][0], dst[2][1] - dst[0][1]);
+    var ratio = (leftLen / topLen) / ((L.H - MK) / (L.W - MK));
+    return ratio >= 0.7 && ratio <= 1.4;
+  }
+
+  // Đọc phiếu từ 1 ẢNH (chụp sẵn / thư viện). L = layoutSheet(...) của đề; img = ImageData
+  function readSheet(img, L) {
+    var w = img.width, h = img.height;
+    var gray = toGray(img);
+    var mk = findMarkers(gray, w, h);
+    if (!mk) return { ok: false, error: 'Không tìm thấy đủ 4 ô vuông đen ở 4 góc phiếu. Chụp lại: thấy trọn cả 4 góc, phiếu phẳng, đủ sáng, không bị bóng che.' };
+    var dst = mk.map(function (c) { return [c.cx, c.cy]; });
+    // kiểm tra tỉ lệ: khoảng cách mốc trong ảnh phải khớp tỉ lệ phiếu (sai nhiều = nhận nhầm mốc / nhầm loại phiếu)
+    if (!ratioOk(L, dst)) return { ok: false, error: 'Tỉ lệ phiếu trong ảnh không khớp với đề đã chọn (có thể chọn nhầm đề, hoặc ảnh bị cắt mất phần dưới phiếu).' };
+    var m = measureValues(gray, w, h, L, dst);
+    if (!m) return { ok: false, error: 'Không định vị được phiếu (4 góc thẳng hàng?). Chụp lại thẳng hơn.' };
+    var r = decideValues(L, m.vals);
+    r.markers = dst; r.project = m.H;
+    return r;
+  }
+
+  // ======================= QUÉT TRỰC TIẾP BẰNG CAMERA (THÊM 13/10/2026) =======================
+  // Cách làm giống các app chấm phiếu (ZipGrade…): màn hình vẽ KHUNG NGẮM có 4 ô góc; thầy đưa phiếu sao cho
+  // 4 ô vuông đen nằm trong 4 ô góc. Chỉ tìm mốc TRONG từng ô góc (không bị nhiễu bởi mặt bàn, tay, bóng…),
+  // báo ô góc nào đã bắt được (xanh). Khi đủ 4 mốc ở vài khung hình liên tiếp và phiếu đứng yên → CỘNG DỒN độ
+  // tối các ô qua nhiều khung hình (giảm nhiễu/nhoè của video) rồi mới quyết định đáp án.
+
+  // Khung ngắm (toạ độ khung hình video) theo đúng tỉ lệ phiếu, chừa lề 6%
+  function guideRect(L, fw, fh) {
+    var ar = L.W / L.H, m = 0.06;
+    var gw = fw * (1 - 2 * m), gh = gw / ar;
+    if (gh > fh * (1 - 2 * m)) { gh = fh * (1 - 2 * m); gw = gh * ar; }
+    var x = (fw - gw) / 2, y = (fh - gh) / 2;
+    // tâm 4 mốc trong khung ngắm (TL, TR, BL, BR) theo toạ độ mm của phiếu
+    var k = gw / L.W;
+    var pts = L.markers.map(function (mm) { return [x + mm.cx * k, y + mm.cy * k]; });
+    return { x: x, y: y, w: gw, h: gh, k: k, pts: pts, win: Math.max(gw * 0.16, MK * k * 3.2) };
+  }
+
+  // Tìm 1 mốc vuông đen trong cửa sổ quanh điểm (cx, cy)
+  function findMarkerNear(gray, w, h, cx, cy, half, expectSide) {
+    var x0 = Math.max(0, Math.round(cx - half)), y0 = Math.max(0, Math.round(cy - half));
+    var x1 = Math.min(w, Math.round(cx + half)), y1 = Math.min(h, Math.round(cy + half));
+    var ww = x1 - x0, hh = y1 - y0;
+    if (ww < 12 || hh < 12) return null;
+    var sub = new Float32Array(ww * hh);
+    for (var yy = 0; yy < hh; yy++) for (var xx = 0; xx < ww; xx++) sub[yy * ww + xx] = gray[(y0 + yy) * w + x0 + xx];
+    // ngưỡng Otsu trong cửa sổ (mốc đen đặc nổi bật trên nền giấy trắng)
+    var hist = new Array(256).fill(0);
+    for (var i = 0; i < sub.length; i++) hist[Math.max(0, Math.min(255, sub[i] | 0))]++;
+    var total = sub.length, sum = 0; for (var t = 0; t < 256; t++) sum += t * hist[t];
+    var sumB = 0, wB = 0, best = 0, thr = 100;
+    for (var t2 = 0; t2 < 256; t2++) {
+      wB += hist[t2]; if (!wB) continue; var wF = total - wB; if (!wF) break;
+      sumB += t2 * hist[t2]; var mB = sumB / wB, mF = (sum - sumB) / wF, between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; thr = t2; }
+    }
+    var mask = new Uint8Array(ww * hh);
+    for (var j = 0; j < sub.length; j++) mask[j] = sub[j] <= thr ? 1 : 0;
+    var comps = components(mask, ww, hh, ww * hh * 0.5);
+    var minA = expectSide * expectSide * 0.25, maxA = expectSide * expectSide * 4;
+    var bestC = null, bestScore = -1e9;
+    comps.forEach(function (c) {
+      if (c.area < minA || c.area > maxA) return;
+      var ar = c.bw / c.bh, fill = c.area / (c.bw * c.bh);
+      if (ar < 0.5 || ar > 2 || fill < 0.45 || c.roundness > 2.5) return;
+      var dx = c.cx - (cx - x0), dy = c.cy - (cy - y0);
+      var score = -Math.hypot(dx, dy) / half - Math.abs(Math.log(c.area / (expectSide * expectSide))) * 0.3;
+      if (score > bestScore) { bestScore = score; bestC = c; }
+    });
+    return bestC ? [bestC.cx + x0, bestC.cy + y0] : null;
+  }
+
+  // 1 khung hình video. Trả: found[4] (ô góc nào thấy mốc), markers (nếu đủ 4), vals (độ tối các ô)
+  function liveFrame(img, L, prevMarkers) {
+    var w = img.width, h = img.height, gray = toGray(img);
+    var g = guideRect(L, w, h), side = MK * g.k;
+    var found = [], mk = [];
+    for (var i = 0; i < 4; i++) {
+      // có mốc khung trước → tìm quanh đó (bám theo khi phiếu xê dịch); không thì tìm quanh ô góc của khung ngắm
+      var c0 = prevMarkers ? prevMarkers[i] : g.pts[i];
+      var p = findMarkerNear(gray, w, h, c0[0], c0[1], prevMarkers ? Math.max(side * 2.5, g.win * 0.6) : g.win, side);
+      if (!p && prevMarkers) p = findMarkerNear(gray, w, h, g.pts[i][0], g.pts[i][1], g.win, side);
+      found.push(!!p); mk.push(p);
+    }
+    var out = { guide: g, found: found, markers: null, vals: null };
+    if (found.every(Boolean) && ratioOk(L, mk)) {
+      var m = measureValues(gray, w, h, L, mk);
+      if (m) { out.markers = mk; out.vals = m.vals; out.project = m.H; }
+    }
+    return out;
   }
 
   global.OPC_OMR = {
@@ -434,6 +518,9 @@
     renderSheetSvg: renderSheetSvg,
     orderForSheet: orderForSheet,
     readSheet: readSheet,
+    decideValues: decideValues,
+    guideRect: guideRect,
+    liveFrame: liveFrame,
     sheetCode: sheetCode,
     DIGITS: DIGITS
   };
