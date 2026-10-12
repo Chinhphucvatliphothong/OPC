@@ -2263,7 +2263,7 @@
   }
   function ctRoster(students, lop){
     return (students || []).filter(function(s){ return s.lop && String(s.lop).trim().toUpperCase() === String(lop || '').trim().toUpperCase(); })
-      .sort(function(a, b){ return (Number(a.sbd) || 999) - (Number(b.sbd) || 999); });
+      .sort(function(a, b){ return (Number(a.sbd) || 1e9) - (Number(b.sbd) || 1e9); });
   }
   var ctStatsQueue = Promise.resolve();
   // Lưu kết quả 1 em: lượt làm bài (students/{id}/attempts/ct_<bài>) + dòng kết quả trong bài kiểm tra
@@ -2329,19 +2329,25 @@
     text.split(/\r?\n/).forEach(function(line){
       var t = line.replace(/\s+$/, ''); if(!t.trim()) return;
       var cells = t.split('\t').map(function(c){ return c.trim(); }).filter(Boolean);
-      var sbd = null, name = '';
-      if(cells.length >= 2 && /^\d{1,3}$/.test(cells[0])){ sbd = Number(cells[0]); name = cells[1]; }
-      else { var m = /^\s*(\d{1,3})[\s.,;:)\-]+(.+)$/.exec(t); if(m){ sbd = Number(m[1]); name = m[2].trim(); } else name = cells.join(' ').trim(); }
-      if(!name || /^(stt|họ|ho va ten|họ và tên)/i.test(name)) return;
-      if(sbd == null) sbd = ++auto; else auto = Math.max(auto, sbd);
+      // SỬA 12/10/2026 — SBD của trường là 6 chữ số. Nhận các kiểu dán: "STT | SBD | Họ tên", "SBD | Họ tên", "STT | Họ tên", hoặc chỉ tên.
+      var sbd = null, name = '', stt = null;
+      if(cells.length < 2){ var m = /^\s*(\d{1,6})[\s.,;:)\-]+(.+)$/.exec(t); cells = m ? [m[1], m[2].trim()] : cells; }
+      cells.forEach(function(c){
+        if(/^\d{6}$/.test(c) && sbd == null) sbd = c;
+        else if(/^\d{1,3}$/.test(c) && stt == null) stt = c;
+        else if(!name && /[A-Za-zÀ-ỹ]/.test(c)) name = c;
+      });
+      if(!name || /^(stt|sbd|số báo danh|họ|ho va ten|họ và tên)/i.test(name)) return;
+      if(sbd == null) sbd = stt != null ? String(Number(stt)) : String(++auto);
+      auto = Math.max(auto, Number(sbd) || 0);
       rows.push({ sbd: sbd, name: name.replace(/\s+/g, ' ') });
     });
     var slugLop = ctSlug(lop) || 'lop';
     var seen = {};
     rows.forEach(function(r){
-      r.exists = !!bySbd[r.sbd];
-      r.dupe = !!seen[r.sbd]; seen[r.sbd] = 1;
-      var base = slugLop + '-' + (r.sbd < 10 ? '0' : '') + r.sbd, u = base, k = 2;
+      r.exists = !!bySbd[Number(r.sbd)];
+      r.dupe = !!seen[Number(r.sbd)]; seen[Number(r.sbd)] = 1;
+      var base = slugLop + '-' + (r.sbd.length < 2 ? '0' : '') + r.sbd, u = base, k = 2;
       while(usedUsernames[u]) u = base + '-' + (k++);
       r.username = u;
     });
@@ -2361,7 +2367,7 @@
             lop: lop.trim().toUpperCase(), sbd: r.sbd, completedExamsCount: 0, averageScore: 0, highestScore: 0, targetScore: 8.0, status: 'active',
             parentName: 'Chưa cập nhật', parentPhone: '', parentEmail: '', referralCode: makeReferralCode(r.name), commissionBalance: 0
           });
-          created.push({ sbd: (r.sbd < 10 ? '0' : '') + r.sbd, name: r.name, username: r.username, password: pw });
+          created.push({ sbd: r.sbd, name: r.name, username: r.username, password: pw });
         }
         setDone(created);
         props.fireToast('Đã tạo ' + created.length + ' tài khoản cho lớp ' + lop.trim().toUpperCase() + '.');
@@ -2379,7 +2385,7 @@
     return h('div', { className: 'sm-overlay', onClick: function(e){ if(e.target === e.currentTarget && !busy) props.onClose(); } },
       h('div', { className: 'sm-modal sm-modal-wide', style: { maxWidth: '760px' }, role: 'dialog', 'aria-modal': 'true' },
         h('div', { className: 'sm-modal-head' }, h('div', null, h('h3', null, '👥 Tạo tài khoản cả lớp'),
-          h('p', { style: { fontSize: '0.82rem', color: 'var(--muted)', marginTop: 2 } }, 'Số báo danh = số thứ tự trong danh sách lớp; em tô SBD này trên phiếu trả lời.')),
+          h('p', { style: { fontSize: '0.82rem', color: 'var(--muted)', marginTop: 2 } }, 'Số báo danh 6 chữ số (theo danh sách của trường) — em tô đủ 6 số này trên phiếu trả lời.')),
           h('button', { type: 'button', className: 'sm-modal-close', onClick: function(){ if(!busy) props.onClose(); } }, h(IconClose))),
         done ? h('div', null,
           h('div', { className: 'banner', style: { marginBottom: '12px' } }, h('span', null, '✅'), h('div', null, 'Đã tạo ' + done.length + ' tài khoản. In phiếu tài khoản để phát cho từng em (mật khẩu chỉ hiện lần này — lưu lại file CSV).')),
@@ -2391,8 +2397,8 @@
           h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' } },
             h('label', { className: 'sm-field', style: { margin: 0 } }, h('span', null, 'Lớp'), h('input', { value: lop, placeholder: '12E3', onChange: function(e){ setLop(e.target.value); }, style: inputStyle })),
             h('label', { className: 'sm-field', style: { margin: 0, flex: 1, minWidth: '200px' } }, h('span', null, 'Trường (không bắt buộc)'), h('input', { value: school, placeholder: 'THPT Lê Thánh Tông', onChange: function(e){ setSchool(e.target.value); }, style: inputStyle }))),
-          h('label', { className: 'sm-field' }, h('span', null, 'Dán danh sách từ Excel (2 cột: STT, Họ và tên) — hoặc mỗi dòng 1 tên'),
-            h('textarea', { value: text, rows: 8, placeholder: '1\tNguyễn Văn An\n2\tTrần Thị Bình\n…', onChange: function(e){ setText(e.target.value); }, style: Object.assign({}, inputStyle, { fontFamily: 'IBM Plex Mono, monospace', width: '100%' }) })),
+          h('label', { className: 'sm-field' }, h('span', null, 'Dán danh sách từ Excel (các cột: STT, Số báo danh, Họ và tên)'),
+            h('textarea', { value: text, rows: 8, placeholder: '1\t120301\tNguyễn Văn An\n2\t120302\tTrần Thị Bình\n…', onChange: function(e){ setText(e.target.value); }, style: Object.assign({}, inputStyle, { fontFamily: 'IBM Plex Mono, monospace', width: '100%' }) })),
           existing.length ? h('p', { style: { fontSize: '0.82rem', color: 'var(--ink-2)' } }, 'Lớp này đã có ' + existing.length + ' em trên hệ thống — các SBD trùng sẽ được bỏ qua.') : null,
           rows.length ? h('div', { style: { maxHeight: '260px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', margin: '8px 0' } },
             h('table', { className: 'sm-history-table', style: { margin: 0 } },

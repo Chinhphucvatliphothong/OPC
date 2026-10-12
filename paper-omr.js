@@ -45,11 +45,12 @@
     var y = 24;           // dưới phần tiêu đề + thông tin học sinh
     if (opts.withId) {
       var PD = 4.6, RD = 1.85;
-      [{ kind: 'sbd', x: 104, t: 'SỐ BÁO DANH' }, { kind: 'code', x: 142, t: 'MÃ ĐỀ' }].forEach(function (blk) {
-        var top = 21, bw = 3 * 5.5 + 6;
+      // SỬA 12/10/2026 — Số báo danh 6 chữ số (theo SBD của trường), mã đề 3 chữ số
+      [{ kind: 'sbd', x: 105, t: 'SỐ BÁO DANH', n: 6 }, { kind: 'code', x: 149, t: 'MÃ ĐỀ', n: 3 }].forEach(function (blk) {
+        var top = 21, bw = blk.n * 5.5 + 6;
         boxes.push({ x: blk.x, y: top, w: bw, h: 5 + 7 + 10 * PD + 2.5 });
         labels.push({ x: blk.x + bw / 2, y: top + 3.8, text: blk.t, cls: 'qh', anchor: 'middle' });
-        for (var c = 0; c < 3; c++) {
+        for (var c = 0; c < blk.n; c++) {
           var cx = blk.x + 3 + c * 5.5 + 2.75;
           boxes.push({ x: cx - 2.35, y: top + 5, w: 4.7, h: 6, cls: 'write' });
           for (var dgt = 0; dgt < 10; dgt++) {
@@ -168,7 +169,7 @@
       o.push('<text class="inf" x="11" y="15">Họ và tên: </text><line x1="27" y1="15.4" x2="104" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>');
       o.push('<text class="inf" x="108" y="15">Lớp: <tspan font-weight="700">' + esc(meta.lop || '') + '</tspan></text>' + (meta.lop ? '' : '<line x1="116" y1="15.4" x2="138" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>'));
       o.push('<text class="inf" x="142" y="15">Ngày: </text><line x1="151" y1="15.4" x2="171" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>');
-      o.push('<text class="note" x="11" y="19.4">Ghi và TÔ Số báo danh (số thứ tự trong danh sách lớp, vd 07) và Mã đề ở khung bên phải. Tô KÍN ô bằng bút chì/bút đen; không viết lên 4 ô vuông đen.</text>');
+      o.push('<text class="note" x="11" y="19.4">Ghi và TÔ đủ 6 chữ số Số báo danh và 3 chữ số Mã đề ở khung bên phải. Tô KÍN ô bằng bút chì/bút đen; không viết lên 4 ô vuông đen.</text>');
     } else
     o.push('<text class="inf" x="11" y="15">Họ và tên: ' + (meta.studentName ? '<tspan font-weight="700">' + esc(meta.studentName) + '</tspan>' : '') + '</text>');
     if (!meta.studentName && !L.withId) o.push('<line x1="27" y1="15.4" x2="112" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>');
@@ -384,15 +385,17 @@
     var res = { I: [], II: [], III: [] }, unsure = { I: {}, II: {}, III: {} };
     // Số báo danh / mã đề (phiếu chấm cả lớp): mỗi cột 1 chữ số; cột để trống thì bỏ qua (vd chỉ tô 2 cột "0","7" → 7)
     function readDigits(kind) {
-      var str = '', ok = true;
-      for (var c = 0; c < 3; c++) {
+      var str = '', ok = true, ncol = 0;
+      for (var c = 0; c < 6; c++) {
         var g = []; L.bubbles.forEach(function (b, i) { if (b.part === kind && b.col === c) g.push(i); });
-        if (!g.length) return null;
+        if (!g.length) break;
+        ncol++;
         var dd = decide(g);
         if (dd.pick != null) str += L.bubbles[dd.pick].ch;
         if (!dd.sure) ok = false;
       }
-      return { text: str, value: str ? parseInt(str, 10) : null, sure: ok && !!str };
+      // tô thiếu cột (vd SBD chỉ tô 4/6 số) → vẫn đọc nhưng đánh dấu cần xem lại
+      return { text: str, value: str ? parseInt(str, 10) : null, sure: ok && str.length === ncol };
     }
     var idInfo = L.withId ? { sbd: readDigits('sbd'), code: readDigits('code') } : null;
     for (var q1 = 0; q1 < L.n1; q1++) {
