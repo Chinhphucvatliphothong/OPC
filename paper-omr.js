@@ -46,7 +46,8 @@
     if (opts.withId) {
       var PD = 4.6, RD = 1.85;
       // SỬA 12/10/2026 — Số báo danh 6 chữ số (theo SBD của trường), mã đề 3 chữ số
-      [{ kind: 'sbd', x: 105, t: 'SỐ BÁO DANH', n: 6 }, { kind: 'code', x: 149, t: 'MÃ ĐỀ', n: 3 }].forEach(function (blk) {
+      // opts.noCode (THÊM 13/10/2026 — phiếu ôn cá nhân): không có khối mã đề (mỗi em 1 đề riêng, nhận theo SBD)
+      [{ kind: 'sbd', x: 105, t: 'SỐ BÁO DANH', n: 6 }, { kind: 'code', x: 149, t: 'MÃ ĐỀ', n: 3 }].filter(function (blk) { return !(opts.noCode && blk.kind === 'code'); }).forEach(function (blk) {
         var top = 21, bw = blk.n * 5.5 + 6;
         boxes.push({ x: blk.x, y: top, w: bw, h: 5 + 7 + 10 * PD + 2.5 });
         labels.push({ x: blk.x + bw / 2, y: top + 3.8, text: blk.t, cls: 'qh', anchor: 'middle' });
@@ -130,11 +131,12 @@
       y += Math.ceil(n3 / perRow3) * (bh3 + 3) + 2;
     }
 
-    var H = Math.max(60, y + MK + 2);
+    // opts.fixedH: ép cùng chiều cao cho mọi phiếu (phiếu ôn mỗi em số câu khác nhau nhưng 4 mốc phải cùng vị trí)
+    var H = Math.max(60, y + MK + 2, opts.fixedH || 0);
     var markers = [
       { x: 0, y: 0 }, { x: W - MK, y: 0 }, { x: 0, y: H - MK }, { x: W - MK, y: H - MK }
     ].map(function (m) { return { x: m.x, y: m.y, w: MK, h: MK, cx: m.x + MK / 2, cy: m.y + MK / 2 }; });
-    return { W: W, H: H, n1: n1, n2: n2, n3: n3, withId: !!opts.withId, bubbles: bubbles, labels: labels, boxes: boxes, markers: markers };
+    return { W: W, H: H, n1: n1, n2: n2, n3: n3, withId: !!opts.withId, noCode: !!opts.noCode, bubbles: bubbles, labels: labels, boxes: boxes, markers: markers };
   }
 
   // Mã phiếu ngắn (giúp thầy khớp phiếu với đề khi nhập): 4 ký tự từ id đề
@@ -169,7 +171,7 @@
       o.push('<text class="inf" x="11" y="15">Họ và tên: </text><line x1="27" y1="15.4" x2="104" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>');
       o.push('<text class="inf" x="108" y="15">Lớp: <tspan font-weight="700">' + esc(meta.lop || '') + '</tspan></text>' + (meta.lop ? '' : '<line x1="116" y1="15.4" x2="138" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>'));
       o.push('<text class="inf" x="142" y="15">Ngày: </text><line x1="151" y1="15.4" x2="171" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>');
-      o.push('<text class="note" x="11" y="19.4">Ghi và TÔ đủ 6 chữ số Số báo danh và 3 chữ số Mã đề ở khung bên phải. Tô KÍN ô bằng bút chì/bút đen; không viết lên 4 ô vuông đen.</text>');
+      o.push('<text class="note" x="11" y="19.4">' + (L.noCode ? 'Ghi và TÔ đủ 6 chữ số Số báo danh ở khung bên phải (phiếu riêng của em — không có mã đề).' : 'Ghi và TÔ đủ 6 chữ số Số báo danh và 3 chữ số Mã đề ở khung bên phải.') + ' Tô KÍN ô bằng bút chì/bút đen; không viết lên 4 ô vuông đen.</text>');
     } else
     o.push('<text class="inf" x="11" y="15">Họ và tên: ' + (meta.studentName ? '<tspan font-weight="700">' + esc(meta.studentName) + '</tspan>' : '') + '</text>');
     if (!meta.studentName && !L.withId) o.push('<line x1="27" y1="15.4" x2="112" y2="15.4" stroke="#777" stroke-width=".2" stroke-dasharray=".6 .6"/>');
