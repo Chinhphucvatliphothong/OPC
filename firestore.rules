@@ -104,6 +104,11 @@ service cloud.firestore {
     // giữ nguyên giới hạn chặt: chỉ đúng các trường liệt kê, đúng kiểu dữ
     // liệu, và status phải là 'pending'. Đọc/sửa/xoá (duyệt, từ chối) CHỈ
     // admin — không đổi.
+    // THÊM 12/10/2026 — Bài kiểm tra trên lớp (đề giấy nhiều mã đề + kết quả quét phiếu cả lớp). Có ĐÁP ÁN nên chỉ admin.
+    match /class_tests/{testId} {
+      allow read, write: if isOpcAdmin();
+    }
+
     match /registrations/{regId} {
       allow create: if request.resource.data.keys().hasOnly(['name','gmail','phone','parentZalo','referralCode','status','createdAt','source'])
         && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() < 100

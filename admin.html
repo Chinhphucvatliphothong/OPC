@@ -620,6 +620,10 @@
       clearHelp: function(studentId, key){
         var upd = {}; upd['helpNeeded.' + key] = deleteField();
         return updateDoc(doc(db, 'student_stats', studentId), upd);
+      },
+      // THÊM 12/10/2026 — sau khi thầy nhập bài giấy: cập nhật số liệu tổng hợp ngay (không chờ em mở app)
+      merge: function(studentId, payload){
+        return setDoc(doc(db, 'student_stats', studentId), payload, { merge: true });
       }
     };
 
@@ -831,7 +835,37 @@
       loadForStudent: async function(studentId){
         var snap = await getDocs(query(collection(db, 'students', studentId, 'attempts'), orderBy('createdAt', 'desc'), limit(100)));
         return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); });
+      },
+      // THÊM 12/10/2026 — thầy nhập bài làm GIẤY: ghi 1 lượt làm bài (id cố định theo đề → nhập lại thì ghi đè, không trùng)
+      save: function(studentId, rec){
+        return setDoc(doc(db, 'students', studentId, 'attempts', String(rec.clientId)), rec);
       }
+    };
+
+    // ================= THÊM 12/10/2026 — BÀI KIỂM TRA TRÊN LỚP (chấm phiếu cả lớp bằng camera) =================
+    // class_tests/{id}: { title, lop, date, sourceExamId, sourceTitle, questions (câu gốc, dạng câu hỏi của học sinh),
+    //   versions: [{ code:'101', order:[qId...], perm:{ qId:'CADB' } }], results: { studentId: {...} }, createdAt }
+    // CHỈ admin đọc/ghi (đáp án nằm trong đây) — cần thêm khối match /class_tests trong firestore.rules và bấm Publish.
+    OPC.classTests = {
+      subscribe: function(onNext, onErr){
+        return onSnapshot(query(collection(db, 'class_tests'), orderBy('createdAt', 'desc')), onNext, onErr);
+      },
+      create: async function(data){
+        var r = doc(collection(db, 'class_tests'));
+        await setDoc(r, Object.assign({}, data, { createdAt: serverTimestamp() }));
+        return r.id;
+      },
+      update: function(id, patch){ return updateDoc(doc(db, 'class_tests', id), patch); },
+      // ghi kết quả 1 em (đường dẫn "results.<id>" — không đụng kết quả các em khác)
+      setResult: function(id, studentId, result){
+        var upd = {}; upd['results.' + studentId] = result;
+        return updateDoc(doc(db, 'class_tests', id), upd);
+      },
+      clearResult: function(id, studentId){
+        var upd = {}; upd['results.' + studentId] = deleteField();
+        return updateDoc(doc(db, 'class_tests', id), upd);
+      },
+      remove: function(id){ return deleteDoc(doc(db, 'class_tests', id)); }
     };
 
     // ================= Đăng ký lớp thử nghiệm — hàng chờ duyệt =============
@@ -986,6 +1020,8 @@
 <!-- video-walkthrough.js: THÊM 1/10/2026 — Video chữa đề gắn mốc thời gian (đọc mốc kiểu mô tả YouTube,
      tính đoạn từng câu, modal xem thử). Dùng chung với trang học sinh. -->
 <script src="video-walkthrough.js"></script>
+<!-- THÊM 12/10/2026 — phiếu trả lời giấy + đọc phiếu bằng ảnh chụp (dùng chung cho bản in và màn "Nhập bài giấy") -->
+<script src="paper-omr.js"></script>
 <!-- prepscholar.js: THÊM 25/9/2026 — admin.html trước đây không nạp file này
      (chỉ prepscholar-ui.js/trang luyện tập của học sinh mới dùng). Nay cần
      dùng chung hàm computeStudentStatsFromAttempts (tính "Sổ tay câu sai" +
@@ -1484,6 +1520,14 @@
       bodyHtml += '</section>';
     });
     bodyHtml += '<div class="the-end">— HẾT —</div>';
+    // THÊM 12/10/2026 — PHIẾU TRẢ LỜI (trang riêng, tô ô kiểu đề TN THPT) để học sinh làm trên giấy rồi thầy chụp phiếu chấm tự động
+    var omrHtml = '';
+    if(window.OPC_OMR){
+      var LL = window.OPC_OMR.layoutSheet(parts.I.length, parts.II.length, parts.III.length, cfg.sheetWithId ? { withId: true } : undefined);
+      omrHtml = '<section class="omr-page">' + window.OPC_OMR.renderSheetSvg(LL, {
+        title: cfg.heading || '', studentName: cfg.studentName || '', examCode: cfg.examCode || '', lop: cfg.lop || '', code: window.OPC_OMR.sheetCode(cfg.storeKey || cfg.heading || '')
+      }) + '</section>';
+    }
 
     // ---- Bảng đáp án ----
     var keyHtml = '';
@@ -1595,6 +1639,8 @@
       '.sol-item{margin:0 0 9px;break-inside:avoid;text-align:justify;}' +
       '.sol-ans{font:700 .8em "Be Vietnam Pro",Arial,sans-serif;color:#166534;background:#e7f6ec;padding:0 6px;border-radius:3px;}' +
       '.katex{font-size:1.05em;}' +
+      '.omr-page{display:none;break-before:page;page-break-before:always;margin-top:24px;} body.show-omr .omr-page{display:block;}' +
+      '.omr-page svg{display:block;width:180mm;max-width:100%;height:auto;max-height:262mm;margin:0 auto;}' +
       // THÊM 10/10/2026 — khung ô li dưới câu hỏi (vở ô li: ô 8 mm, 4 dòng li 2 mm, lề đỏ)
       '.q-ruled{display:none;position:relative;height:var(--ruled-h,50mm);margin:6px 0 2px;border:1px solid #b9c6e4;border-radius:3px;background-color:#fff;' +
         'background-image:linear-gradient(to right,rgba(70,100,180,.42) 1px,transparent 1px),linear-gradient(to bottom,rgba(70,100,180,.5) 1px,transparent 1px),linear-gradient(to bottom,rgba(70,100,180,.2) 1px,transparent 1px);' +
@@ -1654,12 +1700,13 @@
       '<link rel="icon" href="' + origin + '/favicon.svg">' +
       '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap">' +
       '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">' +
-      '<style>' + css + '</style><style id="pagecss">' + printPageCss('fa', '') + '</style></head><body class="fs-12">' +
+      '<style>' + css + '</style><style id="pagecss">' + printPageCss('fa', '') + '</style></head><body class="fs-12 show-omr">' +
       '<div class="toolbar">' +
         '<span class="tb-title">🖨️ Bản in đề · FaradayAI.vn</span>' +
         '<label><input type="checkbox" onchange="setOpt(\'show-key\',this.checked)"> Bảng đáp án (trang cuối)</label>' +
         (hasSolution ? '<label><input type="checkbox" onchange="setOpt(\'show-sol\',this.checked)"> Lời giải chi tiết</label>' : '') +
         '<label><input type="checkbox" onchange="setOpt(\'mark-ans\',this.checked)"> Đánh dấu đáp án trong đề (bản của thầy)</label>' +
+        '<label title="Trang phiếu tô đáp án — thầy chụp phiếu để chấm tự động trong admin (📝 Nhập bài giấy)"><input type="checkbox" checked onchange="setOpt(\'show-omr\',this.checked)"> Kèm phiếu trả lời</label>' +
         '<label><input type="checkbox" checked onchange="setOpt(\'no-wm\',!this.checked)"> Logo chìm</label>' +
         '<label>Đầu đề <select id="brandSel" onchange="setBrand(this.value)"><option value="fa">Logo FaradayAI</option><option value="school">Tên trường / logo riêng</option></select></label>' +
         '<span class="tb-school"><label class="tb-file">🖼 Chọn logo trường<input type="file" accept="image/*" style="display:none" onchange="pickLogo(this)"></label><button type="button" class="tb-mini" onclick="clearLogo()">Bỏ logo</button></span>' +
@@ -1688,6 +1735,7 @@
         '<div class="doc-note" contenteditable="true" spellcheck="false" data-ed="note" data-ph="＋ Thêm dòng ghi chú (vd. Kiểm tra 15 phút — Lớp 12A1)">' + escapeHtmlPDF(cfg.note || '') + '</div>' +
         '<div class="student-box"><div>' + studentRow + '</div><div class="score-box">ĐIỂM<div></div></div></div>' +
         bodyHtml +
+        omrHtml +
         '<section class="answer-section">' +
           '<h2>ĐÁP ÁN' + (hasSolution ? ' VÀ HƯỚNG DẪN GIẢI' : '') + '</h2>' +
           '<div class="key-block"><div class="blk-title">Bảng đáp án</div>' + keyHtml + '</div>' +
@@ -1856,6 +1904,918 @@
   }
   // THÊM 9/10/2026 — xuất bản in cho 1 đề trong ngân hàng (chuyển câu sang hình dạng câu hỏi của học sinh
   // bằng toStudentQuestionShape, tải ảnh từ subcollection nếu cần).
+  // THÊM 12/10/2026 — in RIÊNG phiếu trả lời (vd. in thêm cho cả lớp / em làm hỏng phiếu)
+  function exportAnswerSheetOnly(meta, questions){
+    if(!window.OPC_OMR) return;
+    var o = window.OPC_OMR.orderForSheet(questions);
+    var L = window.OPC_OMR.layoutSheet(o.I.length, o.II.length, o.III.length);
+    var win = openPrintWindow(); if(!win) return;
+    writePrintWindow(win, '<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu trả lời — ' + escapeHtmlPDF(meta.title || '') + '</title>' +
+      '<style>@page{size:A4;margin:14mm 15mm;} html,body{margin:0;background:#e9e7e2;} .bar{position:sticky;top:0;background:#14181f;color:#fff;font:14px system-ui,sans-serif;padding:10px 16px;display:flex;gap:12px;align-items:center;}' +
+      '.bar button{margin-left:auto;font:700 14px system-ui,sans-serif;padding:8px 18px;border-radius:8px;border:0;background:#e6c27a;cursor:pointer;}' +
+      '.pg{width:180mm;max-width:calc(100vw - 24px);margin:18px auto;background:#fff;padding:6mm;box-shadow:0 4px 24px rgba(0,0,0,.12);} svg{display:block;width:100%;height:auto;max-height:262mm;}' +
+      '*{-webkit-print-color-adjust:exact;print-color-adjust:exact;} @media print{.bar{display:none;} html,body{background:#fff;} .pg{margin:0;padding:0;box-shadow:none;width:auto;}}</style></head><body>' +
+      '<div class="bar"><b>Phiếu trả lời</b><span>' + escapeHtmlPDF(meta.title || '') + '</span><button onclick="window.print()">In / Lưu PDF</button></div>' +
+      '<div class="pg">' + window.OPC_OMR.renderSheetSvg(L, { title: meta.title || '', studentName: meta.studentName || '', examCode: meta.examCode || '', code: window.OPC_OMR.sheetCode(meta.key || meta.title || '') }) + '</div></body></html>');
+  }
+
+  // ===================== THÊM 12/10/2026 — NHẬP BÀI LÀM GIẤY =====================
+  // Học sinh làm đề trên giấy (tô phiếu trả lời in kèm đề). Thầy chụp phiếu → tự nhận đáp án (paper-omr.js), soát lại
+  // những câu được đánh dấu vàng, rồi "Lưu": tạo 1 lượt làm bài GIỐNG HỆT làm online (type 'assigned' nếu là đề đã giao,
+  // 'paper' nếu là đề lấy từ ngân hàng; source:'paper'), nên điểm, Sổ tay câu sai, mastery nano-point, đề tuần sau,
+  // báo cáo phụ huynh, Phòng dạy... đều dùng được ngay. Mã lượt cố định theo (em, đề) → nhập lại thì GHI ĐÈ, không bị trùng.
+  function paperBuildLists(scored){
+    var NE = window.PrepScholarEngine;
+    function ids(q){ return NE && NE.nanoIdsOf ? NE.nanoIdsOf(q) : (q.nanoIds || (q.nanoId ? [q.nanoId] : [])); }
+    var wrong = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
+      return { qId: r.question.id, topicKey: r.question.topicKey || null, topicName: r.question.topicName || null, subtopic: r.question.subtopic || null, nanoId: r.question.nanoId || null, nanoIds: ids(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+    });
+    var right = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
+      return { qId: r.question.id, nanoId: r.question.nanoId || null, nanoIds: ids(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+    });
+    return { wrongQuestions: wrong, rightQuestions: right };
+  }
+  function paperClean(o){ return JSON.parse(JSON.stringify(o)); } // bỏ undefined (Firestore không nhận)
+  async function paperRefreshStats(studentId){
+    var NE = window.PrepScholarEngine, OPCref = window.OPC;
+    if(!NE || !NE.computeStudentStatsFromAttempts || !OPCref.attempts || !OPCref.studentStats || !OPCref.studentStats.merge) return;
+    var attempts = await OPCref.attempts.loadForStudent(studentId);
+    var st = NE.computeStudentStatsFromAttempts(attempts);
+    var payload = {};
+    ['mastery','predicted','nanoMastery','radar5','levelXp','currentChuDe','completedExamsCount','averageScore','highestScore','mistakeTotal'].forEach(function(k){ if(st[k] != null) payload[k] = st[k]; });
+    if(st.mistakeLog) payload.mistakeCount = st.mistakeLog.length;
+    if(OPCref.assignedExams && OPCref.assignedExams.countForStudent){
+      try{
+        payload.assignedExamsCount = await OPCref.assignedExams.countForStudent(studentId);
+        var done = {}; attempts.forEach(function(a){ if(a.assignedExamId) done[a.assignedExamId] = 1; });
+        payload.assignedExamsCompletedCount = Math.min(payload.assignedExamsCount, Object.keys(done).length);
+      }catch(e){}
+    }
+    payload.updatedAt = new Date().toISOString();
+    await OPCref.studentStats.merge(studentId, paperClean(payload));
+  }
+
+  function PaperEntryModal(props){
+    var OPCref = window.OPC, OMR = window.OPC_OMR, NE = window.PrepScholarEngine;
+    var ord = OMR ? OMR.orderForSheet(props.questions || []) : { I: [], II: [], III: [], all: props.questions || [] };
+    var L = OMR ? OMR.layoutSheet(ord.I.length, ord.II.length, ord.III.length, props.layoutOpts) : null;
+    var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var sidState = React.useState(props.student ? props.student.id : ''); var sid = sidState[0], setSid = sidState[1];
+    var today = new Date(); var pad = function(n){ return (n < 10 ? '0' : '') + n; };
+    var dateState = React.useState(today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate())); var dateStr = dateState[0], setDateStr = dateState[1];
+    var ansState = React.useState(props.initialAnswers || {}); var ans = ansState[0], setAns = ansState[1];          // qId -> 'A' | {a:true..} | '1,73'
+    var unsureState = React.useState({}); var unsure = unsureState[0], setUnsure = unsureState[1];
+    var omrState = React.useState(null); var omr = omrState[0], setOmr = omrState[1];        // { busy, error, msg }
+    var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
+    var quickState = React.useState(''); var quick = quickState[0], setQuick = quickState[1];
+    var existState = React.useState(null); var exist = existState[0], setExist = existState[1];
+    var previewRef = React.useRef(null);
+    var examKey = props.assignedExam ? 'ae_' + props.assignedExam.id : 'bank_' + (props.bankExamId || 'x');
+    var clientId = 'paper_' + examKey;
+
+    React.useEffect(function(){
+      if(props.student || !OPCref || !OPCref.students) return;
+      var unsub = OPCref.students.subscribe(function(snap){
+        var list = []; snap.forEach(function(d){ list.push(Object.assign({ id: d.id }, d.data())); });
+        setStudents(list.filter(function(x){ return x.status !== 'inactive'; }));
+      }, function(){});
+      return function(){ unsub(); };
+    }, []);
+    // đã có bài giấy của em này cho đề này chưa → nạp lại để sửa
+    React.useEffect(function(){
+      setExist(null);
+      if(!sid || !OPCref.attempts || props.customSave) return; // chế độ bài kiểm tra lớp tự quản lý bài cũ
+      var cancelled = false;
+      OPCref.attempts.loadForStudent(sid).then(function(list){
+        if(cancelled) return;
+        var old = list.filter(function(a){ return a.id === clientId; })[0] || null;
+        var online = props.assignedExam ? list.filter(function(a){ return a.assignedExamId === props.assignedExam.id && a.source !== 'paper' && !a.partial; })[0] : null;
+        setExist({ old: old, online: online });
+        if(old && old.answers){ setAns(old.answers); setUnsure({}); }
+      }).catch(function(){});
+      return function(){ cancelled = true; };
+    }, [sid]);
+
+    function setOne(qid, v){ setAns(function(prev){ var n = Object.assign({}, prev); if(v === undefined || v === '' ) delete n[qid]; else n[qid] = v; return n; }); setUnsure(function(prev){ if(!prev[qid]) return prev; var n = Object.assign({}, prev); delete n[qid]; return n; }); }
+    function setStmt(q, key, v){
+      var cur = Object.assign({}, ans[q.id] || {});
+      if(cur[key] === v) delete cur[key]; else cur[key] = v;
+      setOne(q.id, Object.keys(cur).length ? cur : undefined);
+    }
+    function applyQuick(){
+      var str = quick.toUpperCase().replace(/[^ABCD.\-_ ]/g, '');
+      var n = Object.assign({}, ans);
+      ord.I.forEach(function(q, i){ var ch = str[i]; if(ch === undefined) return; if('ABCD'.indexOf(ch) > -1) n[q.id] = ch; else delete n[q.id]; });
+      setAns(n); props.fireToast('Đã điền Phần I từ chuỗi gõ nhanh.');
+    }
+
+    function onPhoto(e){
+      var f = e.target.files && e.target.files[0]; e.target.value = '';
+      if(!f || !OMR || !L) return;
+      setOmr({ busy: true, msg: 'Đang đọc phiếu…' });
+      var url = URL.createObjectURL(f), img = new Image();
+      img.onload = function(){
+        setTimeout(function(){
+          try{
+            var sc = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+            var cv = document.createElement('canvas'); cv.width = Math.round(img.naturalWidth * sc); cv.height = Math.round(img.naturalHeight * sc);
+            var ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0, cv.width, cv.height);
+            var res = OMR.readSheet(ctx.getImageData(0, 0, cv.width, cv.height), L);
+            URL.revokeObjectURL(url);
+            if(!res.ok){ setOmr({ error: res.error }); return; }
+            var n = {}, un = {};
+            ord.I.forEach(function(q, i){ if(res.answers.I[i]) n[q.id] = res.answers.I[i]; if(res.unsure.I[i]) un[q.id] = res.unsure.I[i]; });
+            ord.II.forEach(function(q, i){
+              var o = {}; (q.statements || []).forEach(function(st, si){ if(si < 4 && res.answers.II[i][si] != null) o[st.key || 'abcd'[si]] = res.answers.II[i][si]; });
+              if(Object.keys(o).length) n[q.id] = o;
+              if(res.unsure.II[i]) un[q.id] = 'Ý ' + res.unsure.II[i].split('').join(', ') + ' chưa rõ';
+            });
+            ord.III.forEach(function(q, i){ if(res.answers.III[i]) n[q.id] = res.answers.III[i]; if(res.unsure.III[i]) un[q.id] = res.unsure.III[i]; });
+            setAns(n); setUnsure(un);
+            // ảnh xem lại: khoanh các ô máy nhận là đã tô
+            var pv = previewRef.current;
+            if(pv){
+              var k = Math.min(1, 900 / cv.width); pv.width = Math.round(cv.width * k); pv.height = Math.round(cv.height * k);
+              var pc = pv.getContext('2d'); pc.drawImage(cv, 0, 0, pv.width, pv.height);
+              pc.lineWidth = 2.5;
+              L.bubbles.forEach(function(b, bi){
+                var picked = (b.part === 'I' && res.answers.I[b.qi] === b.opt) || (b.part === 'II' && res.answers.II[b.qi][b.si] === b.val) ||
+                  (b.part === 'III' && res.values[bi] >= res.threshold);
+                if(!picked) return;
+                var c = res.project(b.x, b.y), e2 = res.project(b.x + b.r, b.y);
+                var rr = Math.max(3, Math.hypot(e2[0] - c[0], e2[1] - c[1]) * k * 1.35);
+                pc.strokeStyle = '#16a34a'; pc.beginPath(); pc.arc(c[0] * k, c[1] * k, rr, 0, Math.PI * 2); pc.stroke();
+              });
+              pc.strokeStyle = '#2563eb'; pc.lineWidth = 3;
+              pc.beginPath(); [0, 1, 3, 2, 0].forEach(function(i, j){ var m = res.markers[i]; if(j) pc.lineTo(m[0] * k, m[1] * k); else pc.moveTo(m[0] * k, m[1] * k); }); pc.stroke();
+            }
+            var nUn = Object.keys(un).length;
+            setOmr({ msg: '✅ Đã đọc phiếu: nhận ' + Object.keys(n).length + '/' + ord.all.length + ' câu có tô.' + (nUn ? ' ⚠️ ' + nUn + ' câu cần thầy xem lại (viền vàng).' : ' Thầy soát nhanh rồi bấm Lưu.') });
+          }catch(err){ console.error(err); setOmr({ error: 'Lỗi khi đọc ảnh: ' + (err && err.message) }); }
+        }, 30);
+      };
+      img.onerror = function(){ setOmr({ error: 'Không mở được ảnh này. Hãy chụp lại (JPG/PNG).' }); };
+      img.src = url;
+    }
+
+    var scored = NE && NE.scoreExam ? NE.scoreExam(ord.all, ans) : null;
+    var nAnswered = Object.keys(ans).length;
+
+    async function save(){
+      if(!sid){ props.fireToast('Chọn học sinh trước khi lưu.', true); return; }
+      if(!scored){ props.fireToast('Chưa nạp bộ chấm điểm — tải lại trang.', true); return; }
+      if(props.customSave){
+        setSaving(true);
+        try{
+          var rr = await props.customSave(ans, scored);
+          props.fireToast('Đã lưu: ' + (rr && typeof rr.score === 'number' ? rr.score.toFixed(2) : scored.scaledScore10.toFixed(2)) + '/10.');
+          props.onClose();
+        }catch(err0){ console.error(err0); props.fireToast('Lưu thất bại: ' + (err0 && err0.message ? err0.message : 'lỗi không rõ'), true); }
+        finally{ setSaving(false); }
+        return;
+      }
+      if(!nAnswered && !window.confirm('Chưa nhập câu nào. Vẫn lưu (0 điểm)?')) return;
+      setSaving(true);
+      try{
+        var t = new Date(dateStr + 'T' + pad(today.getHours()) + ':' + pad(today.getMinutes()) + ':00');
+        var lists = paperBuildLists(scored);
+        var rec = paperClean({
+          clientId: clientId,
+          createdAt: (exist && exist.old && exist.old.createdAt && exist.old.createdAt.slice(0, 10) === dateStr) ? exist.old.createdAt : t.toISOString(),
+          updatedAt: new Date().toISOString(),
+          type: props.assignedExam ? 'assigned' : 'paper',
+          source: 'paper',
+          assignedExamId: props.assignedExam ? props.assignedExam.id : null,
+          bankExamId: props.bankExamId || null,
+          examTitle: props.title || '',
+          topicKey: null,
+          scaledScore10: scored.scaledScore10,
+          correctCount: scored.correctCount,
+          totalQuestions: scored.totalQuestions,
+          topicStats: scored.topicStats,
+          wrongQuestions: lists.wrongQuestions,
+          rightQuestions: lists.rightQuestions,
+          answers: ans,
+          questionIds: ord.all.map(function(q){ return q.id; }),
+          timeAllocatedSec: null, timeUsedSec: null,
+          enteredBy: (window.OPC_currentUser && window.OPC_currentUser.email) || ''
+        });
+        await OPCref.attempts.save(sid, rec);
+        try{ await paperRefreshStats(sid); }catch(e2){ console.warn('Chưa cập nhật được số liệu tổng hợp (em mở app sẽ tự tính lại):', e2); }
+        props.fireToast('Đã lưu bài giấy: ' + scored.scaledScore10.toFixed(2) + '/10 (' + scored.correctCount + '/' + scored.totalQuestions + ' câu đúng).');
+        if(props.onSaved) props.onSaved(rec);
+        props.onClose();
+      }catch(err){
+        console.error(err); props.fireToast('Lưu thất bại: ' + (err && err.message ? err.message : 'lỗi không rõ'), true);
+      }finally{ setSaving(false); }
+    }
+
+    var chip = function(on, label, onClick, warn){
+      return h('button', { type: 'button', onClick: onClick, style: { minWidth: '34px', height: '34px', borderRadius: '50%', fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
+        border: on ? '2px solid var(--ink)' : '1px solid var(--line)', background: on ? 'var(--ink)' : 'var(--surface)', color: on ? 'var(--surface)' : 'var(--ink-2)' } }, label);
+    };
+    var rowStyle = function(q){ return { display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 8px', borderRadius: '10px', flexWrap: 'wrap',
+      border: unsure[q.id] ? '2px solid #eab308' : '1px solid transparent', background: unsure[q.id] ? 'color-mix(in srgb, #eab308 12%, var(--surface))' : 'transparent' }; };
+    var curStudent = props.student || students.filter(function(x){ return x.id === sid; })[0] || null;
+
+    return h('div', { className: 'sm-overlay', onClick: function(e){ if(e.target === e.currentTarget && !saving) props.onClose(); } },
+      h('div', { className: 'sm-modal sm-modal-wide', style: { maxWidth: '920px' }, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Nhập bài làm giấy' },
+        h('div', { className: 'sm-modal-head' },
+          h('div', null, h('h3', null, '📝 Nhập bài làm giấy'), h('div', { style: { fontSize: '0.84rem', color: 'var(--ink-2)', marginTop: '2px' } }, (props.title || '') + ' · ' + ord.all.length + ' câu (P1: ' + ord.I.length + ' · P2: ' + ord.II.length + ' · P3: ' + ord.III.length + ')')),
+          h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end', margin: '12px 0' } },
+          props.student ? h('div', null, h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, 'Học sinh'), h('b', null, props.student.name)) :
+            h('label', { className: 'sm-field', style: { margin: 0, minWidth: '220px' } }, h('span', { style: { fontSize: '0.78rem' } }, 'Học sinh'),
+              h('select', { value: sid, onChange: function(e){ setSid(e.target.value); setAns({}); setUnsure({}); } },
+                h('option', { value: '' }, '— Chọn học sinh —'),
+                students.slice().sort(function(a, b){ return String(a.name).localeCompare(String(b.name), 'vi'); }).map(function(x){ return h('option', { key: x.id, value: x.id }, x.name); }))),
+          props.customSave ? (props.headerExtra || null) : h('label', { className: 'sm-field', style: { margin: 0 } }, h('span', { style: { fontSize: '0.78rem' } }, 'Ngày làm bài'),
+            h('input', { type: 'date', value: dateStr, onChange: function(e){ setDateStr(e.target.value || dateStr); } })),
+          h('span', { style: { flex: 1 } }),
+          h('label', { className: 'btn btn-primary', style: { cursor: 'pointer' }, title: 'Chụp phiếu trả lời thẳng, thấy trọn 4 ô vuông đen ở góc' }, omr && omr.busy ? 'Đang đọc…' : '📷 Chụp / chọn ảnh phiếu',
+            h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' }, onChange: onPhoto })),
+          props.customSave ? null : h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ exportAnswerSheetOnly({ title: props.title, studentName: curStudent ? curStudent.name : '', examCode: props.examCode || '', key: props.sheetKey || examKey }, props.questions || []); } }, '🖨️ In phiếu trống')),
+        exist && exist.old ? h('div', { className: 'banner', style: { marginBottom: '10px' } }, h('span', null, 'ℹ️'), h('div', null, 'Em đã có bài giấy cho đề này (lưu lúc ' + fmtDate(exist.old.updatedAt || exist.old.createdAt) + ', ' + (typeof exist.old.scaledScore10 === 'number' ? exist.old.scaledScore10.toFixed(2) : '—') + ' điểm). Đã nạp lại để sửa — bấm Lưu sẽ ghi đè.')) : null,
+        exist && exist.online ? h('div', { className: 'banner warn', style: { marginBottom: '10px' } }, h('span', null, '⚠️'), h('div', null, 'Em đã làm đề này ONLINE (' + (typeof exist.online.scaledScore10 === 'number' ? exist.online.scaledScore10.toFixed(2) : '—') + ' điểm). Lưu bài giấy sẽ thêm 1 lượt nữa.')) : null,
+        omr && (omr.msg || omr.error) ? h('div', { className: 'banner' + (omr.error ? ' warn' : ''), style: { marginBottom: '10px' } }, h('span', null, omr.error ? '⚠️' : '📷'), h('div', null, omr.error || omr.msg)) : null,
+        h('details', { open: !!(omr && omr.msg && !omr.busy), style: { display: omr && omr.msg && !omr.busy ? 'block' : 'none', marginBottom: '10px' } },
+          h('summary', { style: { cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 } }, 'Ảnh phiếu — ô máy nhận là đã tô được khoanh xanh'),
+          h('canvas', { ref: previewRef, style: { display: 'block', maxWidth: '100%', maxHeight: '420px', width: 'auto', height: 'auto', border: '1px solid var(--line)', borderRadius: '8px', marginTop: '6px' } })),
+        !L ? h('p', { style: { color: 'var(--critical)' } }, 'Chưa tải được paper-omr.js — tải lại trang.') : null,
+        ord.I.length ? h('div', { style: { marginBottom: '14px' } },
+          h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '6px' } },
+            h('b', null, 'Phần I'),
+            h('input', { type: 'text', value: quick, placeholder: 'Gõ nhanh: ABCDA… (dấu . = bỏ trống)', onChange: function(e){ setQuick(e.target.value); }, style: { flex: 1, minWidth: '200px', padding: '6px 10px', border: '1px solid var(--line)', borderRadius: '8px', fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', background: 'var(--surface)', color: 'inherit' } }),
+            h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, disabled: !quick.trim(), onClick: applyQuick }, 'Điền')),
+          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '2px 10px' } },
+            ord.I.map(function(q, i){
+              return h('div', { key: q.id, style: rowStyle(q), title: unsure[q.id] || '' },
+                h('b', { style: { minWidth: '30px', fontSize: '0.85rem' } }, (i + 1) + '.'),
+                ['A', 'B', 'C', 'D'].map(function(k){ return h('span', { key: k }, chip(ans[q.id] === k, k, function(){ setOne(q.id, ans[q.id] === k ? undefined : k); })); }));
+            }))) : null,
+        ord.II.length ? h('div', { style: { marginBottom: '14px' } },
+          h('b', null, 'Phần II'),
+          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))', gap: '4px 10px', marginTop: '6px' } },
+            ord.II.map(function(q, i){
+              var cur = ans[q.id] || {};
+              return h('div', { key: q.id, style: rowStyle(q), title: unsure[q.id] || '' },
+                h('b', { style: { minWidth: '30px', fontSize: '0.85rem' } }, (i + 1) + '.'),
+                (q.statements || []).map(function(st, si){
+                  var key = st.key || 'abcd'[si];
+                  return h('span', { key: key, style: { display: 'inline-flex', alignItems: 'center', gap: '3px', marginRight: '6px' } },
+                    h('span', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } }, key + ')'),
+                    chip(cur[key] === true, 'Đ', function(){ setStmt(q, key, true); }),
+                    chip(cur[key] === false, 'S', function(){ setStmt(q, key, false); }));
+                }));
+            }))) : null,
+        ord.III.length ? h('div', { style: { marginBottom: '14px' } },
+          h('b', null, 'Phần III'),
+          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px 10px', marginTop: '6px' } },
+            ord.III.map(function(q, i){
+              return h('div', { key: q.id, style: rowStyle(q), title: unsure[q.id] || '' },
+                h('b', { style: { minWidth: '30px', fontSize: '0.85rem' } }, (i + 1) + '.'),
+                h('input', { type: 'text', inputMode: 'decimal', value: ans[q.id] || '', placeholder: 'vd 1,73', onChange: function(e){ setOne(q.id, e.target.value.replace(/\s/g, '') || undefined); },
+                  style: { width: '90px', padding: '6px 8px', border: '1px solid var(--line)', borderRadius: '8px', fontFamily: 'IBM Plex Mono, monospace', background: 'var(--surface)', color: 'inherit' } }));
+            }))) : null,
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderTop: '1px solid var(--line)', paddingTop: '12px' } },
+          scored ? h('div', { style: { fontSize: '0.95rem' } }, 'Điểm tạm tính: ', h('b', { style: { fontSize: '1.15rem' } }, scored.scaledScore10.toFixed(2) + '/10'),
+            h('span', { style: { color: 'var(--ink-2)', fontSize: '0.85rem' } }, ' · đúng ' + scored.correctCount + '/' + scored.totalQuestions + ' câu · đã nhập ' + nAnswered + ' câu')) : null,
+          Object.keys(unsure).length ? h('span', { style: { color: '#a16207', fontSize: '0.85rem', fontWeight: 600 } }, '⚠️ Còn ' + Object.keys(unsure).length + ' câu viền vàng — bấm chọn lại để xác nhận') : null,
+          h('span', { style: { flex: 1 } }),
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: props.onClose, disabled: saving }, 'Huỷ'),
+          h('button', { type: 'button', className: 'btn btn-success', onClick: save, disabled: saving || !sid }, saving ? 'Đang lưu…' : '💾 Lưu bài làm'))
+      )
+    );
+  }
+
+  // ============================================================================
+  // THÊM 12/10/2026 — KIỂM TRA TRÊN LỚP: chấm phiếu cả lớp bằng camera điện thoại (tab "📋 Kiểm tra lớp")
+  //  • Tạo tài khoản cả lớp từ danh sách dán từ Excel (STT → Số báo danh).
+  //  • Tạo bài kiểm tra từ 1 đề trong ngân hàng, sinh nhiều MÃ ĐỀ (đảo câu theo khối, đảo phương án A–D Phần I).
+  //  • In từng mã đề kèm phiếu có ô tô SBD + mã đề → camera tự biết phiếu của em nào, mã nào.
+  //  • Quét liên tục: thấy đủ 4 mốc + đọc ổn định 2 khung hình liên tiếp → tự lưu, kêu "tít", sang phiếu kế.
+  //  • Mỗi phiếu lưu thành lượt làm bài 'paper' của em (đáp án quy về phương án GỐC) → Sổ tay câu sai, nano-point,
+  //    báo cáo phụ huynh dùng được; kèm bảng điểm cả lớp, thống kê câu sai nhiều, xuất Excel.
+  // ============================================================================
+  function ctRng(seedStr){
+    var h = 1779033703 ^ String(seedStr).length;
+    for(var i = 0; i < String(seedStr).length; i++){ h = Math.imul(h ^ String(seedStr).charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+    return function(){ h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  }
+  function ctShuffle(arr, rnd){ var a = arr.slice(); for(var i = a.length - 1; i > 0; i--){ var j = Math.floor(rnd() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  // Sinh các mã đề. Mã đầu tiên giữ nguyên thứ tự đề gốc; các mã sau đảo câu (câu chùm giữ liền nhau, đúng thứ tự)
+  // và đảo phương án Phần I (nếu bật).
+  function ctBuildVersions(questions, count, baseCode, opts, seed){
+    var ord = window.OPC_OMR.orderForSheet(questions);
+    var out = [];
+    for(var v = 0; v < count; v++){
+      var rnd = ctRng(seed + '|' + v);
+      var shuffle = v > 0 && opts.shuffleQ, shuffleOpt = v > 0 && opts.shuffleOpt;
+      var order = [];
+      ['I', 'II', 'III'].forEach(function(p){
+        var list = ord[p], blocks = [];
+        list.forEach(function(q, i){
+          if(q.groupPassage && i > 0 && list[i - 1].groupPassage === q.groupPassage) blocks[blocks.length - 1].push(q);
+          else blocks.push([q]);
+        });
+        (shuffle ? ctShuffle(blocks, rnd) : blocks).forEach(function(b){ b.forEach(function(q){ order.push(q.id); }); });
+      });
+      var perm = {};
+      ord.I.forEach(function(q){
+        var keys = (q.options || []).map(function(o){ return o.key; });
+        if(keys.length === 4 && keys.join('') === 'ABCD') perm[q.id] = shuffleOpt ? ctShuffle(keys, rnd).join('') : 'ABCD';
+      });
+      out.push({ code: String(baseCode + v), order: order, perm: perm });
+    }
+    return out;
+  }
+  // Câu hỏi của 1 mã đề (đúng thứ tự in, phương án đã đổi nhãn A–D theo hoán vị)
+  function ctVersionQuestions(base, version){
+    var byId = {}; base.forEach(function(q){ byId[q.id] = q; });
+    return version.order.map(function(id){ return byId[id]; }).filter(Boolean).map(function(q){
+      var pm = version.perm && version.perm[q.id];
+      if(q.part !== 'II' && q.part !== 'III' && pm && pm !== 'ABCD' && q.options){
+        var oByKey = {}; q.options.forEach(function(o){ oByKey[o.key] = o; });
+        return Object.assign({}, q, {
+          options: pm.split('').map(function(k, i){ return Object.assign({}, oByKey[k], { key: 'ABCD'[i] }); }),
+          correctKey: 'ABCD'[pm.indexOf(q.correctKey)]
+        });
+      }
+      return q;
+    });
+  }
+  // Đáp án em tô (theo nhãn của mã đề) → đáp án theo phương án GỐC (để chấm/xem lại thống nhất với ngân hàng đề)
+  function ctToOriginal(version, ans){
+    var out = {};
+    Object.keys(ans || {}).forEach(function(id){
+      var v = ans[id], pm = version.perm && version.perm[id];
+      out[id] = (pm && typeof v === 'string' && v.length === 1 && 'ABCD'.indexOf(v) > -1) ? pm['ABCD'.indexOf(v)] : v;
+    });
+    return out;
+  }
+  function ctFromOriginal(version, ans){
+    var out = {};
+    Object.keys(ans || {}).forEach(function(id){
+      var v = ans[id], pm = version.perm && version.perm[id];
+      out[id] = (pm && typeof v === 'string' && v.length === 1 && pm.indexOf(v) > -1) ? 'ABCD'[pm.indexOf(v)] : v;
+    });
+    return out;
+  }
+  function ctRoster(students, lop){
+    return (students || []).filter(function(s){ return s.lop && String(s.lop).trim().toUpperCase() === String(lop || '').trim().toUpperCase(); })
+      .sort(function(a, b){ return (Number(a.sbd) || 999) - (Number(b.sbd) || 999); });
+  }
+  var ctStatsQueue = Promise.resolve();
+  // Lưu kết quả 1 em: lượt làm bài (students/{id}/attempts/ct_<bài>) + dòng kết quả trong bài kiểm tra
+  async function ctSaveResult(test, student, version, versionAnswers, src, unsureCount){
+    var NE = window.PrepScholarEngine, OPCref = window.OPC;
+    var orig = ctToOriginal(version, versionAnswers);
+    var scored = NE.scoreExam(test.questions, orig);
+    var lists = paperBuildLists(scored);
+    var nowIso = new Date().toISOString();
+    var created = test.date ? new Date(test.date + 'T' + nowIso.slice(11, 19)).toISOString() : nowIso;
+    await OPCref.attempts.save(student.id, paperClean({
+      clientId: 'ct_' + test.id, createdAt: created, updatedAt: nowIso,
+      type: 'paper', source: 'paper', classTestId: test.id, versionCode: version.code, assignedExamId: null, bankExamId: test.sourceExamId || null,
+      examTitle: test.title || '', topicKey: null,
+      scaledScore10: scored.scaledScore10, correctCount: scored.correctCount, totalQuestions: scored.totalQuestions, topicStats: scored.topicStats,
+      wrongQuestions: lists.wrongQuestions, rightQuestions: lists.rightQuestions, answers: orig,
+      questionIds: test.questions.map(function(q){ return q.id; }), timeAllocatedSec: null, timeUsedSec: null
+    }));
+    var result = paperClean({ code: version.code, score: scored.scaledScore10, correct: scored.correctCount, total: scored.totalQuestions,
+      answers: orig, unsure: unsureCount || 0, src: src, at: nowIso, name: student.name, sbd: student.sbd != null ? String(student.sbd) : '' });
+    await OPCref.classTests.setResult(test.id, student.id, result);
+    ctStatsQueue = ctStatsQueue.then(function(){ return paperRefreshStats(student.id); }).catch(function(e){ console.warn('Chưa cập nhật số liệu của ' + student.name, e); });
+    return result;
+  }
+  function ctBeep(ok){
+    try{
+      var A = window.AudioContext || window.webkitAudioContext; if(!A) return;
+      var ctx = ctBeep.ctx || (ctBeep.ctx = new A());
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = ok ? 1046 : 330; o.type = 'sine';
+      g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (ok ? 0.16 : 0.4));
+      o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + (ok ? 0.18 : 0.42));
+      if(navigator.vibrate) navigator.vibrate(ok ? 60 : [80, 60, 80]);
+    }catch(e){}
+  }
+  function ctSlug(s){ return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, ''); }
+
+  // ---- In phiếu tài khoản (cắt rời phát cho từng em) ----
+  function ctPrintAccounts(lop, rows){
+    var win = openPrintWindow(); if(!win) return;
+    writePrintWindow(win, '<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Tài khoản FaradayAI — Lớp ' + escapeHtmlPDF(lop) + '</title><style>' +
+      '@page{size:A4;margin:10mm;} body{font-family:Arial,sans-serif;margin:0;} .bar{position:sticky;top:0;background:#14181f;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;font-size:14px;}' +
+      '.bar button{margin-left:auto;padding:8px 16px;border:0;border-radius:8px;background:#e6c27a;font-weight:700;cursor:pointer;} .grid{display:grid;grid-template-columns:1fr 1fr;gap:0;padding:8mm;}' +
+      '.slip{border:1px dashed #999;padding:4mm 5mm;font-size:11pt;line-height:1.5;break-inside:avoid;} .slip b{font-size:12pt;} .slip .u{font-family:monospace;font-size:13pt;font-weight:700;}' +
+      '@media print{.bar{display:none;} .grid{padding:0;}}</style></head><body><div class="bar"><b>Phiếu tài khoản — Lớp ' + escapeHtmlPDF(lop) + '</b><span>' + rows.length + ' em</span><button onclick="window.print()">In</button></div><div class="grid">' +
+      rows.map(function(r){ return '<div class="slip"><b>' + escapeHtmlPDF(r.name) + '</b> · Lớp ' + escapeHtmlPDF(lop) + ' · SBD <b>' + escapeHtmlPDF(r.sbd) + '</b><br>Vào <b>faradayai.vn</b> → Đăng nhập<br>Tên đăng nhập: <span class="u">' + escapeHtmlPDF(r.username) + '</span><br>Mật khẩu: <span class="u">' + escapeHtmlPDF(r.password) + '</span></div>'; }).join('') +
+      '</div></body></html>');
+  }
+
+  // ---- Tạo tài khoản cả lớp ----
+  function ClassRosterModal(props){
+    var OPCref = window.OPC;
+    var lopState = React.useState(''); var lop = lopState[0], setLop = lopState[1];
+    var schoolState = React.useState(''); var school = schoolState[0], setSchool = schoolState[1];
+    var textState = React.useState(''); var text = textState[0], setText = textState[1];
+    var busyState = React.useState(false); var busy = busyState[0], setBusy = busyState[1];
+    var doneState = React.useState(null); var done = doneState[0], setDone = doneState[1];
+    var students = props.students || [];
+    var usedUsernames = {}; students.forEach(function(s){ if(s.username) usedUsernames[String(s.username).toLowerCase()] = 1; });
+    var existing = ctRoster(students, lop);
+    var bySbd = {}; existing.forEach(function(s){ bySbd[Number(s.sbd)] = s; });
+    var rows = [], auto = existing.reduce(function(m, s){ return Math.max(m, Number(s.sbd) || 0); }, 0);
+    text.split(/\r?\n/).forEach(function(line){
+      var t = line.replace(/\s+$/, ''); if(!t.trim()) return;
+      var cells = t.split('\t').map(function(c){ return c.trim(); }).filter(Boolean);
+      var sbd = null, name = '';
+      if(cells.length >= 2 && /^\d{1,3}$/.test(cells[0])){ sbd = Number(cells[0]); name = cells[1]; }
+      else { var m = /^\s*(\d{1,3})[\s.,;:)\-]+(.+)$/.exec(t); if(m){ sbd = Number(m[1]); name = m[2].trim(); } else name = cells.join(' ').trim(); }
+      if(!name || /^(stt|họ|ho va ten|họ và tên)/i.test(name)) return;
+      if(sbd == null) sbd = ++auto; else auto = Math.max(auto, sbd);
+      rows.push({ sbd: sbd, name: name.replace(/\s+/g, ' ') });
+    });
+    var slugLop = ctSlug(lop) || 'lop';
+    var seen = {};
+    rows.forEach(function(r){
+      r.exists = !!bySbd[r.sbd];
+      r.dupe = !!seen[r.sbd]; seen[r.sbd] = 1;
+      var base = slugLop + '-' + (r.sbd < 10 ? '0' : '') + r.sbd, u = base, k = 2;
+      while(usedUsernames[u]) u = base + '-' + (k++);
+      r.username = u;
+    });
+    var toCreate = rows.filter(function(r){ return !r.exists && !r.dupe; });
+
+    async function create(){
+      if(!lop.trim()){ props.fireToast('Nhập tên lớp (vd 12E3).', true); return; }
+      if(!toCreate.length){ props.fireToast('Không có em nào mới để tạo.', true); return; }
+      setBusy(true);
+      var created = [];
+      try{
+        for(var i = 0; i < toCreate.length; i++){
+          var r = toCreate[i];
+          var pw = String(100000 + Math.floor(Math.random() * 900000));
+          await OPCref.students.add({
+            name: r.name, username: r.username, password: pw, email: '', phone: '', school: school.trim() || 'Chưa cập nhật',
+            lop: lop.trim().toUpperCase(), sbd: r.sbd, completedExamsCount: 0, averageScore: 0, highestScore: 0, targetScore: 8.0, status: 'active',
+            parentName: 'Chưa cập nhật', parentPhone: '', parentEmail: '', referralCode: makeReferralCode(r.name), commissionBalance: 0
+          });
+          created.push({ sbd: (r.sbd < 10 ? '0' : '') + r.sbd, name: r.name, username: r.username, password: pw });
+        }
+        setDone(created);
+        props.fireToast('Đã tạo ' + created.length + ' tài khoản cho lớp ' + lop.trim().toUpperCase() + '.');
+      }catch(err){
+        console.error(err); props.fireToast('Dừng ở em thứ ' + (created.length + 1) + ': ' + (err && err.message ? err.message : 'lỗi') + '. Các em đã tạo vẫn được giữ.', true);
+        if(created.length) setDone(created);
+      }finally{ setBusy(false); }
+    }
+    function downloadAccounts(list){
+      var csv = [['SBD', 'Họ và tên', 'Lớp', 'Tên đăng nhập', 'Mật khẩu']].concat(list.map(function(r){ return [r.sbd, r.name, lop.trim().toUpperCase(), r.username, r.password]; }))
+        .map(function(r){ return r.map(csvEscape).join(','); }).join('\n');
+      downloadCSV('tai_khoan_lop_' + ctSlug(lop) + '.csv', csv);
+    }
+    var inputStyle = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '8px', background: 'var(--surface)', color: 'inherit', fontSize: '0.9rem' };
+    return h('div', { className: 'sm-overlay', onClick: function(e){ if(e.target === e.currentTarget && !busy) props.onClose(); } },
+      h('div', { className: 'sm-modal sm-modal-wide', style: { maxWidth: '760px' }, role: 'dialog', 'aria-modal': 'true' },
+        h('div', { className: 'sm-modal-head' }, h('div', null, h('h3', null, '👥 Tạo tài khoản cả lớp'),
+          h('p', { style: { fontSize: '0.82rem', color: 'var(--muted)', marginTop: 2 } }, 'Số báo danh = số thứ tự trong danh sách lớp; em tô SBD này trên phiếu trả lời.')),
+          h('button', { type: 'button', className: 'sm-modal-close', onClick: function(){ if(!busy) props.onClose(); } }, h(IconClose))),
+        done ? h('div', null,
+          h('div', { className: 'banner', style: { marginBottom: '12px' } }, h('span', null, '✅'), h('div', null, 'Đã tạo ' + done.length + ' tài khoản. In phiếu tài khoản để phát cho từng em (mật khẩu chỉ hiện lần này — lưu lại file CSV).')),
+          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ ctPrintAccounts(lop.trim().toUpperCase(), done); } }, '🖨️ In phiếu tài khoản'),
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ downloadAccounts(done); } }, '⬇ Tải danh sách (CSV/Excel)'),
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: props.onClose }, 'Xong'))) :
+        h('div', null,
+          h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' } },
+            h('label', { className: 'sm-field', style: { margin: 0 } }, h('span', null, 'Lớp'), h('input', { value: lop, placeholder: '12E3', onChange: function(e){ setLop(e.target.value); }, style: inputStyle })),
+            h('label', { className: 'sm-field', style: { margin: 0, flex: 1, minWidth: '200px' } }, h('span', null, 'Trường (không bắt buộc)'), h('input', { value: school, placeholder: 'THPT Lê Thánh Tông', onChange: function(e){ setSchool(e.target.value); }, style: inputStyle }))),
+          h('label', { className: 'sm-field' }, h('span', null, 'Dán danh sách từ Excel (2 cột: STT, Họ và tên) — hoặc mỗi dòng 1 tên'),
+            h('textarea', { value: text, rows: 8, placeholder: '1\tNguyễn Văn An\n2\tTrần Thị Bình\n…', onChange: function(e){ setText(e.target.value); }, style: Object.assign({}, inputStyle, { fontFamily: 'IBM Plex Mono, monospace', width: '100%' }) })),
+          existing.length ? h('p', { style: { fontSize: '0.82rem', color: 'var(--ink-2)' } }, 'Lớp này đã có ' + existing.length + ' em trên hệ thống — các SBD trùng sẽ được bỏ qua.') : null,
+          rows.length ? h('div', { style: { maxHeight: '260px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', margin: '8px 0' } },
+            h('table', { className: 'sm-history-table', style: { margin: 0 } },
+              h('thead', null, h('tr', null, h('th', null, 'SBD'), h('th', null, 'Họ và tên'), h('th', null, 'Tên đăng nhập'), h('th', null, ''))),
+              h('tbody', null, rows.map(function(r, i){
+                return h('tr', { key: i, style: { opacity: r.exists || r.dupe ? 0.5 : 1 } }, h('td', null, r.sbd), h('td', null, r.name), h('td', { style: { fontFamily: 'monospace' } }, r.username),
+                  h('td', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, r.exists ? 'đã có' : (r.dupe ? 'trùng SBD' : 'mới')));
+              })))) : null,
+          h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '10px' } },
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: props.onClose, disabled: busy }, 'Huỷ'),
+            h('button', { type: 'button', className: 'btn btn-primary', onClick: create, disabled: busy || !toCreate.length || !lop.trim() }, busy ? 'Đang tạo…' : 'Tạo ' + toCreate.length + ' tài khoản')))
+      )
+    );
+  }
+
+  // ---- Tạo bài kiểm tra ----
+  function ClassTestCreateModal(props){
+    var OPCref = window.OPC;
+    var classes = props.classes || [];
+    var examsState = React.useState([]); var exams = examsState[0], setExams = examsState[1];
+    var t = new Date(), pad = function(n){ return (n < 10 ? '0' : '') + n; };
+    var formState = React.useState({ title: '', lop: classes[0] || '', date: t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()), examId: '', count: 4, baseCode: 101, shuffleQ: true, shuffleOpt: true, duration: 45 });
+    var f = formState[0], setF = formState[1];
+    var busyState = React.useState(false); var busy = busyState[0], setBusy = busyState[1];
+    React.useEffect(function(){
+      var unsub = OPCref.examBank.subscribe(function(snap){
+        var rows = snap.docs.map(function(d){ var data = d.data() || {}; return { id: d.id, title: data.title, n: (data.questions || []).length, chuDe: data.chuDe }; }).filter(function(x){ return x.n > 0; });
+        setExams(rows);
+      }, function(){});
+      return function(){ unsub(); };
+    }, []);
+    function set(k, v){ setF(function(p){ var n = Object.assign({}, p); n[k] = v; return n; }); }
+    async function create(){
+      if(!f.examId || !f.lop.trim()){ props.fireToast('Chọn đề nguồn và lớp.', true); return; }
+      setBusy(true);
+      try{
+        var exam = await OPCref.examBank.getExam(f.examId);
+        if(!exam) throw new Error('Không tải được đề nguồn.');
+        var base = (exam.questions || []).map(function(q){ return toStudentQuestionShape(q, exam.id, exam.title, []); });
+        // bỏ trường nặng/không cần để doc gọn
+        base = base.map(function(q){ var c = Object.assign({}, q); c.images = []; c.groupImages = []; return c; });
+        var ord = window.OPC_OMR.orderForSheet(base);
+        base = ord.all;
+        var versions = ctBuildVersions(base, Math.max(1, Math.min(8, Number(f.count) || 1)), Number(f.baseCode) || 101, { shuffleQ: f.shuffleQ, shuffleOpt: f.shuffleOpt }, f.examId + '|' + Date.now());
+        var id = await OPCref.classTests.create(paperClean({
+          title: f.title.trim() || exam.title || 'Bài kiểm tra', lop: f.lop.trim().toUpperCase(), date: f.date, duration: Number(f.duration) || 45,
+          sourceExamId: exam.id, sourceTitle: exam.title || '', questions: base, versions: versions, results: {}
+        }));
+        props.fireToast('Đã tạo bài kiểm tra với ' + versions.length + ' mã đề.');
+        props.onCreated(id);
+      }catch(err){
+        console.error(err);
+        props.fireToast((err && err.code === 'permission-denied') ? 'Chưa có quyền ghi "class_tests" — vào Firebase Console › Firestore › Rules, dán firestore.rules mới rồi bấm Publish.' : ('Không tạo được: ' + (err && err.message)), true);
+      }finally{ setBusy(false); }
+    }
+    var inputStyle = { padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '8px', background: 'var(--surface)', color: 'inherit', fontSize: '0.9rem' };
+    var field = function(label, el, grow){ return h('label', { className: 'sm-field', style: { margin: 0, flex: grow ? 1 : 'none', minWidth: grow ? '220px' : 0 } }, h('span', null, label), el); };
+    return h('div', { className: 'sm-overlay', onClick: function(e){ if(e.target === e.currentTarget && !busy) props.onClose(); } },
+      h('div', { className: 'sm-modal sm-modal-wide', style: { maxWidth: '720px' }, role: 'dialog', 'aria-modal': 'true' },
+        h('div', { className: 'sm-modal-head' }, h('h3', null, '＋ Tạo bài kiểm tra trên lớp'), h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
+        h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' } },
+          field('Đề nguồn (ngân hàng đề)', h('select', { value: f.examId, style: inputStyle, onChange: function(e){ var ex = exams.filter(function(x){ return x.id === e.target.value; })[0]; set('examId', e.target.value); if(ex && !f.title) set('title', ex.title || ''); } },
+            h('option', { value: '' }, '— Chọn đề —'), exams.map(function(x){ return h('option', { key: x.id, value: x.id }, (x.title || '(không tên)') + ' · ' + x.n + ' câu'); })), true)),
+        h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' } },
+          field('Tên bài kiểm tra', h('input', { value: f.title, placeholder: 'Kiểm tra 45 phút — Chương II', onChange: function(e){ set('title', e.target.value); }, style: inputStyle }), true),
+          field('Lớp', h('input', { value: f.lop, list: 'ct-classes', placeholder: '12E3', onChange: function(e){ set('lop', e.target.value); }, style: Object.assign({}, inputStyle, { width: '110px' }) })),
+          h('datalist', { id: 'ct-classes' }, classes.map(function(c){ return h('option', { key: c, value: c }); })),
+          field('Ngày kiểm tra', h('input', { type: 'date', value: f.date, onChange: function(e){ set('date', e.target.value); }, style: inputStyle }))),
+        h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '10px' } },
+          field('Số mã đề', h('select', { value: f.count, onChange: function(e){ set('count', Number(e.target.value)); }, style: inputStyle }, [1, 2, 3, 4, 6, 8].map(function(n){ return h('option', { key: n, value: n }, n); }))),
+          field('Mã đầu tiên', h('input', { type: 'number', min: 100, max: 990, value: f.baseCode, onChange: function(e){ set('baseCode', e.target.value); }, style: Object.assign({}, inputStyle, { width: '90px' }) })),
+          field('Thời gian (phút)', h('input', { type: 'number', min: 5, max: 180, value: f.duration, onChange: function(e){ set('duration', e.target.value); }, style: Object.assign({}, inputStyle, { width: '90px' }) })),
+          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.88rem' } }, h('input', { type: 'checkbox', checked: f.shuffleQ, onChange: function(e){ set('shuffleQ', e.target.checked); } }), 'Đảo thứ tự câu'),
+          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.88rem' } }, h('input', { type: 'checkbox', checked: f.shuffleOpt, onChange: function(e){ set('shuffleOpt', e.target.checked); } }), 'Đảo phương án A–D (Phần I)')),
+        h('p', { style: { fontSize: '0.8rem', color: 'var(--muted)' } }, 'Mã đầu tiên giữ nguyên thứ tự đề gốc; các mã sau được đảo. Câu hỏi chùm luôn đứng liền nhau. Nếu đề có phương án kiểu "Cả A và B đều đúng" thì nên TẮT đảo phương án.'),
+        h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: props.onClose, disabled: busy }, 'Huỷ'),
+          h('button', { type: 'button', className: 'btn btn-primary', onClick: create, disabled: busy || !f.examId || !f.lop.trim() }, busy ? 'Đang tạo…' : 'Tạo bài kiểm tra'))
+      )
+    );
+  }
+
+  // In 1 mã đề (kèm phiếu có ô tô SBD + mã đề)
+  async function ctPrintVersion(test, version){
+    var win = openPrintWindow(); if(!win) return;
+    try{
+      var base = test.questions;
+      try{
+        var exam = await window.OPC.examBank.getExam(test.sourceExamId);
+        if(exam){
+          var withImg = {}; (exam.questions || []).forEach(function(q){ var s = toStudentQuestionShape(q, exam.id, exam.title, exam.images || []); withImg[s.id] = s; });
+          base = test.questions.map(function(q){ var w = withImg[q.id]; return w ? Object.assign({}, q, { images: w.images, groupImages: w.groupImages }) : q; });
+        }
+      }catch(e){ console.warn('Không tải được ảnh của đề nguồn:', e); }
+      var logos = await getPrintLogos();
+      writePrintWindow(win, buildPrintExamHtml({
+        logos: logos, docTitle: test.title + ' — Mã ' + version.code,
+        kicker: 'Kiểm tra · Lớp ' + (test.lop || ''), heading: test.title, examCode: version.code,
+        storeKey: 'ct_' + test.id + '_' + version.code, durationMin: test.duration || 45,
+        questions: ctVersionQuestions(base, version), sheetWithId: true, lop: test.lop || ''
+      }));
+    }catch(err){
+      console.error(err);
+      writePrintWindow(win, '<meta charset="utf-8"><p style="font:16px system-ui;padding:24px;color:#b91c1c">Không tạo được bản in: ' + escapeHtmlPDF(err && err.message) + '</p>');
+    }
+  }
+  function ctPrintBlankSheets(test){
+    if(!window.OPC_OMR) return;
+    var o = window.OPC_OMR.orderForSheet(test.questions);
+    var L = window.OPC_OMR.layoutSheet(o.I.length, o.II.length, o.III.length, { withId: true });
+    var win = openPrintWindow(); if(!win) return;
+    writePrintWindow(win, '<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu trả lời — ' + escapeHtmlPDF(test.title) + '</title>' +
+      '<style>@page{size:A4;margin:14mm 15mm;} html,body{margin:0;background:#e9e7e2;} .bar{position:sticky;top:0;background:#14181f;color:#fff;font:14px system-ui,sans-serif;padding:10px 16px;display:flex;gap:12px;align-items:center;}' +
+      '.bar button{margin-left:auto;font:700 14px system-ui,sans-serif;padding:8px 18px;border-radius:8px;border:0;background:#e6c27a;cursor:pointer;} .pg{width:180mm;max-width:calc(100vw - 24px);margin:18px auto;background:#fff;padding:6mm;box-shadow:0 4px 24px rgba(0,0,0,.12);} svg{display:block;width:100%;height:auto;max-height:262mm;}' +
+      '*{-webkit-print-color-adjust:exact;print-color-adjust:exact;} @media print{.bar{display:none;} html,body{background:#fff;} .pg{margin:0;padding:0;box-shadow:none;width:auto;}}</style></head><body>' +
+      '<div class="bar"><b>Phiếu trả lời (dùng chung mọi mã đề)</b><span>' + escapeHtmlPDF(test.title) + ' · Lớp ' + escapeHtmlPDF(test.lop || '') + '</span><button onclick="window.print()">In / Lưu PDF</button></div>' +
+      '<div class="pg">' + window.OPC_OMR.renderSheetSvg(L, { title: test.title, lop: test.lop || '' }) + '</div></body></html>');
+  }
+
+  // ---- Quét phiếu cả lớp ----
+  function ClassScanModal(props){
+    var test = props.test, roster = props.roster, OMR = window.OPC_OMR;
+    var ord = OMR.orderForSheet(test.questions);
+    var L = React.useMemo(function(){ return OMR.layoutSheet(ord.I.length, ord.II.length, ord.III.length, { withId: true }); }, [test.id]);
+    var videoRef = React.useRef(null), overlayRef = React.useRef(null), workRef = React.useRef(null), streamRef = React.useRef(null);
+    var loopRef = React.useRef({ running: false, timer: 0, lastKey: '', streak: 0, acceptedKey: '', busy: false, lostFrames: 0 });
+    var camState = React.useState('off'); var cam = camState[0], setCam = camState[1];   // off | starting | on | error
+    var camErrState = React.useState(''); var camErr = camErrState[0], setCamErr = camErrState[1];
+    var hintState = React.useState('Bấm "Bật camera", đặt phiếu dưới máy cho thấy trọn 4 ô vuông đen.'); var hint = hintState[0], setHint = hintState[1];
+    var logState = React.useState([]); var log = logState[0], setLog = logState[1];
+    var fileBusyState = React.useState(''); var fileBusy = fileBusyState[0], setFileBusy = fileBusyState[1];
+    var resultsRef = React.useRef(Object.assign({}, test.results || {}));
+    var countState = React.useState(Object.keys(test.results || {}).length); var count = countState[0], setCount = countState[1];
+    var bySbd = {}; roster.forEach(function(s){ bySbd[Number(s.sbd)] = s; });
+
+    function pushLog(item){ setLog(function(prev){ return [item].concat(prev).slice(0, 40); }); }
+
+    // Xử lý 1 kết quả đọc phiếu đã "chốt"
+    async function accept(res){
+      var sbd = res.id && res.id.sbd ? res.id.sbd.value : null;
+      var codeV = res.id && res.id.code ? res.id.code.value : null;
+      var version = test.versions.filter(function(v){ return Number(v.code) === codeV; })[0] || (test.versions.length === 1 ? test.versions[0] : null);
+      var st = sbd != null ? bySbd[sbd] : null;
+      if(!st){ ctBeep(false); pushLog({ bad: true, text: sbd == null ? 'Không đọc được Số báo danh — kiểm tra em đã tô SBD chưa.' : ('SBD ' + sbd + ' không có trong danh sách lớp ' + test.lop + '.') }); return; }
+      if(!version){ ctBeep(false); pushLog({ bad: true, text: st.name + ': không đọc được mã đề (' + (res.id.code.text || 'trống') + ').' }); return; }
+      var vq = ctVersionQuestions(test.questions, version), vo = OMR.orderForSheet(vq);
+      var ans = {}, unsureN = 0;
+      vo.I.forEach(function(q, i){ if(res.answers.I[i]) ans[q.id] = res.answers.I[i]; if(res.unsure.I[i]) unsureN++; });
+      vo.II.forEach(function(q, i){ var o = {}; (q.statements || []).forEach(function(stt, si){ if(si < 4 && res.answers.II[i][si] != null) o[stt.key || 'abcd'[si]] = res.answers.II[i][si]; }); if(Object.keys(o).length) ans[q.id] = o; if(res.unsure.II[i]) unsureN++; });
+      vo.III.forEach(function(q, i){ if(res.answers.III[i]) ans[q.id] = res.answers.III[i]; if(res.unsure.III[i]) unsureN++; });
+      if(!res.id.sbd.sure || !res.id.code.sure) unsureN++;
+      var again = !!resultsRef.current[st.id];
+      try{
+        var r = await ctSaveResult(test, st, version, ans, 'scan', unsureN);
+        resultsRef.current[st.id] = r; setCount(Object.keys(resultsRef.current).length);
+        ctBeep(true);
+        pushLog({ ok: !unsureN, warn: !!unsureN, text: 'SBD ' + st.sbd + ' · ' + st.name + ' · mã ' + version.code + ' → ' + r.score.toFixed(2) + ' điểm (' + r.correct + '/' + r.total + ')' + (unsureN ? ' · ⚠ ' + unsureN + ' chỗ cần xem lại' : '') + (again ? ' · (quét lại)' : '') });
+      }catch(err){ console.error(err); ctBeep(false); pushLog({ bad: true, text: 'Lưu thất bại (' + st.name + '): ' + (err && err.message) }); }
+    }
+    function answersKey(res){ return [res.id && res.id.sbd ? res.id.sbd.text : '', res.id && res.id.code ? res.id.code.text : '', JSON.stringify(res.answers)].join('|'); }
+
+    function drawOverlay(res, vw, vh){
+      var ov = overlayRef.current; if(!ov) return;
+      if(ov.width !== vw || ov.height !== vh){ ov.width = vw; ov.height = vh; }
+      var c = ov.getContext('2d'); c.clearRect(0, 0, ov.width, ov.height);
+      if(!res || !res.markers) return;
+      c.lineWidth = Math.max(3, vw / 300); c.strokeStyle = res.ok ? '#22c55e' : '#f59e0b';
+      c.beginPath(); [0, 1, 3, 2, 0].forEach(function(i, j){ var m = res.markers[i]; if(j) c.lineTo(m[0], m[1]); else c.moveTo(m[0], m[1]); }); c.stroke();
+    }
+    function tick(){
+      var lp = loopRef.current; if(!lp.running) return;
+      var v = videoRef.current;
+      if(!v || v.readyState < 2 || lp.busy){ lp.timer = setTimeout(tick, 200); return; }
+      var vw = v.videoWidth, vh = v.videoHeight, sc = Math.min(1, 1280 / Math.max(vw, vh));
+      var cv = workRef.current || (workRef.current = document.createElement('canvas'));
+      cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
+      var ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(v, 0, 0, cv.width, cv.height);
+      var res = null;
+      try{ res = OMR.readSheet(ctx.getImageData(0, 0, cv.width, cv.height), L); }catch(e){ res = null; }
+      if(res && res.ok){
+        drawOverlay({ ok: true, markers: res.markers.map(function(m){ return [m[0] / sc, m[1] / sc]; }) }, vw, vh);
+        var key = answersKey(res);
+        lp.lostFrames = 0;
+        if(key === lp.lastKey) lp.streak++; else { lp.lastKey = key; lp.streak = 1; }
+        if(lp.streak >= 2 && key !== lp.acceptedKey){
+          lp.acceptedKey = key; lp.busy = true;
+          setHint('✅ Đã đọc — lật sang phiếu kế tiếp.');
+          accept(res).then(function(){ lp.busy = false; lp.timer = setTimeout(tick, 350); });
+          return;
+        }
+        if(key !== lp.acceptedKey) setHint('Giữ yên máy…');
+      } else {
+        drawOverlay(null, vw, vh);
+        lp.lostFrames++;
+        if(lp.lostFrames > 2){ lp.acceptedKey = ''; setHint('Đưa phiếu vào khung — thấy trọn 4 ô vuông đen, đủ sáng.'); }
+      }
+      lp.timer = setTimeout(tick, 220);
+    }
+    async function startCam(){
+      setCam('starting'); setCamErr('');
+      try{
+        var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        streamRef.current = stream;
+        var v = videoRef.current; v.srcObject = stream; v.setAttribute('playsinline', ''); v.muted = true; await v.play();
+        setCam('on'); setHint('Đưa phiếu vào khung — thấy trọn 4 ô vuông đen.');
+        ctBeep(true);
+        loopRef.current.running = true; tick();
+      }catch(err){
+        console.error(err); setCam('error');
+        setCamErr(err && err.name === 'NotAllowedError' ? 'Trình duyệt chưa được phép dùng camera — bấm "Cho phép" (Safari: Cài đặt › Safari › Camera).' : ('Không mở được camera: ' + (err && err.message)));
+      }
+    }
+    function stopCam(){
+      var lp = loopRef.current; lp.running = false; clearTimeout(lp.timer);
+      if(streamRef.current){ streamRef.current.getTracks().forEach(function(t){ t.stop(); }); streamRef.current = null; }
+    }
+    React.useEffect(function(){ return stopCam; }, []);
+
+    // Chấm từ nhiều ảnh có sẵn (chụp bằng app Camera rồi chọn hết 1 lần)
+    async function onFiles(e){
+      var files = Array.prototype.slice.call(e.target.files || []); e.target.value = '';
+      for(var i = 0; i < files.length; i++){
+        setFileBusy('Đang chấm ảnh ' + (i + 1) + '/' + files.length + '…');
+        var url = URL.createObjectURL(files[i]);
+        try{
+          var img = await new Promise(function(ok, no){ var im = new Image(); im.onload = function(){ ok(im); }; im.onerror = no; im.src = url; });
+          var sc = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+          var cv = document.createElement('canvas'); cv.width = Math.round(img.naturalWidth * sc); cv.height = Math.round(img.naturalHeight * sc);
+          var ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0, cv.width, cv.height);
+          var res = OMR.readSheet(ctx.getImageData(0, 0, cv.width, cv.height), L);
+          if(!res.ok){ ctBeep(false); pushLog({ bad: true, text: files[i].name + ': ' + res.error }); }
+          else await accept(res);
+        }catch(err){ pushLog({ bad: true, text: files[i].name + ': không mở được ảnh.' }); }
+        URL.revokeObjectURL(url);
+      }
+      setFileBusy('');
+    }
+
+    var done = roster.filter(function(s){ return resultsRef.current[s.id]; }).length;
+    return h('div', { style: { position: 'fixed', inset: 0, zIndex: 1000, background: '#0b0e13', color: '#f3f0e8', display: 'flex', flexDirection: 'column' } },
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderBottom: '1px solid #262b33', flexWrap: 'wrap' } },
+        h('b', null, '📷 Quét phiếu — ' + test.title + ' · Lớp ' + test.lop),
+        h('span', { style: { background: '#1f2937', padding: '3px 10px', borderRadius: '999px', fontWeight: 700 } }, 'Đã chấm ' + done + '/' + roster.length + (count > done ? ' (+' + (count - done) + ' khác)' : '')),
+        h('span', { style: { flex: 1 } }),
+        h('label', { style: { cursor: 'pointer', padding: '7px 12px', border: '1px solid #3b4250', borderRadius: '8px', fontSize: '0.88rem' } }, fileBusy || '📁 Chấm từ ảnh có sẵn',
+          h('input', { type: 'file', accept: 'image/*', multiple: true, style: { display: 'none' }, onChange: onFiles })),
+        h('button', { type: 'button', onClick: function(){ stopCam(); props.onClose(); }, style: { padding: '8px 16px', borderRadius: '8px', border: 0, background: '#e6c27a', fontWeight: 700, cursor: 'pointer' } }, 'Xong')),
+      h('div', { style: { flex: 1, display: 'flex', minHeight: 0, flexWrap: 'wrap' } },
+        h('div', { style: { flex: '2 1 420px', position: 'relative', background: '#000', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+          h('video', { ref: videoRef, playsInline: true, muted: true, style: { maxWidth: '100%', maxHeight: '100%', display: cam === 'on' ? 'block' : 'none' } }),
+          h('canvas', { ref: overlayRef, style: { position: 'absolute', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%', display: cam === 'on' ? 'block' : 'none' } }),
+          cam !== 'on' ? h('div', { style: { textAlign: 'center', padding: '20px' } },
+            h('button', { type: 'button', onClick: startCam, disabled: cam === 'starting', style: { padding: '14px 28px', fontSize: '1.1rem', borderRadius: '12px', border: 0, background: '#22c55e', color: '#04120a', fontWeight: 800, cursor: 'pointer' } }, cam === 'starting' ? 'Đang mở camera…' : '▶ Bật camera'),
+            camErr ? h('p', { style: { color: '#fca5a5', marginTop: '12px', maxWidth: '420px' } }, camErr) : null,
+            h('p', { style: { color: '#9ca3af', marginTop: '12px', maxWidth: '460px', fontSize: '0.9rem' } }, 'Đặt điện thoại cố định phía trên, lật lần lượt từng phiếu bên dưới. Máy tự nhận khi thấy đủ 4 ô vuông đen và đọc ổn định — kêu "tít" là xong, lật phiếu kế.')) : null,
+          cam === 'on' ? h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: '10px 14px', background: 'linear-gradient(transparent, rgba(0,0,0,.75))', fontWeight: 700, fontSize: '1.05rem' } }, hint) : null),
+        h('div', { style: { flex: '1 1 300px', overflowY: 'auto', padding: '10px 12px', borderLeft: '1px solid #262b33', maxHeight: '100%' } },
+          !log.length ? h('p', { style: { color: '#9ca3af', fontSize: '0.88rem' } }, 'Kết quả từng phiếu sẽ hiện ở đây.') :
+            log.map(function(it, i){
+              return h('div', { key: log.length - i, style: { padding: '8px 10px', marginBottom: '6px', borderRadius: '8px', fontSize: '0.88rem', lineHeight: 1.45,
+                background: it.bad ? '#3b1212' : (it.warn ? '#3a2d0a' : '#0f2a19'), border: '1px solid ' + (it.bad ? '#7f1d1d' : (it.warn ? '#854d0e' : '#14532d')) } }, (it.bad ? '❌ ' : (it.warn ? '⚠️ ' : '✅ ')) + it.text);
+            })))
+    );
+  }
+
+  // ---- Tab "📋 Kiểm tra lớp" ----
+  function ClassTestPanel(props){
+    var OPCref = window.OPC;
+    var testsState = React.useState([]); var tests = testsState[0], setTests = testsState[1];
+    var errState = React.useState(null); var err = errState[0], setErr = errState[1];
+    var studentsState = React.useState([]); var students = studentsState[0], setStudents = studentsState[1];
+    var selState = React.useState(null); var selId = selState[0], setSelId = selState[1];
+    var createState = React.useState(false); var createOpen = createState[0], setCreateOpen = createState[1];
+    var rosterState = React.useState(false); var rosterOpen = rosterState[0], setRosterOpen = rosterState[1];
+    var scanState = React.useState(false); var scanOpen = scanState[0], setScanOpen = scanState[1];
+    var editState = React.useState(null); var edit = editState[0], setEdit = editState[1];
+    React.useEffect(function(){
+      if(!OPCref.classTests) return;
+      var u1 = OPCref.classTests.subscribe(function(snap){ setTests(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })); setErr(null); }, function(e){ setErr(e); });
+      var u2 = OPCref.students.subscribe(function(snap){ var l = []; snap.forEach(function(d){ l.push(Object.assign({ id: d.id }, d.data())); }); setStudents(l); }, function(){});
+      return function(){ u1(); u2(); };
+    }, []);
+    var classes = {}; students.forEach(function(s){ if(s.lop) classes[String(s.lop).toUpperCase()] = (classes[String(s.lop).toUpperCase()] || 0) + 1; });
+    var classList = Object.keys(classes).sort();
+    var test = selId ? tests.filter(function(t){ return t.id === selId; })[0] : null;
+
+    var card = function(){ return h('div', { className: 'card', style: { marginBottom: '14px' } },
+      h('div', { className: 'sm-toolbar' },
+        h('div', null, h('h3', null, '📋 Kiểm tra trên lớp — chấm phiếu bằng camera'),
+          h('p', { className: 'sm-sub' }, 'Tạo bài từ ngân hàng đề, in nhiều mã đề kèm phiếu tô SBD + mã đề; thu bài rồi quét phiếu cả lớp bằng camera điện thoại. Điểm vào hồ sơ từng em.')),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setRosterOpen(true); } }, '👥 Tạo tài khoản cả lớp'),
+          h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ setCreateOpen(true); } }, '＋ Tạo bài kiểm tra'))),
+      classList.length ? h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } }, classList.map(function(c){ return h('span', { key: c, className: 'eb-tag-topic' }, 'Lớp ' + c + ' · ' + classes[c] + ' em'); }))
+        : h('p', { style: { fontSize: '0.85rem', color: 'var(--muted)' } }, 'Chưa có lớp nào — bấm "👥 Tạo tài khoản cả lớp" và dán danh sách từ Excel.'),
+      err ? h('div', { className: 'banner warn', style: { marginTop: '10px' } }, h('span', null, '⚠️'), h('div', null, err.code === 'permission-denied' ? 'Chưa mở quyền dữ liệu "class_tests": Firebase Console › Firestore › Rules → dán nội dung firestore.rules mới → Publish.' : ('Không tải được: ' + (err.message || err.code)))) : null); };
+
+    var modals = h('div', null,
+      rosterOpen ? h(ClassRosterModal, { students: students, fireToast: props.fireToast, onClose: function(){ setRosterOpen(false); } }) : null,
+      createOpen ? h(ClassTestCreateModal, { classes: classList, fireToast: props.fireToast, onClose: function(){ setCreateOpen(false); }, onCreated: function(id){ setCreateOpen(false); setSelId(id); } }) : null);
+
+    if(!test){
+      return h('div', null, card(),
+        h('div', { className: 'card' },
+          h('h3', { style: { marginTop: 0, fontSize: '1rem' } }, 'Các bài kiểm tra'),
+          !tests.length ? h('p', { style: { color: 'var(--muted)', fontSize: '0.9rem' } }, 'Chưa có bài kiểm tra nào.') :
+            h('table', { className: 'sm-history-table' },
+              h('thead', null, h('tr', null, h('th', null, 'Bài'), h('th', null, 'Lớp'), h('th', null, 'Ngày'), h('th', null, 'Mã đề'), h('th', null, 'Đã chấm'), h('th', null, ''))),
+              h('tbody', null, tests.map(function(t){
+                var roster = ctRoster(students, t.lop), n = roster.filter(function(s){ return t.results && t.results[s.id]; }).length;
+                return h('tr', { key: t.id },
+                  h('td', null, h('b', null, t.title)), h('td', null, t.lop), h('td', null, t.date || '—'),
+                  h('td', null, (t.versions || []).map(function(v){ return v.code; }).join(', ')),
+                  h('td', null, n + '/' + roster.length),
+                  h('td', { style: { textAlign: 'right' } }, h('button', { type: 'button', className: 'sm-link-btn', onClick: function(){ setSelId(t.id); } }, 'Mở')));
+              })))),
+        modals);
+    }
+
+    // ---- Chi tiết 1 bài ----
+    var roster = ctRoster(students, test.lop);
+    var results = test.results || {};
+    var scoredRows = roster.filter(function(s){ return results[s.id]; });
+    var scores = scoredRows.map(function(s){ return results[s.id].score; });
+    var avg = scores.length ? scores.reduce(function(a, b){ return a + b; }, 0) / scores.length : 0;
+    var bands = [{ t: 'Dưới 5', f: function(x){ return x < 5; } }, { t: '5 – dưới 6,5', f: function(x){ return x >= 5 && x < 6.5; } }, { t: '6,5 – dưới 8', f: function(x){ return x >= 6.5 && x < 8; } }, { t: 'Từ 8 trở lên', f: function(x){ return x >= 8; } }];
+    // câu sai nhiều nhất (đánh số theo ĐỀ GỐC = mã đầu tiên)
+    var baseOrd = window.OPC_OMR.orderForSheet(test.questions);
+    var label = {}; ['I', 'II', 'III'].forEach(function(p){ baseOrd[p].forEach(function(q, i){ label[q.id] = 'Phần ' + p + ' · câu ' + (i + 1); }); });
+    var NE = window.PrepScholarEngine, miss = {};
+    if(NE && scoredRows.length){
+      scoredRows.forEach(function(s){
+        var sc = NE.scoreExam(test.questions, results[s.id].answers || {});
+        sc.perQuestionResults.forEach(function(r){ if(!r.isFullCorrect) miss[r.qId] = (miss[r.qId] || 0) + 1; });
+      });
+    }
+    var missList = Object.keys(miss).map(function(id){ return { id: id, n: miss[id] }; }).sort(function(a, b){ return b.n - a.n; }).slice(0, 8);
+    var qById = {}; test.questions.forEach(function(q){ qById[q.id] = q; });
+    var others = Object.keys(results).filter(function(id){ return !roster.some(function(s){ return s.id === id; }); });
+
+    function exportCsv(){
+      var header = ['SBD', 'Họ và tên', 'Lớp', 'Mã đề', 'Điểm', 'Số câu đúng', 'Tổng câu', 'Ghi chú'];
+      var rows = roster.map(function(s){
+        var r = results[s.id];
+        return [s.sbd, s.name, test.lop, r ? r.code : '', r ? String(r.score).replace('.', ',') : '', r ? r.correct : '', r ? r.total : '', r ? (r.unsure ? 'Có ' + r.unsure + ' chỗ cần xem lại' : (r.src === 'manual' ? 'Nhập tay' : '')) : 'Chưa chấm'];
+      });
+      downloadCSV('diem_' + ctSlug(test.lop) + '_' + ctSlug(test.title).slice(0, 30) + '.csv', [header].concat(rows).map(function(r){ return r.map(csvEscape).join(','); }).join('\n'));
+    }
+    async function removeTest(){
+      if(!window.confirm('Xoá bài kiểm tra "' + test.title + '"? Điểm đã lưu trong hồ sơ từng em vẫn giữ.')) return;
+      try{ await OPCref.classTests.remove(test.id); setSelId(null); props.fireToast('Đã xoá bài kiểm tra.'); }catch(e){ props.fireToast('Không xoá được: ' + e.message, true); }
+    }
+    var editModal = null;
+    if(edit){
+      var ver = test.versions.filter(function(v){ return v.code === edit.code; })[0] || test.versions[0];
+      editModal = h(PaperEntryModal, {
+        key: edit.student.id + ver.code, student: edit.student, questions: ctVersionQuestions(test.questions, ver), title: test.title + ' · Mã ' + ver.code,
+        layoutOpts: { withId: true }, initialAnswers: edit.answers ? ctFromOriginal(ver, edit.answers) : {}, fireToast: props.fireToast,
+        headerExtra: h('label', { className: 'sm-field', style: { margin: 0 } }, h('span', { style: { fontSize: '0.78rem' } }, 'Mã đề em làm'),
+          h('select', { value: ver.code, onChange: function(e){ setEdit(Object.assign({}, edit, { code: e.target.value })); } }, test.versions.map(function(v){ return h('option', { key: v.code, value: v.code }, v.code); }))),
+        customSave: async function(ans){ var r = await ctSaveResult(test, edit.student, ver, ans, 'manual', 0); return r; },
+        onClose: function(){ setEdit(null); }
+      });
+    }
+    return h('div', null, card(),
+      h('div', { className: 'card', style: { marginBottom: '14px' } },
+        h('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' } },
+          h('div', null,
+            h('button', { type: 'button', className: 'sm-link-btn', onClick: function(){ setSelId(null); } }, '← Tất cả bài kiểm tra'),
+            h('h3', { style: { margin: '6px 0 2px' } }, test.title),
+            h('div', { style: { fontSize: '0.85rem', color: 'var(--ink-2)' } }, 'Lớp ' + test.lop + ' · ' + (test.date || '') + ' · ' + test.questions.length + ' câu · đề nguồn: ' + (test.sourceTitle || '—'))),
+          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ setScanOpen(true); } }, '📷 Quét phiếu'),
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: exportCsv }, '⬇ Xuất Excel'),
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: removeTest }, '🗑'))),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px', alignItems: 'center' } },
+          h('span', { style: { fontSize: '0.85rem', fontWeight: 600 } }, 'In đề:'),
+          test.versions.map(function(v){ return h('button', { key: v.code, type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, onClick: function(){ ctPrintVersion(test, v); } }, '🖨️ Mã ' + v.code); }),
+          h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, onClick: function(){ ctPrintBlankSheets(test); } }, '🧾 Phiếu trả lời trống')),
+        !roster.length ? h('div', { className: 'banner warn', style: { marginTop: '12px' } }, h('span', null, '⚠️'), h('div', null, 'Lớp ' + test.lop + ' chưa có học sinh nào trên hệ thống — bấm "👥 Tạo tài khoản cả lớp".')) : null),
+      scoredRows.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px', marginBottom: '14px' } },
+        h('div', { className: 'card' },
+          h('h3', { style: { marginTop: 0, fontSize: '1rem' } }, '📊 Kết quả lớp'),
+          h('div', { style: { fontSize: '0.92rem', lineHeight: 1.8 } },
+            'Đã chấm: ', h('b', null, scoredRows.length + '/' + roster.length), h('br'),
+            'Điểm trung bình: ', h('b', null, avg.toFixed(2)), h('br'),
+            'Cao nhất / thấp nhất: ', h('b', null, Math.max.apply(null, scores).toFixed(2) + ' / ' + Math.min.apply(null, scores).toFixed(2))),
+          h('div', { style: { marginTop: '8px' } }, bands.map(function(b){
+            var n = scores.filter(b.f).length, pct = scores.length ? Math.round(n * 100 / scores.length) : 0;
+            return h('div', { key: b.t, style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', margin: '4px 0' } },
+              h('span', { style: { width: '96px' } }, b.t),
+              h('div', { style: { flex: 1, height: '10px', background: 'var(--surface-2)', borderRadius: '999px', overflow: 'hidden' } }, h('div', { style: { width: pct + '%', height: '100%', background: 'var(--accent)' } })),
+              h('span', { style: { width: '54px', textAlign: 'right' } }, n + ' em'));
+          }))),
+        h('div', { className: 'card' },
+          h('h3', { style: { marginTop: 0, fontSize: '1rem' } }, '🎯 Câu sai nhiều nhất (theo đề gốc)'),
+          !missList.length ? h('p', { style: { color: 'var(--muted)', fontSize: '0.88rem' } }, 'Chưa có câu sai.') :
+            missList.map(function(m){
+              var q = qById[m.id], pct = Math.round(m.n * 100 / scoredRows.length);
+              return h('div', { key: m.id, style: { fontSize: '0.85rem', margin: '5px 0', display: 'flex', gap: '8px', alignItems: 'baseline' } },
+                h('b', { style: { minWidth: '118px' } }, label[m.id]),
+                h('span', { style: { color: 'var(--critical)', fontWeight: 700, minWidth: '64px' } }, m.n + ' em (' + pct + '%)'),
+                h('span', { style: { color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, q ? (q.subtopic || q.topicName || '') : ''));
+            }))) : null,
+      h('div', { className: 'card' },
+        h('h3', { style: { marginTop: 0, fontSize: '1rem' } }, 'Bảng điểm'),
+        h('div', { style: { overflowX: 'auto' } },
+          h('table', { className: 'sm-history-table' },
+            h('thead', null, h('tr', null, h('th', null, 'SBD'), h('th', null, 'Họ và tên'), h('th', null, 'Mã đề'), h('th', null, 'Điểm'), h('th', null, 'Đúng'), h('th', null, 'Ghi chú'), h('th', null, ''))),
+            h('tbody', null, roster.map(function(s){
+              var r = results[s.id];
+              return h('tr', { key: s.id },
+                h('td', null, s.sbd), h('td', null, s.name), h('td', null, r ? r.code : '—'),
+                h('td', null, r ? h('b', null, r.score.toFixed(2)) : h('span', { style: { color: 'var(--muted)' } }, 'Chưa chấm')),
+                h('td', null, r ? r.correct + '/' + r.total : ''),
+                h('td', { style: { fontSize: '0.8rem' } }, r ? (r.unsure ? h('span', { style: { color: '#a16207', fontWeight: 700 } }, '⚠ ' + r.unsure + ' chỗ cần xem lại') : (r.src === 'manual' ? 'Nhập tay' : 'Quét')) : ''),
+                h('td', { style: { textAlign: 'right' } }, h('button', { type: 'button', className: 'sm-link-btn', onClick: function(){ setEdit({ student: s, code: r ? r.code : test.versions[0].code, answers: r ? r.answers : null }); } }, r ? 'Xem / sửa' : 'Nhập tay')));
+            })))),
+        others.length ? h('p', { style: { fontSize: '0.8rem', color: 'var(--muted)', marginTop: '8px' } }, 'Có ' + others.length + ' kết quả của em không còn trong danh sách lớp (đổi lớp/SBD).') : null),
+      scanOpen ? h(ClassScanModal, { test: test, roster: roster, onClose: function(){ setScanOpen(false); } }) : null,
+      editModal, modals);
+  }
+
   async function exportBankExamPDF(exam, bankApi){
     if(!exam) return;
     var win = openPrintWindow(); if(!win) return;
@@ -3211,7 +4171,7 @@
   }
   function hvPartOf(q){ return q.type === 'choiceTF' ? 'II' : (q.type === 'shortans' ? 'III' : 'I'); }
   function hvFmtNum(n){ return String(n).replace('.', ','); }
-  var HV_TYPE_LABEL = { diagnostic:'Kiểm tra đầu vào', adaptive:'Luyện tập thích ứng', drill:'Luyện trọng tâm', assigned:'Đề được giao', mistakes:'Sửa câu sai' };
+  var HV_TYPE_LABEL = { diagnostic:'Kiểm tra đầu vào', adaptive:'Luyện tập thích ứng', drill:'Luyện trọng tâm', assigned:'Đề được giao', mistakes:'Sửa câu sai', paper:'Bài làm giấy' };
 
   // Dựng danh sách "dòng xem lại" cho 1 lượt làm: mỗi dòng = 1 câu, kèm kết luận đúng/sai/bỏ trống.
   function hvBuildRows(attempt, exams){
@@ -3453,6 +4413,7 @@
     var selectedAttemptsState = React.useState([]); var selectedAttempts = selectedAttemptsState[0], setSelectedAttempts = selectedAttemptsState[1];
     // THÊM 4/10/2026 — lượt làm đang được mở để "Xem lại bài làm" + bật/tắt xem hết lịch sử
     var reviewState = React.useState(null); var reviewAttempt = reviewState[0], setReviewAttempt = reviewState[1];
+    var paperEntryState = React.useState(null); var paperEntry = paperEntryState[0], setPaperEntry = paperEntryState[1]; // THÊM 12/10/2026
     var histAllState = React.useState(false); var histAll = histAllState[0], setHistAll = histAllState[1];
     React.useEffect(function(){
       setReviewAttempt(null); setHistAll(false);
@@ -4244,7 +5205,9 @@
                 ),
                 h('div',{style:{display:'flex', alignItems:'center', gap:'8px', flex:'none'}},
                   latest ? h('span',{className:'sm-assigned-pill done'}, '✅ ' + latest.scaledScore10.toFixed(2) + '/10') : h('span',{className:'sm-assigned-pill pending'}, '⏳ Chưa làm'),
-                  h('button',{type:'button', className:'btn btn-secondary', style:{padding:'4px 10px', fontSize:'0.75rem'}, onClick:function(){ exportAssignedExamPDF(selected, ae); }}, '🖨️ Xuất PDF')
+                  h('button',{type:'button', className:'btn btn-secondary', style:{padding:'4px 10px', fontSize:'0.75rem'}, onClick:function(){ exportAssignedExamPDF(selected, ae); }}, '🖨️ Xuất PDF'),
+                  // THÊM 12/10/2026 — em làm đề này trên giấy → thầy chụp phiếu / nhập đáp án
+                  h('button',{type:'button', className:'btn btn-secondary', style:{padding:'4px 10px', fontSize:'0.75rem'}, onClick:function(){ setPaperEntry({ ae: ae, student: selected }); }}, '📝 Nhập bài giấy')
                 )
               );
             })
@@ -4520,7 +5483,9 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, reminderBanner, summaryCard, searchRow, tableOrEmpty), detailModal, reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt, student: selected, onClose: function(){ setReviewAttempt(null); } }) : null, addModal, importModal, justApprovedModal);
+    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, reminderBanner, summaryCard, searchRow, tableOrEmpty), detailModal, reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt, student: selected, onClose: function(){ setReviewAttempt(null); } }) : null, addModal, importModal, justApprovedModal,
+      paperEntry ? h(PaperEntryModal, { student: paperEntry.student, assignedExam: paperEntry.ae, questions: paperEntry.ae.questions || [], title: paperEntry.ae.title || 'Đề được giao', examCode: paperEntry.ae.examCode || '',
+        sheetKey: 'ae_' + (paperEntry.student.id || '') + '_' + (paperEntry.ae.id || paperEntry.ae.examCode || paperEntry.ae.seq || ''), fireToast: props.fireToast, onClose: function(){ setPaperEntry(null); } }) : null);
   }
 
   // ================= Báo cáo Phụ huynh (AI co-pilot) =================
@@ -6255,6 +7220,7 @@
     var specialMode = props.specialMode || null; // null | 'hsg' | 'olympic'
     // THÊM 9/10/2026 — id đề đang đóng gói .zip (.tex + ảnh), để khoá nút trong lúc chờ
     var bundleBusyState = React.useState(null); var bundleBusy = bundleBusyState[0], setBundleBusy = bundleBusyState[1];
+    var paperEntryState = React.useState(null); var paperEntry = paperEntryState[0], setPaperEntry = paperEntryState[1]; // THÊM 12/10/2026 — nhập bài giấy
     function handleDownloadBundle(exam){
       if(!exam || bundleBusy) return;
       setBundleBusy(exam.id);
@@ -7104,7 +8070,11 @@
               (selected.tex || (selected.images && selected.images.length)) ? h('button',{type:'button', className:'btn btn-primary', style:{fontSize:'0.85rem'}, disabled: !!bundleBusy, onClick:function(){ handleDownloadBundle(selected); }},
                 bundleBusy === selected.id ? 'Đang đóng gói…' : '📦 Tải trọn bộ .tex + ' + ((selected.images || []).length) + ' ảnh (.zip)') : null,
               (selected.questions && selected.questions.length) ? h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.85rem'}, onClick:function(){ exportBankExamPDF(selected, bankApi); }},
-                '🖨️ Xuất PDF bản in') : null
+                '🖨️ Xuất PDF bản in') : null,
+              // THÊM 12/10/2026 — học sinh làm đề này trên giấy → chọn em, chụp phiếu / nhập đáp án
+              (!specialMode && selected.questions && selected.questions.length) ? h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.85rem'}, onClick:function(){
+                setPaperEntry({ exam: selected, questions: selected.questions.map(function(q){ return toStudentQuestionShape(q, selected.id, selected.title, []); }) });
+              }}, '📝 Nhập bài giấy') : null
             ),
 
 
@@ -7482,7 +8452,9 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, filterRow, tableOrEmpty), detailModal, addModal);
+    return h('div',null, h('div',{className:'card'}, toolbar, filterRow, tableOrEmpty), detailModal, addModal,
+      paperEntry ? h(PaperEntryModal, { bankExamId: paperEntry.exam.id, questions: paperEntry.questions, title: paperEntry.exam.title || 'Đề', sheetKey: 'bank_' + paperEntry.exam.id,
+        fireToast: props.fireToast, onClose: function(){ setPaperEntry(null); } }) : null);
   }
 
   // ================= Personalized Exam Generator Panel =================
@@ -9081,6 +10053,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='curriculum' && 'active'), onClick:function(){ setTab('curriculum'); }}, '📚 Quản lý chương'),
         h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
         h('button',{type:'button', className:cx('tab-btn', tab==='room' && 'active'), onClick:function(){ setTab('room'); }}, '🎓 Phòng dạy'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='classtest' && 'active'), onClick:function(){ setTab('classtest'); }}, '📋 Kiểm tra lớp'),
         h('button',{type:'button', className:cx('tab-btn', tab==='nano' && 'active'), onClick:function(){ setTab('nano'); }}, '🗺️ Nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='nanotag' && 'active'), onClick:function(){ setTab('nanotag'); }}, '🏷️ Gắn nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
@@ -9091,7 +10064,7 @@
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
             tab === 'curriculum' ? h(CurriculumPanel, {fireToast:fireToast}) : (
             tab === 'reports' ? h(ParentReportsPanel, {fireToast:fireToast}) : (
-              tab === 'room' ? h(TeachingRoomPanel, {fireToast:fireToast}) : (
+              tab === 'room' ? h(TeachingRoomPanel, {fireToast:fireToast}) : tab === 'classtest' ? h(ClassTestPanel, {fireToast:fireToast}) : (
               tab === 'nanotag' ? h(NanoTaggerPanel, {fireToast:fireToast}) : (
               tab === 'nano' ? h(NanoMapPanel, {fireToast:fireToast}) : (
               tab === 'pricing' ? h('div', null, h(ReferralSettingsCard, {fireToast:fireToast}), h(PricingPanel, {fireToast:fireToast})) : (
