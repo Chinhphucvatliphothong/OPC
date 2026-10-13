@@ -1,0 +1,8 @@
+# FaradayAI.vn — cho phép Google đọc trang giới thiệu, chặn trang quản trị và API (13/10/2026)
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin.html
+Disallow: /api/
+
+Sitemap: https://faradayai.vn/sitemap.xml
