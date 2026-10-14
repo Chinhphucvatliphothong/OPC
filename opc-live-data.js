@@ -469,6 +469,12 @@ function parseShortAnswer(raw){
 // ================= Ngân hàng đề thật =================
 // Chuyển 1 câu hỏi ở định dạng admin.html (parseTexBank) sang định dạng mà
 // prepscholar.js / prepscholar-ui.js đang render (xem QUESTION_BANK mẫu).
+// THÊM 14/10/2026 — câu "dựa vào câu trên" mang theo dữ kiện câu trước (xem prepscholar.js linkPrevContext)
+function linkCtx(list){
+  var E = window.PrepScholarEngine;
+  try{ return (E && E.linkPrevContext) ? E.linkPrevContext(list) : list; }catch(e){ console.warn('linkPrevContext lỗi:', e); return list; }
+}
+
 function transformQuestion(q, examMeta){
   var NANO = window.OPC_NANO;
   var chuDe = NANO ? NANO.findChuDeByText(q.chuDeLon) : null;
@@ -489,6 +495,7 @@ function transformQuestion(q, examMeta){
     images: resolveQuestionImages(q, examMeta.images),
     groupPassage: q.groupPassage || null,
     groupImages: resolveQuestionImages({ images: q.groupImages || [] }, examMeta.images),
+    ctxFrom: q.ctxFrom != null ? q.ctxFrom : null, // THÊM 14/10/2026 — ngữ cảnh lấy từ câu trước (index)
     examTitle: examMeta.title,
     examId: examMeta.examId,
     baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
@@ -538,7 +545,8 @@ async function loadRealQuestionBank(){
       var exam = d.data() || {};
       var resolvedImages = imagesList[i];
       var meta = { examId: d.id, title: exam.title || '', images: resolvedImages };
-      (exam.questions || []).forEach(function(q){
+      // SỬA 14/10/2026 — gắn dữ kiện câu trước cho câu "dựa vào câu trên" (PrepScholarEngine.linkPrevContext)
+      linkCtx(exam.questions || []).forEach(function(q){
         all.push(transformQuestion(q, meta));
       });
       // THÊM 1/10/2026 — VIDEO CHỮA ĐỀ: ghi lại mốc video của đề này vào bảng
@@ -587,7 +595,7 @@ async function loadSpecialExamList(track){
 // Chuẩn bị 1 đề để làm: tải ảnh + đổi từng câu sang dạng hiển thị.
 async function loadSpecialExam(track, exam){
   var imgs = await loadExamImages(exam.id, exam.images, SPECIAL_COLLECTIONS[track]);
-  return (exam.questions || []).map(function(q){
+  return linkCtx(exam.questions || []).map(function(q){
     return {
       index: q.index, part: q.part || 'I', type: q.type || 'choice', level: q.level || '',
       stem: q.stem || '', loiGiai: q.loigiai || '',

@@ -365,7 +365,7 @@
   function renderGroupPassage(q){
     if(!q || !q.groupPassage) return null;
     return h('div', { className: 'ps-group-passage', style: { background: 'var(--surface-2, #f5f3ff)', border: '1px solid var(--border, #e2e8f0)', borderLeft: '3px solid #6d28d9', borderRadius: '8px', padding: '12px 14px', margin: '10px 0' } },
-      h('div', { style: { fontSize: '0.78rem', fontWeight: 700, color: '#6d28d9', marginBottom: '6px' } }, '📎 Dùng chung ngữ cảnh sau:'),
+      h('div', { style: { fontSize: '0.78rem', fontWeight: 700, color: '#6d28d9', marginBottom: '6px' } }, q.ctxFrom != null ? '📎 Dữ kiện từ câu trước:' : '📎 Dùng chung ngữ cảnh sau:'), // SỬA 14/10/2026
       h('div', { style: { fontSize: '0.9rem', lineHeight: 1.6 } }, renderLatexText(q.groupPassage)),
       (q.groupImages && q.groupImages.length) ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' } },
         q.groupImages.map(function(im, idx){

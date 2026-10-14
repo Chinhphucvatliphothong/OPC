@@ -636,10 +636,29 @@
     //   de_thi_olympic  — Đề đội tuyển Olympic
     // Mỗi ngân hàng là 1 collection riêng nên câu HSG/Olympic không bao giờ
     // lẫn vào luyện tập/thi thử Vật lí 12 (trang học sinh chỉ đọc "de_thi").
+    // THÊM 14/10/2026 — gắn dữ kiện câu trước cho câu phụ thuộc (xem prepscholar.js linkPrevContext)
+    function linkExamCtx(data){
+      if(!data || !Array.isArray(data.questions)) return data;
+      var E = window.PrepScholarEngine;
+      if(!E || !E.linkPrevContext) return data;
+      try{
+        var qs = E.linkPrevContext(data.questions);
+        return qs === data.questions ? data : Object.assign({}, data, { questions: qs });
+      }catch(e){ console.warn('linkPrevContext lỗi:', e); return data; }
+    }
     function makeExamBankApi(COL){
       return {
+        // SỬA 14/10/2026 — mọi nơi đọc ngân hàng đề đều nhận câu "dựa vào câu trên" ĐÃ GẮN dữ kiện câu trước
+        // (PrepScholarEngine.linkPrevContext) → tạo đề cá nhân hoá / đề lớp / phiếu ôn bốc lẻ câu vẫn đủ ngữ cảnh.
         subscribe: function(onNext, onErr){
-          return onSnapshot(query(collection(db, COL), orderBy("createdAt", "desc")), onNext, onErr);
+          return onSnapshot(query(collection(db, COL), orderBy("createdAt", "desc")), function(snap){
+            var docs = snap.docs.map(function(d){
+              var memo;
+              return { id: d.id, ref: d.ref, exists: function(){ return d.exists(); }, get: function(k){ return d.get(k); },
+                data: function(){ if(memo === undefined) memo = linkExamCtx(d.data()); return memo; } };
+            });
+            onNext({ docs: docs, size: snap.size, empty: snap.empty, metadata: snap.metadata, forEach: function(cb){ docs.forEach(cb); } });
+          }, onErr);
         },
         newRef: function(){ return doc(collection(db, COL)); },
         save: function(refDoc, data){
@@ -690,7 +709,7 @@
               images = images.map(function(im, idx){ var full = map['img_' + idx] || map[im.subdocId]; return full ? Object.assign({}, im, full) : im; });
             }catch(e){ console.warn('Lỗi tải ảnh của đề:', e); }
           }
-          return Object.assign({ id: examId }, data, { images: images });
+          return Object.assign({ id: examId }, linkExamCtx(data), { images: images });
         },
         loadExamImages: async function(examId, imagesMeta){
           if(!imagesMeta || !imagesMeta.length) return [];
@@ -1512,7 +1531,9 @@
       for(var i = 0; i < list.length; i++){
         var q = list[i];
         // Câu hỏi chùm: in ngữ cảnh 1 lần cho cả dãy câu liên tiếp dùng chung
-        if(q.groupPassage && (i === 0 || list[i - 1].groupPassage !== q.groupPassage)){
+        // SỬA 14/10/2026 — câu "dựa vào câu trên" đứng NGAY SAU câu nguồn thì không in lại dữ kiện (đã có ở câu trên)
+        var ctxRightAbove = q.ctxFrom != null && i > 0 && q.examId && list[i - 1].id === q.examId + '_q' + q.ctxFrom;
+        if(q.groupPassage && !ctxRightAbove && (i === 0 || list[i - 1].groupPassage !== q.groupPassage)){
           var j = i; while(j + 1 < list.length && list[j + 1].groupPassage === q.groupPassage) j++;
           var label = j > i ? ('Sử dụng các thông tin sau cho Câu ' + (i + 1) + (j - i === 1 ? ' và Câu ' : ' đến Câu ') + (j + 1) + ':') : 'Sử dụng các thông tin sau cho Câu ' + (i + 1) + ':';
           bodyHtml += '<div class="group-passage"><div class="gp-label">' + label + '</div>' + latexToHtmlPDF(q.groupPassage) + pdfImagesHtml(q.groupImages) + '</div>';
@@ -2217,7 +2238,9 @@
       ['I', 'II', 'III'].forEach(function(p){
         var list = ord[p], blocks = [];
         list.forEach(function(q, i){
-          if(q.groupPassage && i > 0 && list[i - 1].groupPassage === q.groupPassage) blocks[blocks.length - 1].push(q);
+          // SỬA 14/10/2026 — câu "dựa vào câu trên" đứng ngay sau câu nguồn cũng giữ liền khối khi đảo câu
+          var ctxPrev = q.ctxFrom != null && i > 0 && q.examId && list[i - 1].id === q.examId + '_q' + q.ctxFrom;
+          if(i > 0 && (ctxPrev || (q.groupPassage && list[i - 1].groupPassage === q.groupPassage))) blocks[blocks.length - 1].push(q);
           else blocks.push([q]);
         });
         (shuffle ? ctShuffle(blocks, rnd) : blocks).forEach(function(b){ b.forEach(function(q){ order.push(q.id); }); });
@@ -2797,7 +2820,8 @@
   }
   function ctNanoIds(q){ return (q.nanoIds && q.nanoIds.length) ? q.nanoIds : (q.nanoId ? [q.nanoId] : []); }
   function ctUsable(q){
-    if(!q || q.groupPassage) return false; // câu chùm cần đi kèm cả cụm → không tự bốc lẻ
+    // SỬA 14/10/2026 — câu chùm / câu "dựa vào câu trên" nay luôn mang theo ngữ cảnh (groupPassage) nên bốc lẻ vẫn đủ dữ kiện
+    if(!q) return false;
     if(q.part === 'II') return (q.statements || []).length === 4;
     if(q.part === 'III') return q.correctAnswer != null && !isNaN(q.correctAnswer);
     return !!q.correctKey && (q.options || []).length === 4;
@@ -4236,6 +4260,11 @@
       } else {
         preambleBuffer.push(line);
       }
+    }
+
+    // THÊM 14/10/2026 — câu "dựa vào câu trên" mang theo dữ kiện của câu trước (groupPassage + ctxFrom)
+    if(window.PrepScholarEngine && window.PrepScholarEngine.linkPrevContext){
+      try{ questions = window.PrepScholarEngine.linkPrevContext(questions); }catch(e){ console.warn('linkPrevContext lỗi:', e); }
     }
 
     var stats = {
@@ -9049,6 +9078,7 @@
       images: resolveQuestionImagesLocal(q, resolvedImages),
       groupPassage: q.groupPassage || null,
       groupImages: resolveQuestionImagesLocal({ images: q.groupImages || [] }, resolvedImages),
+      ctxFrom: q.ctxFrom != null ? q.ctxFrom : null, // THÊM 14/10/2026 — ngữ cảnh lấy từ câu trước (index câu nguồn)
       examTitle: examTitle,
       examId: examId,
       baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',

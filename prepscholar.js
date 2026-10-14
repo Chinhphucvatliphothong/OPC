@@ -817,6 +817,63 @@
     return true;
   }
 
+  // THÊM 14/10/2026 — CỤM CÂU HỎI "DỰA VÀO CÂU TRÊN": nhiều đề viết câu sau phụ thuộc dữ kiện của câu
+  // trước ("Từ thí nghiệm ở câu trên…", "Theo kết quả của câu 25…") mà không có đoạn "Sử dụng thông tin sau…"
+  // (groupPassage). Khi tạo đề cá nhân hoá / đề lớp, câu đó bị bốc lẻ nên mất dữ kiện. Hàm này nhận DANH SÁCH
+  // CÂU CỦA 1 ĐỀ (dạng lưu trong de_thi) và gắn cho mỗi câu phụ thuộc 1 groupPassage = ngữ cảnh của câu trước
+  // + đề bài câu trước (nối chuỗi nếu nhiều câu liên tiếp phụ thuộc nhau), kèm ảnh của câu trước. Đánh dấu
+  // ctxFrom = index câu nguồn; ctxOwn/ctxOwnImages giữ ngữ cảnh gốc (nếu có) để chạy lại nhiều lần vẫn ra đúng
+  // (idempotent) — sửa đề bài câu trước thì lần đọc sau tự cập nhật.
+  var REF_PREV_RE = /(^|[^\p{L}])(các\s+)?câu(\s+hỏi)?\s+(ở\s+|phía\s+|bên\s+)?(trên|trước|liền\s+trước|vừa\s+rồi|vừa\s+làm)(?![\p{L}])/iu;
+  var REF_NUM_RE = /(^|[^\p{L}])(ở|từ|của|theo|trong|tại|như|với)\s+câu\s+(số\s+)?\d+/iu;
+  function refersPrevQuestion(stem){
+    if(!stem) return false;
+    var s = String(stem).normalize ? String(stem).normalize('NFC') : String(stem);
+    return REF_PREV_RE.test(s) || REF_NUM_RE.test(s);
+  }
+  function linkPrevContext(list){
+    if(!Array.isArray(list) || !list.length) return list;
+    var order = list.map(function(q, i){ return i; });
+    order.sort(function(a, b){
+      var ia = list[a] ? Number(list[a].index) : NaN, ib = list[b] ? Number(list[b].index) : NaN;
+      if(isNaN(ia) || isNaN(ib) || ia === ib) return a - b;
+      return ia - ib;
+    });
+    function uniq(arr){
+      var seen = {}, out = [];
+      arr.forEach(function(x){ if(x == null) return; var k = typeof x === 'string' ? x : JSON.stringify(x); if(!seen[k]){ seen[k] = 1; out.push(x); } });
+      return out;
+    }
+    var out = list.slice(), prev = null, changed = false;
+    order.forEach(function(i){
+      var q = list[i];
+      if(!q){ prev = null; return; }
+      var derived = q.ctxFrom != null;
+      var own = derived ? (q.ctxOwn || null) : (q.groupPassage || null);
+      var ownImgs = derived ? (q.ctxOwnImages || []) : (q.groupImages || []);
+      var res = q;
+      if(prev && prev.index != null && (prev.part || 'I') === (q.part || 'I') && refersPrevQuestion(q.stem)){
+        var pieces = [];
+        if(prev.groupPassage) pieces.push(String(prev.groupPassage).trim());
+        if(prev.stem) pieces.push(String(prev.stem).trim());
+        if(own && !(prev.groupPassage && String(prev.groupPassage).indexOf(own) > -1)) pieces.push(String(own).trim());
+        res = Object.assign({}, q, {
+          groupPassage: pieces.filter(Boolean).join('\n\n') || null,
+          groupImages: uniq([].concat(prev.groupImages || [], prev.images || [], ownImgs)),
+          ctxFrom: prev.index, ctxOwn: own, ctxOwnImages: ownImgs.slice()
+        });
+        changed = true;
+      } else if(derived){
+        // Trước đây được gắn nhưng nay không còn phụ thuộc (đã sửa đề bài) → trả lại ngữ cảnh gốc
+        res = Object.assign({}, q, { groupPassage: own, groupImages: ownImgs.slice() });
+        delete res.ctxFrom; delete res.ctxOwn; delete res.ctxOwnImages;
+        changed = true;
+      }
+      out[i] = res; prev = res;
+    });
+    return changed ? out : list;
+  }
+
   // Khởi tạo và xuất đối tượng sang window
   window.PrepScholarEngine = {
     CHU_DE_MAP: CHU_DE_MAP,
@@ -950,7 +1007,10 @@
     getWeakestNanoPoints: function(studentMasteryByTopic, n, realNanoMastery){
       return getWeakestNanoPoints(buildKnowledgeMap(studentMasteryByTopic, realNanoMastery), n);
     },
-    computeStudentStatsFromAttempts: computeStudentStatsFromAttempts
+    computeStudentStatsFromAttempts: computeStudentStatsFromAttempts,
+    // THÊM 14/10/2026 — gắn dữ kiện câu trước cho câu "dựa vào câu trên" (xem linkPrevContext)
+    refersPrevQuestion: refersPrevQuestion,
+    linkPrevContext: linkPrevContext
   };
 
 })(window);
