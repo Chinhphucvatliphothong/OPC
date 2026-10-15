@@ -857,7 +857,9 @@
     <h1>Luyện đúng chuyên đề đang yếu, được thiết kế giúp em đạt thành tích Xuất Sắc.</h1>
     <p class="lede">FaradayAI chấm điểm đề chẩn đoán theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — phương pháp học tập cá nhân hoá dành cho mọi học sinh, trí tuệ nhân tạo (AI) tự điều chỉnh theo thời gian thực dựa trên điểm mạnh và điểm yếu của từng em.</p>
     <div class="hero-ctas">
-      <a class="btn btn-primary" href="#gioi-thieu">Tìm hiểu phương pháp ↓</a>
+      <!-- THÊM 15/10/2026 — Chẩn đoán 5 phút (diagnostic5.js); tự ẩn nếu thầy chưa bật bộ câu hỏi ở admin -->
+      <a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Chẩn đoán miễn phí 5 phút</a>
+      <a class="btn btn-ghost" href="#gioi-thieu">Tìm hiểu phương pháp ↓</a>
       <a class="btn btn-ghost" href="#lien-he">Đăng ký học</a>
     </div>
     <figure class="wave-figure">
@@ -3028,5 +3030,7 @@
      chờ sự kiện "opc-live-ready" (hoặc dò window.OPC_LIVE) thay vì giả định
      nó có sẵn ngay khi mount. -->
 <script type="module" src="/opc-live-data.js"></script>
+<!-- THÊM 15/10/2026 — phễu "Chẩn đoán 5 phút" cho khách mới (link chia sẻ: faradayai.vn/#chan-doan) -->
+<script src="/diagnostic5.js" defer></script>
 </body>
 </html>

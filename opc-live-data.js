@@ -655,6 +655,62 @@ async function loadCurriculum(){
   }
 }
 
+// ================= THÊM 15/10/2026 — "CHẨN ĐOÁN 5 PHÚT" (phễu khách mới trên trang chủ) =================
+// settings/diagnostic5 (đọc công khai): { enabled, title, minutes, questions:[{id,stem,options[{key,text}],correctKey,
+// topicKey,topicName,baiName,level}], zaloLink }. Khách KHÔNG cần đăng nhập. Kết quả + liên hệ khách để lại ghi vào
+// diag_leads (chỉ được TẠO, admin mới đọc); diag_events đếm lượt bắt đầu/hoàn thành để đo tỉ lệ chuyển đổi.
+async function loadDiagnostic5(){
+  try{
+    var snap = await getDoc(doc(db, 'settings', 'diagnostic5'));
+    if(!snap.exists()) return { ok: false, empty: true };
+    var d = snap.data() || {};
+    if(d.enabled === false) return { ok: false, disabled: true };
+    return { ok: true, data: d };
+  }catch(e){
+    console.error('Lỗi tải Chẩn đoán 5 phút:', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+function diagSrc(){
+  try{
+    var p = new URLSearchParams(location.search);
+    return String(p.get('utm_source') || p.get('src') || p.get('ref') || (document.referrer ? new URL(document.referrer).hostname : '') || 'direct').slice(0, 40);
+  }catch(e){ return 'direct'; }
+}
+async function logDiagEvent(type, score){
+  try{
+    var rec = { type: String(type).slice(0, 10), createdAt: new Date().toISOString(), src: diagSrc() };
+    if(typeof score === 'number' && isFinite(score)) rec.score = Math.max(0, Math.min(100, Math.round(score)));
+    await setDoc(doc(collection(db, 'diag_events')), rec);
+  }catch(e){ /* thống kê — lỗi thì bỏ qua, không ảnh hưởng khách */ }
+}
+async function submitDiagLead(data){
+  try{
+    var r = doc(collection(db, 'diag_leads'));
+    var diag = data.diag || {};
+    await setDoc(r, {
+      name: String(data.name || '').slice(0, 80),
+      phone: String(data.phone || '').slice(0, 20),
+      grade: String(data.grade || '').slice(0, 10),
+      school: String(data.school || '').slice(0, 100),
+      target: String(data.target || '').slice(0, 10),
+      correct: Math.max(0, Math.min(100, Number(diag.correct) || 0)),
+      total: Math.max(0, Math.min(100, Number(diag.total) || 0)),
+      score10: Math.max(0, Math.min(10, Number(diag.score10) || 0)),
+      weak: String(diag.weak || '').slice(0, 300),
+      strong: String(diag.strong || '').slice(0, 300),
+      seconds: Math.max(0, Math.min(3600, Math.round(Number(diag.seconds) || 0))),
+      src: diagSrc(),
+      status: 'new',
+      createdAt: new Date().toISOString()
+    });
+    return { ok: true, id: r.id };
+  }catch(e){
+    console.error('Lỗi gửi kết quả Chẩn đoán 5 phút:', e);
+    return { ok: false, error: (e && e.code) || 'unknown' };
+  }
+}
+
 window.OPC_LIVE = {
   loadCurriculum: loadCurriculum,
   loginStudent: loginStudent,
@@ -677,6 +733,10 @@ window.OPC_LIVE = {
   parseShortAnswer: parseShortAnswer,
   loadSpecialExamList: loadSpecialExamList,
   loadSpecialExam: loadSpecialExam,
-  saveSpecialAttempt: saveSpecialAttempt
+  saveSpecialAttempt: saveSpecialAttempt,
+  // THÊM 15/10/2026 — Chẩn đoán 5 phút (diagnostic5.js)
+  loadDiagnostic5: loadDiagnostic5,
+  logDiagEvent: logDiagEvent,
+  submitDiagLead: submitDiagLead
 };
 try{ window.dispatchEvent(new CustomEvent('opc-live-ready')); }catch(e){}

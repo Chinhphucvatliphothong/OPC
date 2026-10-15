@@ -120,6 +120,29 @@ service cloud.firestore {
       allow read, update, delete: if isOpcAdmin();
     }
 
+    // THÊM 15/10/2026 — "Chẩn đoán 5 phút" trên trang chủ (khách chưa đăng nhập).
+    // diag_leads: khách để lại liên hệ + kết quả — CHỈ được tạo (đúng các trường, giới hạn độ dài); admin đọc/sửa/xoá.
+    match /diag_leads/{leadId} {
+      allow create: if request.resource.data.keys().hasOnly(['name','phone','grade','school','target','correct','total','score10','weak','strong','seconds','src','status','createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string && request.resource.data.phone.size() >= 8 && request.resource.data.phone.size() <= 20
+        && request.resource.data.grade is string && request.resource.data.grade.size() <= 10
+        && request.resource.data.school is string && request.resource.data.school.size() <= 100
+        && request.resource.data.target is string && request.resource.data.target.size() <= 10
+        && request.resource.data.weak is string && request.resource.data.weak.size() <= 300
+        && request.resource.data.strong is string && request.resource.data.strong.size() <= 300
+        && request.resource.data.src is string && request.resource.data.src.size() <= 40
+        && request.resource.data.status == 'new';
+      allow read, update, delete: if isOpcAdmin();
+    }
+    // diag_events: đếm lượt bắt đầu / hoàn thành (không có thông tin cá nhân) để đo tỉ lệ chuyển đổi.
+    match /diag_events/{evId} {
+      allow create: if request.resource.data.keys().hasOnly(['type','createdAt','src','score'])
+        && request.resource.data.type in ['start', 'finish', 'lead']
+        && request.resource.data.src is string && request.resource.data.src.size() <= 40;
+      allow read, delete: if isOpcAdmin();
+    }
+
     // Cấu hình chung do admin quản lý (hiện có "settings/pricing" — giá/
     // tính năng gói dịch vụ hiển thị trên trang chủ). Đọc công khai vì trang
     // chủ chưa đăng nhập ai cũng xem giá được — không chứa gì nhạy cảm; ghi
