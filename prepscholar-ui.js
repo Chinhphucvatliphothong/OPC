@@ -362,6 +362,17 @@
   // opc-live-data.js). Hiển thị riêng cho TỪNG câu (kể cả khi 2 câu cùng
   // nhóm không đứng cạnh nhau sau khi cá nhân hoá/xáo trộn đề) để học sinh
   // luôn thấy đủ ngữ cảnh cần thiết.
+  // THÊM 16/10/2026 — dòng phụ dưới "Dự báo điểm": khoảng điểm + độ tin cậy, hoặc lý do chưa dự đoán được
+  function predictionSub(student){
+    var pr = student && student.prediction;
+    if(student && student.predicted != null && pr && pr.low != null){
+      return 'Khoảng ' + pr.low.toFixed(1).replace('.', ',') + ' – ' + pr.high.toFixed(1).replace('.', ',') + ' · độ tin cậy ' + pr.confidence +
+        ' · mục tiêu ' + Number(student.target || 0).toFixed(1).replace('.', ',');
+    }
+    if(student && student.predicted != null) return 'Dựa trên lịch sử làm bài thật';
+    return (pr && pr.reason) ? pr.reason : 'Chưa đủ dữ liệu — hãy làm Bài kiểm tra đầu vào';
+  }
+
   function renderGroupPassage(q){
     if(!q || !q.groupPassage) return null;
     return h('div', { className: 'ps-group-passage', style: { background: 'var(--surface-2, #f5f3ff)', border: '1px solid var(--border, #e2e8f0)', borderLeft: '3px solid #6d28d9', borderRadius: '8px', padding: '12px 14px', margin: '10px 0' } },
@@ -591,7 +602,11 @@
       if(!studentId || !window.OPC_LIVE || !window.OPC_LIVE.saveStudentStats) return;
       var payload = {};
       if(stats.mastery) payload.mastery = stats.mastery;
-      if(stats.predicted != null) payload.predicted = stats.predicted;
+      // SỬA 16/10/2026 — luôn ghi (kể cả null) để admin không giữ số dự đoán cũ; kèm khoảng điểm + độ tin cậy + gợi ý
+      if(stats.prediction){
+        payload.predicted = stats.predicted != null ? stats.predicted : null;
+        payload.prediction = window.PrepScholarEngine.compactPrediction(stats.prediction);
+      } else if(stats.predicted != null) payload.predicted = stats.predicted;
       if(stats.nanoMastery) payload.nanoMastery = stats.nanoMastery;
       if(stats.mistakeLog) payload.mistakeCount = stats.mistakeLog.length;
       if(stats.mistakeTotal != null) payload.mistakeTotal = stats.mistakeTotal; // THÊM 29/9/2026 — tổng thật, không bị cắt 15
@@ -661,7 +676,8 @@
           if(!prev || prev.id !== appStu.id) return prev; // đã đăng xuất/đổi tài khoản trong lúc đang tải
           return Object.assign({}, prev, {
             mastery: Object.assign({}, prev.mastery, stats.mastery),
-            predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
+            predicted: stats.predicted, // SỬA 16/10/2026 — null = chưa đủ dữ liệu (không giữ số cũ)
+            prediction: stats.prediction || null,
             nanoMastery: stats.nanoMastery,
             radar5: stats.radar5 || prev.radar5,
             levelXp: stats.levelXp || prev.levelXp,
@@ -2043,7 +2059,8 @@
         if(!prev || prev.id !== studentId) return prev;
         return Object.assign({}, prev, {
           mastery: Object.assign({}, prev.mastery, stats.mastery),
-          predicted: (stats.predicted != null) ? stats.predicted : prev.predicted,
+          predicted: stats.predicted, // SỬA 16/10/2026 — null = chưa đủ dữ liệu (không giữ số cũ)
+          prediction: stats.prediction || null,
           nanoMastery: stats.nanoMastery,
           radar5: stats.radar5 || prev.radar5,
           levelXp: stats.levelXp || prev.levelXp,
@@ -2069,10 +2086,12 @@
     // cho bản ghi nộp bài (handleSubmitExam) và bản ghi tiến độ làm dở của luyện thích ứng (saveAdaptiveProgress).
     function buildAttemptQuestionLists(scored){
       var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
-        return { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+        var w = { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+        if(r.part === 'II' && r.correctSubCount != null) w.subOk = r.correctSubCount; // THÊM 16/10/2026 — số ý Đúng/Sai làm đúng (cho dự đoán điểm)
+        return w;
       });
       var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
-        return { qId: r.question.id, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+        return { qId: r.question.id, topicKey: r.question.topicKey || null, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
       });
       return { wrongQuestions: wrongQuestions, rightQuestions: rightQuestions };
     }
@@ -2162,12 +2181,12 @@
       // phong độ chuyên đề của học sinh.
       var avgMasteryKeys = Object.keys(window.PrepScholarEngine.CHU_DE_MAP);
       var avgMastery = Math.round(avgMasteryKeys.reduce(function(s, k){ return s + (newMastery[k] != null ? newMastery[k] : 50); }, 0) / avgMasteryKeys.length);
-      var newPredicted = Math.round((5.0 + (avgMastery / 100) * 4.8) * 10) / 10;
+      // SỬA 16/10/2026 — bỏ công thức "5 + mastery × 4,8" (số ước chừng); điểm dự đoán được tính lại ngay sau khi lưu bài
+      // (applyAttemptsAndSync → computeStudentStatsFromAttempts → predictExamScore).
 
       setStudent(function(prev){
         return Object.assign({}, prev, {
           mastery: newMastery,
-          predicted: newPredicted,
           nanoMastery: newNanoMastery
         });
       });
@@ -2377,7 +2396,8 @@
             student.predicted != null ? student.predicted.toFixed(1) : '—',
             h('span', { style: { fontSize: '0.9rem', color: 'var(--muted)' } }, '/ 10.0')
           ),
-          h('div', { className: 'ps-metric-sub' }, student.predicted != null ? 'Dựa trên lịch sử làm bài thật gần nhất' : 'Chưa có dữ liệu — hãy làm Bài kiểm tra đầu vào')
+          // SỬA 16/10/2026 — kèm khoảng điểm + độ tin cậy (predictExamScore trong prepscholar.js)
+          h('div', { className: 'ps-metric-sub' }, predictionSub(student))
         ),
         h('div', { className: 'ps-metric-card good' },
           h('div', { className: 'ps-metric-label' }, 'Mục tiêu điểm số'),
@@ -3429,8 +3449,12 @@
                     student.predicted != null ? student.predicted.toFixed(1) : '—',
                     h('span', { style: { fontSize: '0.9rem', color: 'var(--muted)' } }, '/ 10.0')
                   ),
-                  h('div', { className: 'ps-metric-sub' },
-                    student.predicted != null ? 'Kỳ vọng: ' + student.target.toFixed(2) : 'Chưa có dữ liệu — hãy làm Bài kiểm tra đầu vào')
+                  h('div', { className: 'ps-metric-sub' }, predictionSub(student)),
+                  // THÊM 16/10/2026 — em đang mất điểm ở đâu (theo mô hình dự đoán)
+                  (student.prediction && student.prediction.tips && student.prediction.tips.length)
+                    ? h('ul', { style: { margin: '6px 0 0', paddingLeft: '18px', fontSize: '0.78rem', lineHeight: 1.45, color: 'var(--ink-2)' } },
+                        student.prediction.tips.map(function(t, i){ return h('li', { key: i }, t); }))
+                    : null
                 )
               ),
               h('div', { className: 'ps-radar-card' },

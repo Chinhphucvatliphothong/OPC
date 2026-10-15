@@ -1969,10 +1969,12 @@
     var NE = window.PrepScholarEngine;
     function ids(q){ return NE && NE.nanoIdsOf ? NE.nanoIdsOf(q) : (q.nanoIds || (q.nanoId ? [q.nanoId] : [])); }
     var wrong = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
-      return { qId: r.question.id, topicKey: r.question.topicKey || null, topicName: r.question.topicName || null, subtopic: r.question.subtopic || null, nanoId: r.question.nanoId || null, nanoIds: ids(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+      var w = { qId: r.question.id, topicKey: r.question.topicKey || null, topicName: r.question.topicName || null, subtopic: r.question.subtopic || null, nanoId: r.question.nanoId || null, nanoIds: ids(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+      if(r.part === 'II' && r.correctSubCount != null) w.subOk = r.correctSubCount; // THÊM 16/10/2026 — cho dự đoán điểm
+      return w;
     });
     var right = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
-      return { qId: r.question.id, nanoId: r.question.nanoId || null, nanoIds: ids(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+      return { qId: r.question.id, topicKey: r.question.topicKey || null, nanoId: r.question.nanoId || null, nanoIds: ids(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
     });
     return { wrongQuestions: wrong, rightQuestions: right };
   }
@@ -1985,6 +1987,9 @@
     var payload = {};
     ['mastery','predicted','nanoMastery','radar5','levelXp','currentChuDe','completedExamsCount','averageScore','highestScore','mistakeTotal'].forEach(function(k){ if(st[k] != null) payload[k] = st[k]; });
     if(st.mistakeLog) payload.mistakeCount = st.mistakeLog.length;
+    // THÊM 16/10/2026 — điểm dự đoán mới (null = chưa đủ dữ liệu) + khoảng điểm/độ tin cậy/gợi ý
+    payload.predicted = st.predicted != null ? st.predicted : null;
+    payload.prediction = NE.compactPrediction ? NE.compactPrediction(st.prediction) : null;
     if(OPCref.assignedExams && OPCref.assignedExams.countForStudent){
       try{
         payload.assignedExamsCount = await OPCref.assignedExams.countForStudent(studentId);
@@ -4700,11 +4705,15 @@
     var avg = Number(s.averageScore) || 0;
     var highest = Number(s.highestScore) || 0;
     var target = Number(s.targetScore) || 9.0;
-    var targetProgress = target > 0 ? Math.min(100, Math.round((avg / target) * 100)) : 0;
-
-    var predicted = s.predictedScore !== undefined && s.predictedScore !== null
-      ? Number(s.predictedScore)
-      : (avg > 0 ? Math.min(10, Math.round(((avg * 0.95) + 0.3) * 10) / 10) : 7.0);
+    // SỬA 16/10/2026 — bỏ số bịa (7.0 khi chưa có dữ liệu, "TB × 0,95 + 0,3"): chỉ dùng điểm dự đoán thật của mô hình
+    // predictExamScore (prepscholar.js); chưa có → "Chưa đủ dữ liệu". Tiến độ mục tiêu tính theo điểm dự đoán (nếu có).
+    var predicted = (s.predictedScore !== undefined && s.predictedScore !== null && !isNaN(Number(s.predictedScore))) ? Number(s.predictedScore) : null;
+    var pInfo = s.prediction || null;
+    var basis = predicted != null ? predicted : avg;
+    var targetProgress = (target > 0 && basis > 0) ? Math.min(100, Math.round((basis / target) * 100)) : 0;
+    function vn1(x){ return Number(x).toFixed(1).replace('.', ','); }
+    var predictedText = predicted == null ? 'Chưa đủ dữ liệu'
+      : (vn1(predicted) + '/10' + (pInfo && pInfo.low != null ? ' (khoảng ' + vn1(pInfo.low) + ' – ' + vn1(pInfo.high) + ', độ tin cậy ' + pInfo.conf + ')' : ''));
 
     var rating = 'Chưa có dữ liệu';
     if(completed > 0 || avg > 0){
@@ -4741,7 +4750,9 @@
       avgScore: avg.toFixed(1),
       highestScore: highest.toFixed(1),
       targetScore: target.toFixed(1),
-      predictedScore: predicted.toFixed(1),
+      predictedScore: predicted != null ? predicted.toFixed(1) : 'Chưa đủ dữ liệu',
+      predictedText: predictedText,
+      predictionTips: (pInfo && pInfo.tips) || [],
       targetProgressPct: targetProgress + '%',
       rating: rating,
       weakTopic: weakTopic,
@@ -5214,7 +5225,8 @@
         highestScore: st.highestScore != null ? st.highestScore : s.highestScore,
         assignedExamsCount: st.assignedExamsCount != null ? st.assignedExamsCount : s.assignedExamsCount,
         assignedExamsCompletedCount: st.assignedExamsCompletedCount != null ? st.assignedExamsCompletedCount : s.assignedExamsCompletedCount,
-        predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
+        predictedScore: ('predicted' in st) ? st.predicted : s.predictedScore, // SỬA 16/10/2026 — null = chưa đủ dữ liệu
+        prediction: st.prediction || null,
         mastery: st.mastery || s.mastery,
         mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount,
         mistakeTotal: st.mistakeTotal != null ? st.mistakeTotal : s.mistakeTotal,
@@ -5896,7 +5908,11 @@
         .sort(function(a, b){ return a.pct - b.pct; })
         .slice(0, limit);
     }
-    var selKpi = selected ? calculateStudentKPIs(selected) : null;
+    // SỬA 16/10/2026 — hồ sơ: tính điểm dự đoán NGAY từ lịch sử làm bài đang mở (không chờ em nộp bài mới để đồng bộ)
+    var selLivePred = (selected && selectedAttempts && selectedAttempts.length && window.PrepScholarEngine && window.PrepScholarEngine.predictExamScore)
+      ? window.PrepScholarEngine.predictExamScore(selectedAttempts) : null;
+    var selKpi = selected ? calculateStudentKPIs(selLivePred ? Object.assign({}, selected, {
+      predictedScore: selLivePred.predicted, prediction: window.PrepScholarEngine.compactPrediction(selLivePred) }) : selected) : null;
     var nanoPreview = selected ? pickWeakNanoPoints(selected) : [];
     var nanoTestedCount = selected && selected.nanoMastery ? Object.keys(selected.nanoMastery).filter(function(id){ return typeof selected.nanoMastery[id] === 'number'; }).length : 0;
     var detailModal = selected ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget) setSelected(null); }},
@@ -5912,7 +5928,13 @@
         h('div',{className:'sm-info-block'},
           h('div',{className:'sm-info-title'}, '📈 Chỉ số hiệu suất học tập (KPI)'),
           h('p',null, h('b',null,'Đánh giá học lực: '), h('span',{style:{fontWeight:600, color:'var(--accent-strong)'}}, selKpi.rating)),
-          h('p',null, h('b',null,'Điểm dự đoán tốt nghiệp: '), h('span',{className:'sm-mono-pill'}, selKpi.predictedScore + '/10')),
+          h('p',null, h('b',null,'Điểm dự đoán tốt nghiệp: '), h('span',{className:'sm-mono-pill'}, selKpi.predictedText)),
+          // THÊM 16/10/2026 — chi tiết dự đoán: điểm kỳ vọng từng phần + chỗ đang mất điểm
+          (selLivePred && selLivePred.parts) ? h('p',{style:{fontSize:'0.82rem', color:'var(--ink-2)', margin:'2px 0 4px'}},
+            'Kỳ vọng từng phần: ' + ['I','II','III'].map(function(P){ var x = selLivePred.parts[P]; return 'Phần ' + P + ' ' + String(x.exp).replace('.', ',') + '/' + String(x.max).replace('.', ','); }).join(' · ') +
+            ' · dựa trên ' + selLivePred.nItems + ' câu đã làm' + (selLivePred.anchors ? ', ' + selLivePred.anchors + ' bài đủ cấu trúc' : '')) : null,
+          (selKpi.predictionTips && selKpi.predictionTips.length) ? h('ul',{style:{fontSize:'0.82rem', margin:'0 0 6px', paddingLeft:'18px', color:'var(--ink-2)'}},
+            selKpi.predictionTips.map(function(t, i){ return h('li',{key:i}, t); })) : null,
           h('p',null, h('b',null,'Tiến độ đạt mục tiêu điểm: '), h('span',{className:'sm-mono-pill'}, selKpi.targetProgressPct)),
           h('p',null, h('b',null,'Chuyên đề trọng tâm cần ôn: '), h('span',{style:{color:'var(--warning)', fontWeight:600}}, selKpi.weakTopic)),
           h('p',null, h('b',null,'Số câu sai trong sổ tay: '), h('span',{className:'sm-mono-pill'}, selKpi.mistakes + ' câu'))),
@@ -6305,7 +6327,8 @@
         // buildPromptData bên dưới), trước đây panel này không đọc field
         // này nên báo cáo AI luôn chỉ nêu được mức chuyên đề chung chung.
         nanoMastery: st.nanoMastery || s.nanoMastery,
-        predicted: st.predicted != null ? st.predicted : s.predictedScore,
+        predicted: ('predicted' in st) ? st.predicted : s.predictedScore,
+        prediction: st.prediction || null, // THÊM 16/10/2026 — khoảng điểm/độ tin cậy cho báo cáo phụ huynh
         averageScore: st.averageScore != null ? st.averageScore : s.averageScore,
         recentTrend: st.recentTrend, recentAvgScore: st.recentAvgScore, priorAvgScore: st.priorAvgScore,
         assignedExamsCount: st.assignedExamsCount, assignedExamsCompletedCount: st.assignedExamsCompletedCount,
@@ -6389,6 +6412,10 @@
         priorAvgScore: s.priorAvgScore != null ? Number(Number(s.priorAvgScore).toFixed(2)) : null,
         recentTrend: s.recentTrend || null,
         predicted: s.predicted != null ? Number(s.predicted) : null,
+        // THÊM 16/10/2026 — khoảng điểm + độ tin cậy + chỗ đang mất điểm (để AI viết đúng mức, không hứa hẹn quá)
+        predictedRange: (s.prediction && s.prediction.low != null) ? (s.prediction.low + '–' + s.prediction.high) : null,
+        predictedConfidence: s.prediction ? s.prediction.conf : null,
+        predictionTips: s.prediction && s.prediction.tips ? s.prediction.tips : null,
         target: s.targetScore != null ? Number(s.targetScore) : null,
         strongTopics: strong,
         weakTopics: weak,
@@ -10383,7 +10410,8 @@
         mastery: st.mastery || s.mastery,
         nanoMastery: st.nanoMastery || s.nanoMastery, // THÊM 29/9/2026 — ưu tiên câu thuộc nano-point em yếu khi Giao Drill
         helpNeeded: st.helpNeeded || null, // THÊM 1/10/2026 — dạng bài em cần thầy hỗ trợ
-        predictedScore: st.predicted != null ? st.predicted : s.predictedScore,
+        predictedScore: ('predicted' in st) ? st.predicted : s.predictedScore,
+        prediction: st.prediction || null,
         mistakeCount: st.mistakeCount != null ? st.mistakeCount : s.mistakeCount,
         mistakeTotal: st.mistakeTotal != null ? st.mistakeTotal : s.mistakeTotal,
         // completedExamsCount/averageScore/highestScore/assignedExams...:
@@ -10505,12 +10533,12 @@
     var avgCd3 = classAvgTopic(['cd3-luongtu']);
 
     var studentsWithPredicted = displayStudents.filter(function(s){
-      return s.predictedScore != null || (s.averageScore != null && Number(s.averageScore) > 0);
+      return s.predictedScore != null; // SỬA 16/10/2026 — không còn suy từ điểm TB × 0,95
     });
     var classAvgPredicted = null;
     if(studentsWithPredicted.length){
       var sumPredicted = studentsWithPredicted.reduce(function(acc, s){
-        var p = s.predictedScore != null ? Number(s.predictedScore) : Number(s.averageScore) * 0.95;
+        var p = Number(s.predictedScore);
         return acc + p;
       }, 0);
       classAvgPredicted = (sumPredicted / studentsWithPredicted.length).toFixed(1);
@@ -10779,7 +10807,7 @@
               var vCd1 = studentMasteryVal(stu, ['cd1-dxc']);
               var vCd2 = studentMasteryVal(stu, ['cd2-yhoc']);
               var vCd3 = studentMasteryVal(stu, ['cd3-luongtu']);
-              var pScore = stu.predictedScore != null ? Number(stu.predictedScore).toFixed(1) : (stu.averageScore ? (stu.averageScore * 0.95).toFixed(1) : null);
+              var pScore = stu.predictedScore != null ? Number(stu.predictedScore).toFixed(1) : null; // SỬA 16/10/2026
               var tScore = stu.targetScore != null ? stu.targetScore : 9.0;
               var mCount = (stu.mistakeTotal != null || stu.mistakeCount != null) ? mistakeLabel(stu) : null;
 
