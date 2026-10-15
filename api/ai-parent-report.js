@@ -76,6 +76,8 @@ function buildUserPrompt(d){
     lines.push('Điểm trung bình tích luỹ từ đầu: ' + d.averageScore + '/10 (chưa đủ dữ liệu để so sánh xu hướng).');
   }
   if(d.predicted != null) lines.push('Điểm dự báo tốt nghiệp hiện tại: ' + d.predicted + '/10' + (d.target != null ? ' (mục tiêu: ' + d.target + '/10)' : ''));
+  if(d.predicted != null && d.predictedRange) lines.push('Khoảng điểm dự báo: ' + d.predictedRange + ' (độ tin cậy ' + (d.predictedConfidence || 'chưa rõ') + ') — khi viết hãy nêu dạng khoảng, không hứa chắc một con số.');
+  if(d.predictionTips && d.predictionTips.length) lines.push('Chỗ đang mất điểm (theo mô hình): ' + d.predictionTips.join('; '));
 
   if(d.strongTopics && d.strongTopics.length){
     lines.push('');
@@ -131,6 +133,10 @@ export default async function handler(req, res){
     priorAvgScore: (body.priorAvgScore != null) ? Number(body.priorAvgScore) : null,
     recentTrend: clampStr(body.recentTrend, 10) || null,
     predicted: (body.predicted != null) ? Number(body.predicted) : null,
+    // THÊM 16/10/2026 — khoảng điểm + độ tin cậy + chỗ đang mất điểm (mô hình predictExamScore)
+    predictedRange: clampStr(body.predictedRange, 20) || null,
+    predictedConfidence: clampStr(body.predictedConfidence, 20) || null,
+    predictionTips: Array.isArray(body.predictionTips) ? body.predictionTips.slice(0, 3).map(function(t){ return clampStr(t, 160); }).filter(Boolean) : [],
     target: (body.target != null) ? Number(body.target) : null,
     strongTopics: Array.isArray(body.strongTopics) ? body.strongTopics.slice(0, 4).map(function(t){
       return { name: clampStr(t && t.name, 80), pct: (t && t.pct != null) ? Number(t.pct) : 0 };
