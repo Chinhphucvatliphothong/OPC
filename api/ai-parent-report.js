@@ -95,6 +95,12 @@ function buildUserPrompt(d){
     lines.push('Đề cá nhân hóa được giao: đã hoàn thành ' + d.assignedCompleted + '/' + d.assignedTotal + ' đề.');
   }
 
+  // THÊM 16/10/2026 — em có chủ động xem lại video thầy chữa các câu làm sai trong tuần không
+  if(d.videoReviewTotal != null && d.videoReviewTotal > 0){
+    lines.push('');
+    lines.push('Video thầy chữa các câu em làm sai trong tuần: em đã xem lại ' + d.videoReviewWatched + '/' + d.videoReviewTotal + ' câu (xem ít nhất một nửa đoạn chữa).');
+  }
+
   if(d.mistakeCount != null) lines.push('');
   if(d.mistakeCount != null) lines.push('Tổng số câu em làm sai và chưa làm lại đúng: ' + d.mistakeCount);
 
@@ -146,7 +152,9 @@ export default async function handler(req, res){
     }) : [],
     assignedTotal: (body.assignedTotal != null) ? Number(body.assignedTotal) : null,
     assignedCompleted: (body.assignedCompleted != null) ? Number(body.assignedCompleted) : null,
-    mistakeCount: (body.mistakeCount != null) ? Number(body.mistakeCount) : null
+    mistakeCount: (body.mistakeCount != null) ? Number(body.mistakeCount) : null,
+    videoReviewTotal: (body.videoReviewTotal != null) ? Math.max(0, Math.min(500, Number(body.videoReviewTotal) || 0)) : null,
+    videoReviewWatched: (body.videoReviewWatched != null) ? Math.max(0, Math.min(500, Number(body.videoReviewWatched) || 0)) : null
   };
 
   var model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
