@@ -362,6 +362,18 @@
   // opc-live-data.js). Hiển thị riêng cho TỪNG câu (kể cả khi 2 câu cùng
   // nhóm không đứng cạnh nhau sau khi cá nhân hoá/xáo trộn đề) để học sinh
   // luôn thấy đủ ngữ cảnh cần thiết.
+  // THÊM 16/10/2026 — thanh công cụ (🖍️ Tô dữ kiện · 🧮 Máy tính) + vùng tô chữ cho đoạn dữ kiện & đề bài của 1 câu.
+  // Dấu tô nhớ theo (phiên làm bài + câu) nên đi câu khác rồi quay lại vẫn còn, làm bài mới thì sạch.
+  function studyWrap(session, q, children){
+    var T = window.OPC_TOOLS;
+    var inner = h.apply(null, [React.Fragment, null].concat(children));
+    if(!T) return inner;
+    var key = ((session && (session.clientId || session.startedAtIso || session.title)) || '') + '|' + (q.id || String(q.stem || '').slice(0, 60));
+    return h(React.Fragment, null,
+      h(T.StudyBar, { zoneKey: key }),
+      h(T.HighlightZone, { zoneKey: key }, inner));
+  }
+
   // THÊM 16/10/2026 — dòng phụ dưới "Dự báo điểm": khoảng điểm + độ tin cậy, hoặc lý do chưa dự đoán được
   function predictionSub(student){
     var pr = student && student.prediction;
@@ -2692,14 +2704,14 @@
                 h('div', { className: 'ps-q-meta-row' },
                   h('div', { className: 'ps-q-badges' },
                     h('span', { className: 'ps-q-badge' }, 'Phần ' + curQ.part),
-                    h('span', { className: 'ps-q-badge level-' + curQ.level.toLowerCase() }, curQ.level),
+                    h('span', { className: 'ps-q-badge level-' + String(curQ.level || 'M2').toLowerCase() }, curQ.level),
                     h('span', { style: { fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 600 } }, curQ.topicName + ' · ' + curQ.subtopic),
                     curTagMastery != null ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, '· Tag đang ở ' + curTagMastery + '%') : null
                   )
                 ),
 
-                renderGroupPassage(curQ),
-                h('div', { className: 'ps-q-stem' }, renderLatexText(curQ.stem)),
+                // THÊM 16/10/2026 — bút dạ quang tô dữ kiện + máy tính nổi (study-tools.js)
+                studyWrap(examSession, curQ, [renderGroupPassage(curQ), h('div', { key: 'stem', className: 'ps-q-stem' }, renderLatexText(curQ.stem))]),
                 renderQuestionImages(curQ),
 
                 curQ.part === 'I' ? (
@@ -2828,7 +2840,7 @@
                 h('div', { className: 'ps-q-meta-row' },
                   h('div', { className: 'ps-q-badges' },
                     h('span', { className: 'ps-q-badge' }, 'Phần ' + curQ.part),
-                    h('span', { className: 'ps-q-badge level-' + curQ.level.toLowerCase() }, curQ.level),
+                    h('span', { className: 'ps-q-badge level-' + String(curQ.level || 'M2').toLowerCase() }, curQ.level),
                     h('span', { style: { fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 600 } }, curQ.topicName + ' · ' + curQ.subtopic)
                   ),
                   h('button', {
@@ -2839,10 +2851,8 @@
                   }, flagged[curQ.id] ? '🚩 Đã cắm cờ' : '🏳️ Đánh dấu xem lại')
                 ),
 
-                renderGroupPassage(curQ),
-                h('div', { className: 'ps-q-stem' },
-                  renderLatexText(curQ.stem)
-                ),
+                // THÊM 16/10/2026 — bút dạ quang tô dữ kiện + máy tính nổi (study-tools.js)
+                studyWrap(examSession, curQ, [renderGroupPassage(curQ), h('div', { key: 'stem', className: 'ps-q-stem' }, renderLatexText(curQ.stem))]),
                 renderQuestionImages(curQ),
 
                 // Choice logic based on Part

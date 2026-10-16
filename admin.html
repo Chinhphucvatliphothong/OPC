@@ -360,6 +360,17 @@
   .sm-history-table tr.hv-row:hover td{ background:var(--surface-2); }
   .sm-overlay.hv-overlay{ z-index:1200; }
   .sm-modal.sm-modal-review{ max-width:880px; padding:22px; }
+  /* THÊM 16/10/2026 — Phòng dạy: chế độ TOÀN MÀN HÌNH (giảng qua Meet dễ nhìn) + phóng chữ A−/A+ */
+  .sm-overlay.tr-fs-ov{ padding:0; backdrop-filter:none; }
+  .sm-modal.sm-modal-review.tr-fs{ max-width:none; width:100vw; height:100vh; max-height:none; border-radius:0; padding:16px 4vw 28px; }
+  .tr-fs .hv-text{ font-size:calc(0.92rem * var(--trz,1.25)); line-height:1.75; }
+  .tr-fs .hv-opt{ font-size:calc(0.9rem * var(--trz,1.25)); padding:10px 14px; }
+  .tr-fs .hv-passage{ font-size:calc(0.86rem * var(--trz,1.25)); }
+  .tr-fs .hv-details, .tr-fs .hv-ans-row{ font-size:calc(0.86rem * var(--trz,1.25)); }
+  .tr-fs .hv-qhead{ font-size:calc(0.78rem * var(--trz,1.25)); }
+  .tr-fs .sm-modal-head h3{ font-size:calc(1.1rem * var(--trz,1.25)); }
+  .tr-fsbar{ display:inline-flex; gap:6px; align-items:center; margin-right:8px; }
+  .tr-fsbar button{ border:1px solid var(--line); background:var(--surface-2); color:var(--ink); border-radius:8px; padding:5px 10px; font-weight:700; cursor:pointer; touch-action:manipulation; }
   .hv-sum{ display:flex; flex-wrap:wrap; gap:8px 18px; font-size:0.84rem; color:var(--ink-2); margin-bottom:12px; }
   .hv-sum b{ color:var(--ink); }
   .hv-toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px; font-size:0.84rem; }
@@ -1075,6 +1086,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <!-- THÊM 04/10/2026 — lớp viết tay Apple Pencil (InkBoard): phải nạp SAU React -->
 <script src="/ink-overlay.js"></script>
+<script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
 (function(){
   if(!window.React || !window.ReactDOM){ return; }
@@ -7195,12 +7207,14 @@
       row = hvBuildRows(attempt, exams).filter(function(r){ return r.id === item.qId; })[0] || null;
     }
     function go(d){ var j = Math.max(0, Math.min(items.length - 1, idx + d)); if(items[j]){ ink.save(); setCurKey(items[j].key); } }
+    var tfs = useTeachFullscreen(modalEl, function(){ go(-1); }, function(){ go(1); }); // THÊM 16/10/2026
     var done = item ? !!props.doneMap[item.key] : false;
-    return h('div', { className: 'sm-overlay hv-overlay', onClick: function(e){ if(e.target === e.currentTarget) props.onClose(); } },
-      h('div', { className: 'sm-modal sm-modal-review', ref: setModalEl, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Giảng câu sai' },
+    return h('div', { className: 'sm-overlay hv-overlay' + tfs.overlayClass, onClick: function(e){ if(e.target === e.currentTarget && !tfs.fs) props.onClose(); } },
+      h('div', { className: 'sm-modal sm-modal-review' + tfs.modalClass, style: tfs.modalStyle, ref: setModalEl, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Giảng câu sai' },
         h('div', { className: 'sm-modal-head' },
           h('h3', null, item ? ('Câu sai của ' + item.studentName + ' (' + (idx + 1) + '/' + items.length + ')') : 'Giảng câu sai'),
-          h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
+          h('div', { style: { display: 'flex', alignItems: 'center' } }, tfs.controls,
+            h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose)))),
         !item ? h('p', { style: { color: 'var(--muted)' } }, 'Hàng đợi câu sai đang trống.') : h('div', null,
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' } },
             h('button', { type: 'button', className: 'btn btn-secondary', disabled: idx === 0, onClick: function(){ go(-1); } }, '← Câu trước'),
@@ -7214,6 +7228,52 @@
         )
       )
     );
+  }
+
+  // THÊM 16/10/2026 — TOÀN MÀN HÌNH cho màn giảng (Phòng dạy): dùng Fullscreen API trên chính khung giảng (iPad: bản webkit);
+  // trình duyệt không cho thì vẫn phủ kín cửa sổ bằng CSS. A−/A+ phóng chữ đề, ←/→ trên bàn phím để chuyển câu.
+  function useTeachFullscreen(modalEl, onPrev, onNext){
+    var fsState = React.useState(false); var fs = fsState[0], setFs = fsState[1];
+    var zState = React.useState(function(){ try{ return Number(localStorage.getItem('opc-tr-zoom')) || 1.25; }catch(e){ return 1.25; } });
+    var zoom = zState[0], setZoomRaw = zState[1];
+    function setZoom(z){ z = Math.max(1, Math.min(2.2, Math.round(z * 100) / 100)); setZoomRaw(z); try{ localStorage.setItem('opc-tr-zoom', String(z)); }catch(e){} }
+    function nativeEl(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+    function enter(){
+      setFs(true);
+      var el = modalEl;
+      try{
+        if(el && el.requestFullscreen) el.requestFullscreen().catch(function(){});
+        else if(el && el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }catch(e){}
+    }
+    function exit(){
+      setFs(false);
+      try{
+        if(nativeEl()){ if(document.exitFullscreen) document.exitFullscreen().catch(function(){}); else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }
+      }catch(e){}
+    }
+    React.useEffect(function(){
+      function onChange(){ if(!nativeEl()) setFs(false); }
+      document.addEventListener('fullscreenchange', onChange); document.addEventListener('webkitfullscreenchange', onChange);
+      return function(){ document.removeEventListener('fullscreenchange', onChange); document.removeEventListener('webkitfullscreenchange', onChange); if(nativeEl()){ try{ (document.exitFullscreen || document.webkitExitFullscreen).call(document); }catch(e){} } };
+    }, []);
+    var navRef = React.useRef({}); navRef.current = { prev: onPrev, next: onNext };
+    React.useEffect(function(){
+      function onKey(e){
+        var t = e.target && e.target.tagName; if(/INPUT|TEXTAREA|SELECT/.test(t || '')) return;
+        if(e.key === 'ArrowLeft' && navRef.current.prev){ e.preventDefault(); navRef.current.prev(); }
+        else if(e.key === 'ArrowRight' && navRef.current.next){ e.preventDefault(); navRef.current.next(); }
+      }
+      window.addEventListener('keydown', onKey);
+      return function(){ window.removeEventListener('keydown', onKey); };
+    }, []);
+    var controls = h('span', { className: 'tr-fsbar' },
+      fs ? h('button', { type: 'button', title: 'Chữ nhỏ lại', onClick: function(){ setZoom(zoom - 0.15); } }, 'A−') : null,
+      fs ? h('button', { type: 'button', title: 'Chữ to hơn', onClick: function(){ setZoom(zoom + 0.15); } }, 'A+') : null,
+      (window.OPC_TOOLS && window.OPC_TOOLS.toggleCalc) ? h('button', { type: 'button', title: 'Máy tính khoa học nổi', onClick: function(){ window.OPC_TOOLS.toggleCalc(); } }, '🧮') : null,
+      h('button', { type: 'button', title: fs ? 'Thoát toàn màn hình (Esc)' : 'Xem toàn màn hình để giảng', onClick: function(){ if(fs) exit(); else enter(); } }, fs ? '🗗 Thoát' : '⛶ Toàn màn hình'));
+    return { fs: fs, zoom: zoom, controls: controls,
+      modalClass: fs ? ' tr-fs' : '', overlayClass: fs ? ' tr-fs-ov' : '', modalStyle: fs ? { '--trz': zoom } : undefined };
   }
 
   // THÊM 9/10/2026 — nhớ nét vẽ + giấy nháp của TỪNG câu trong 1 lần mở (đi tới/lui không mất nét).
@@ -7269,6 +7329,7 @@
     var curId = cur ? cur.row.id : '';
     var ink = useInkMemory(ae.id + '|' + curId);
     function goTo(j){ if(j < 0 || j >= list.length) return; ink.save(); setIdx(j); }
+    var tfs = useTeachFullscreen(modalEl, function(){ goTo(idx - 1); }, function(){ goTo(idx + 1); }); // THÊM 16/10/2026
     var mode = !showAns ? 'question' : (attempt ? 'full' : 'key');
     var right = rows.filter(function(r){ return r.status === 'ok'; }).length;
     var wrong = rows.filter(function(r){ return r.status === 'bad'; }).length;
@@ -7276,8 +7337,8 @@
       if(!attempt) return 'var(--surface-2)';
       return r.status === 'ok' ? 'color-mix(in srgb, var(--good) 22%, var(--surface))' : (r.status === 'bad' ? 'color-mix(in srgb, var(--critical) 22%, var(--surface))' : 'var(--surface-2)');
     };
-    return h('div', { className: 'sm-overlay hv-overlay', onClick: function(e){ if(e.target === e.currentTarget) props.onClose(); } },
-      h('div', { className: 'sm-modal sm-modal-review', ref: setModalEl, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Giảng đề đã giao' },
+    return h('div', { className: 'sm-overlay hv-overlay' + tfs.overlayClass, onClick: function(e){ if(e.target === e.currentTarget && !tfs.fs) props.onClose(); } },
+      h('div', { className: 'sm-modal sm-modal-review' + tfs.modalClass, style: tfs.modalStyle, ref: setModalEl, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Giảng đề đã giao' },
         h('div', { className: 'sm-modal-head' },
           h('div', null,
             h('h3', null, '📝 ' + (ae.title || 'Đề được giao')),
@@ -7285,7 +7346,8 @@
               (student ? student.name + ' · ' : '') + qs.length + ' câu' + (ae.seq ? ' · Đề số ' + ae.seq : '') + ' · ' +
               (!attempt ? 'em chưa làm đề này' : (attempt.partial ? ('em đang làm: đã trả lời ' + (attempt.totalQuestions || 0) + '/' + qs.length + ' câu') : ('đã nộp — điểm ' + (typeof attempt.scaledScore10 === 'number' ? attempt.scaledScore10.toFixed(2) : '—')))) +
               (attempt ? ' · ✓ ' + right + ' · ✗ ' + wrong : ''))),
-          h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
+          h('div', { style: { display: 'flex', alignItems: 'center', flex: 'none' } }, tfs.controls,
+            h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose)))),
         !loaded ? h('p', { style: { color: 'var(--muted)' } }, 'Đang tải nội dung đề…') : h('div', null,
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' } },
             list.map(function(x, j){
