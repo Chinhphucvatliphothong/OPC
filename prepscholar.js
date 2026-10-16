@@ -1058,7 +1058,31 @@
   }
 
   // Khởi tạo và xuất đối tượng sang window
+  // THÊM 16/10/2026 — BỎ NHÃN SỐ CÂU GỐC ở đầu đoạn dùng chung của câu hỏi chùm, vd. "Nội dung câu 4 và 5:",
+  // "\textbf{Sử dụng các thông tin sau cho Câu 1 và Câu 2:}", "Dùng thông tin sau để trả lời câu 3 và 4.",
+  // "Câu 4 và 5:", "(Dùng cho câu 4, 5)". Số câu gốc SAI khi câu được bốc sang đề khác — bản in/màn hình đã tự
+  // ghi nhãn đúng số câu mới. Bộ đọc .tex từ 15/10 đã tự bỏ nhãn này; hàm này dọn cả các đề nạp TRƯỚC đó
+  // (và các cách ghi bộ đọc chưa nhận ra) ngay lúc hiển thị, không cần nạp lại đề. Chỉ cắt ở ĐẦU đoạn.
+  var GL_OPEN = '(?:\\\\(?:textbf|textit|emph|bf|it)\\s*\\{?\\s*|\\*\\*\\s*|\\{\\s*)*';
+  var GL_CLOSE = '(?:\\}\\s*|\\*\\*\\s*)*';
+  var GL_CAU = 'c[âaÂA]u\\s*\\d+';
+  var GROUP_LEAD_RES = [
+    new RegExp('^\\s*' + GL_OPEN + '(?:n[ộo]i\\s*dung|s[ửu]\\s*d[ụu]ng|d[ùu]ng|th[ôo]ng\\s*tin|d[ữu]\\s*ki[ệe]n|ng[ữu]\\s*c[ảa]nh|đ[ọo]c|tr[ảa]\\s*l[ờo]i)[^:\\n]{0,80}?' + GL_CAU + '[^:.\\n]{0,60}?[:.]\\s*' + GL_CLOSE, 'i'),
+    new RegExp('^\\s*' + GL_OPEN + GL_CAU + '\\s*(?:,|và|-|–|đến)\\s*(?:c[âa]u\\s*)?\\d+\\s*:\\s*' + GL_CLOSE, 'i'),
+    new RegExp('^\\s*\\(\\s*(?:d[ùu]ng|s[ửu]\\s*d[ụu]ng)[^)\\n]{0,60}?' + GL_CAU + '[^)\\n]{0,40}\\)\\s*', 'i')
+  ];
+  function cleanGroupLead(text){
+    if(!text) return text;
+    var s = String(text);
+    for(var i = 0; i < GROUP_LEAD_RES.length; i++){
+      var m = s.match(GROUP_LEAD_RES[i]);
+      if(m && m[0].length < s.length){ return s.slice(m[0].length).replace(/^[\s}]+/, ''); }
+    }
+    return s;
+  }
+
   window.PrepScholarEngine = {
+    cleanGroupLead: cleanGroupLead, // THÊM 16/10/2026
     CHU_DE_MAP: CHU_DE_MAP,
     CHU_DE_ORDER: CHU_DE_ORDER,
     computeRadar5: computeRadar5,

@@ -385,11 +385,16 @@
     return (pr && pr.reason) ? pr.reason : 'Chưa đủ dữ liệu — hãy làm Bài kiểm tra đầu vào';
   }
 
+  // THÊM 16/10/2026 — bỏ nhãn số câu gốc ("Nội dung câu 4 và 5:") ở đầu đoạn dùng chung — xem prepscholar.js
+  function cleanGroupLeadUI(t){
+    var E = window.PrepScholarEngine;
+    return (E && E.cleanGroupLead) ? E.cleanGroupLead(t) : t;
+  }
   function renderGroupPassage(q){
     if(!q || !q.groupPassage) return null;
     return h('div', { className: 'ps-group-passage', style: { background: 'var(--surface-2, #f5f3ff)', border: '1px solid var(--border, #e2e8f0)', borderLeft: '3px solid #6d28d9', borderRadius: '8px', padding: '12px 14px', margin: '10px 0' } },
       h('div', { style: { fontSize: '0.78rem', fontWeight: 700, color: '#6d28d9', marginBottom: '6px' } }, q.ctxFrom != null ? '📎 Dữ kiện từ câu trước:' : '📎 Dùng chung ngữ cảnh sau:'), // SỬA 14/10/2026
-      h('div', { style: { fontSize: '0.9rem', lineHeight: 1.6 } }, renderLatexText(q.groupPassage)),
+      h('div', { style: { fontSize: '0.9rem', lineHeight: 1.6 } }, renderLatexText(cleanGroupLeadUI(q.groupPassage))), // SỬA 16/10/2026 — bỏ nhãn "Nội dung câu 4 và 5:"
       (q.groupImages && q.groupImages.length) ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' } },
         q.groupImages.map(function(im, idx){
           return h('img', {
@@ -917,7 +922,7 @@
         h('div', { style: { fontWeight: 700, marginBottom: '6px' } }, 'Câu ' + (idx + 1),
           isEssay ? h('span', { style: { marginLeft: '8px', fontSize: '0.74rem', fontWeight: 600, color: 'var(--muted)' } }, '· Tự luận') : null),
         q.groupPassage ? h('div', { style: { padding: '8px 12px', borderLeft: '3px solid var(--line)', margin: '0 0 8px', fontSize: '0.92rem' } },
-          renderLatexText(q.groupPassage), renderQuestionImages({ images: q.groupImages })) : null,
+          renderLatexText(cleanGroupLeadUI(q.groupPassage)), renderQuestionImages({ images: q.groupImages })) : null,
         h('div', { style: { lineHeight: 1.7 } }, renderLatexText(q.stem)),
         renderQuestionImages(q),
         (q.options || []).length ? h('div', { style: { marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' } },

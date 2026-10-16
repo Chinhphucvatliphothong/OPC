@@ -510,6 +510,11 @@
 <footer class="admin-foot">FaradayAI — công cụ quản lý nội bộ, không chia sẻ công khai.</footer>
 
 <script type="module">
+  // THÊM 16/10/2026 — bỏ nhãn số câu gốc ("Nội dung câu 4 và 5:") ở đầu đoạn dùng chung câu chùm (xem prepscholar.js)
+  function gpCleanLead(t){
+    var E = window.PrepScholarEngine;
+    return (E && E.cleanGroupLead) ? E.cleanGroupLead(t) : t;
+  }
 (async function(){
   // ============================================================
   // 1) DÁN Firebase config của project "Chinh Phục Vật Lý" vào đây.
@@ -1577,7 +1582,7 @@
         if(q.groupPassage && !ctxRightAbove && (i === 0 || list[i - 1].groupPassage !== q.groupPassage)){
           var j = i; while(j + 1 < list.length && list[j + 1].groupPassage === q.groupPassage) j++;
           var label = j > i ? ('Sử dụng các thông tin sau cho Câu ' + (i + 1) + (j - i === 1 ? ' và Câu ' : ' đến Câu ') + (j + 1) + ':') : 'Sử dụng các thông tin sau cho Câu ' + (i + 1) + ':';
-          bodyHtml += '<div class="group-passage"><div class="gp-label">' + label + '</div>' + latexToHtmlPDF(q.groupPassage) + pdfImagesHtml(q.groupImages) + '</div>';
+          bodyHtml += '<div class="group-passage"><div class="gp-label">' + label + '</div>' + latexToHtmlPDF(gpCleanLead(q.groupPassage)) + pdfImagesHtml(q.groupImages) + '</div>';
         }
         bodyHtml += pdfQuestionHtml(q, i + 1);
       }
@@ -4931,6 +4936,11 @@
     }
     return examDocCache[examId];
   }
+  // THÊM 16/10/2026 — bỏ nhãn số câu gốc ("Nội dung câu 4 và 5:") ở đầu đoạn dùng chung câu chùm (xem prepscholar.js)
+  function gpCleanLead(t){
+    var E = window.PrepScholarEngine;
+    return (E && E.cleanGroupLead) ? E.cleanGroupLead(t) : t;
+  }
   function hvSplitQid(id){
     var i = String(id).lastIndexOf('_q');
     if(i < 0) return null;
@@ -5108,7 +5118,7 @@
         h('span', { className: 'hv-pill ' + (row.status === 'ok' ? 'good' : (row.blank ? 'neutral' : 'crit')) }, 'Em trả lời: ' + uaTxt));
     }
     return h('div', { className: 'hv-q ' + row.status }, head,
-      q.groupPassage ? h('details', { className: 'hv-details' }, h('summary', null, 'Ngữ cảnh dùng chung'), h('div', { className: 'hv-passage' }, h(HvHtml, { text: q.groupPassage }))) : null,
+      q.groupPassage ? h('details', { className: 'hv-details' }, h('summary', null, 'Ngữ cảnh dùng chung'), h('div', { className: 'hv-passage' }, h(HvHtml, { text: gpCleanLead(q.groupPassage) }))) : null,
       h(HvHtml, { text: q.stem }),
       imgs.length ? h('div', { style: { margin: '8px 0' } }, imgs.map(function(im, i){ return h('img', { key: i, src: im.url, alt: im.name, style: { maxWidth: '100%', height: 'auto', display: 'block', marginBottom: '6px' } }); })) : null,
       body,
@@ -5144,7 +5154,7 @@
       h('div', { className: 'hv-qhead' },
         h('b', { style: { color: 'var(--ink)', fontSize: '0.9rem' } }, 'Câu ' + n),
         h('span', null, 'Phần ' + part + (q.level ? ' · ' + q.level : '') + (q.chuDeLon ? ' · ' + q.chuDeLon : ''))),
-      q.groupPassage ? h('div', { className: 'hv-passage', style: { marginBottom: '8px' } }, h(HvHtml, { text: q.groupPassage })) : null,
+      q.groupPassage ? h('div', { className: 'hv-passage', style: { marginBottom: '8px' } }, h(HvHtml, { text: gpCleanLead(q.groupPassage) })) : null,
       h(HvHtml, { text: q.stem }),
       imgs.length ? h('div', { style: { margin: '8px 0' } }, imgs.map(function(im, i){ return h('img', { key: i, src: im.url, alt: im.name, style: { maxWidth: '100%', height: 'auto', display: 'block', marginBottom: '6px' } }); })) : null,
       body,
@@ -9105,7 +9115,7 @@
                       // Ngữ cảnh dùng chung nếu câu này thuộc "câu hỏi chùm"
                       q.groupPassage ? h('div',{className:'eb-group-passage'},
                         h('div',{className:'eb-group-passage-label'}, '🔗 Ngữ cảnh dùng chung (câu hỏi chùm)' + (q.groupUncertain ? ' — chưa rõ số câu, kiểm tra lại' : '') + ':'),
-                        h('div',null, q.groupPassage),
+                        h('div',null, gpCleanLead(q.groupPassage)),
                         (q.groupImages && q.groupImages.length) ? h('div',{style:{fontSize:'0.76rem', color:'var(--muted)', marginTop:'4px'}}, '🖼 ' + q.groupImages.join(', ')) : null
                       ) : null,
 
@@ -10051,7 +10061,7 @@
         if(!q || !q.groupPassage || (idx > 0 && list[idx - 1].groupPassage === q.groupPassage)) return;
         var j = idx; while(j + 1 < list.length && list[j + 1].groupPassage === q.groupPassage) j++;
         var label = j > idx ? ('Sử dụng các thông tin sau cho Câu ' + (idx + 1) + (j - idx === 1 ? ' và Câu ' : ' đến Câu ') + (j + 1) + ':') : ('Sử dụng các thông tin sau cho Câu ' + (idx + 1) + ':');
-        lines.push('\\noindent\\textbf{' + label + '} ' + q.groupPassage);
+        lines.push('\\noindent\\textbf{' + label + '} ' + gpCleanLead(q.groupPassage));
         var gi = (q.groupImages || []).filter(function(n){ return typeof n === 'string'; });
         if(gi.length){
           lines.push('\\begin{center}');
@@ -10488,7 +10498,7 @@
                       ),
                       q.groupPassage ? h('div',{className:'eb-group-passage'},
                         h('div',{className:'eb-group-passage-label'}, '🔗 Ngữ cảnh dùng chung (câu hỏi chùm):'),
-                        h('div',null, q.groupPassage)
+                        h('div',null, gpCleanLead(q.groupPassage))
                       ) : null,
                       h('div',{className:'eb-q-stem'}, q.stem || q.raw),
                       (q.options && q.options.length) ? h('div',{className:'eb-q-opts'},
