@@ -874,6 +874,17 @@
       }
     };
 
+    // THÊM 16/10/2026 — em đã xem video thầy chữa câu nào (students/{id}/videoViews/{examId_qN}, học sinh tự ghi
+    // khi xem — xem opc-live-data.js recordVideoView). Trả { qId: {pct, opens, completed, lastAt...} }.
+    OPC.videoViews = {
+      loadForStudent: async function(studentId){
+        var snap = await getDocs(collection(db, 'students', studentId, 'videoViews'));
+        var out = {};
+        snap.docs.forEach(function(d){ out[d.id] = d.data() || {}; });
+        return out;
+      }
+    };
+
     // ================= THÊM 12/10/2026 — BÀI KIỂM TRA TRÊN LỚP (chấm phiếu cả lớp bằng camera) =================
     // class_tests/{id}: { title, lop, date, sourceExamId, sourceTitle, questions (câu gốc, dạng câu hỏi của học sinh),
     //   versions: [{ code:'101', order:[qId...], perm:{ qId:'CADB' } }], results: { studentId: {...} }, createdAt }
@@ -4925,6 +4936,47 @@
     if(i < 0) return null;
     return { examId: String(id).slice(0, i), index: Number(String(id).slice(i + 2)) };
   }
+
+  // THÊM 16/10/2026 — CÂU SAI CÓ VIDEO THẦY CHỮA & EM ĐÃ XEM LẠI CHƯA.
+  // Gom các câu em làm sai (trong attempts, chỉ tính lượt từ sinceMs nếu có), giữ câu thuộc đề có video và có mốc,
+  // đối chiếu videoViews: "đã xem" = xem ≥ 50% đoạn chữa (hoặc xem tới hết đoạn).
+  // Trả { total, watched, items:[{ qId, index, examTitle, pct, opens, lastAt, watched, wrongAt }] } (câu chưa xem lên trước).
+  function vrMs(v){
+    if(!v) return NaN;
+    if(v.toMillis) return v.toMillis();
+    return new Date(v).getTime();
+  }
+  async function computeVideoReview(attempts, views, sinceMs){
+    var WT = window.OPC_WALKTHROUGH;
+    var out = { total: 0, watched: 0, items: [] };
+    if(!WT) return out;
+    views = views || {};
+    var wrongAt = {};
+    (attempts || []).forEach(function(a){
+      if(!a || a.type === 'ping') return;
+      var t = vrMs(a.createdAt);
+      if(sinceMs && (isNaN(t) || t < sinceMs)) return;
+      (a.wrongQuestions || []).forEach(function(r){
+        if(r && r.qId && !(wrongAt[r.qId] >= t)) wrongAt[r.qId] = isNaN(t) ? 0 : t;
+      });
+    });
+    var ids = Object.keys(wrongAt), examIds = {};
+    ids.forEach(function(id){ var sp = hvSplitQid(id); if(sp) examIds[sp.examId] = 1; });
+    var exams = {};
+    await Promise.all(Object.keys(examIds).map(function(eid){ return loadExamCached(eid).then(function(ex){ exams[eid] = ex; }); }));
+    ids.forEach(function(id){
+      var sp = hvSplitQid(id); if(!sp) return;
+      var ex = exams[sp.examId], vw = ex && ex.videoWalkthrough;
+      if(!vw || !vw.videoId || !WT.getSegment(vw, sp.index)) return;
+      var v = views[id] || null;
+      var ok = !!(v && (v.completed || (Number(v.pct) || 0) >= 50));
+      out.total++; if(ok) out.watched++;
+      out.items.push({ qId: id, index: sp.index, examTitle: (ex && ex.title) || sp.examId, pct: v ? (Number(v.pct) || 0) : 0,
+        opens: v ? (Number(v.opens) || 0) : 0, lastAt: v ? v.lastAt : null, watched: ok, wrongAt: wrongAt[id] });
+    });
+    out.items.sort(function(a, b){ return (a.watched - b.watched) || (b.wrongAt - a.wrongAt); });
+    return out;
+  }
   function hvNormImg(name){ return String(name || '').trim().toLowerCase().replace(/^.*[\\/]/, '').replace(/\.[a-z0-9]+$/i, ''); }
   function hvImagesFor(names, exam){
     if(!names || !names.length || !exam || !exam.images) return [];
@@ -5194,6 +5246,17 @@
       }, function(err){ console.error('Lỗi tải lịch sử làm bài của học sinh:', err); }) : null;
       return function(){ if(unsub1) unsub1(); if(unsub2) unsub2(); };
     }, [selected && selected.id]);
+    // THÊM 16/10/2026 — em đã xem lại video thầy chữa các câu sai chưa (tính lại khi lịch sử làm bài thay đổi)
+    var videoReviewState = React.useState(null); var videoReview = videoReviewState[0], setVideoReview = videoReviewState[1];
+    React.useEffect(function(){
+      setVideoReview(null);
+      if(!selected || !selected.id || !OPCref || !OPCref.videoViews) return;
+      var alive = true;
+      OPCref.videoViews.loadForStudent(selected.id).catch(function(e){ console.warn('Lỗi tải lượt xem video:', e); return {}; })
+        .then(function(views){ return computeVideoReview(selectedAttempts, views, null); })
+        .then(function(vr){ if(alive) setVideoReview(vr); });
+      return function(){ alive = false; };
+    }, [selected && selected.id, selectedAttempts.length, selectedAttempts.length ? selectedAttempts[0].id + '|' + (selectedAttempts[0].updatedAt || '') : '']);
 
     // CSV Bulk Import State
     var importOpenState = React.useState(false); var importOpen = importOpenState[0], setImportOpen = importOpenState[1];
@@ -6016,6 +6079,33 @@
             )
         ),
 
+        // ============= THÊM 16/10/2026 — Xem lại video thầy chữa =============
+        h('div',{className:'sm-info-block'},
+          h('div',{className:'sm-info-title'}, '🎥 Xem lại video thầy chữa'),
+          !videoReview ? h('p',{style:{color:'var(--muted)', fontSize:'0.8rem'}}, 'Đang tính…') :
+          !videoReview.total ? h('p',{style:{color:'var(--muted)', fontSize:'0.8rem'}}, 'Chưa có câu sai nào thuộc đề đã gắn video chữa.') :
+          (function(){
+            var weekAgo = Date.now() - 7 * 86400000;
+            var wk = videoReview.items.filter(function(it){ return it.wrongAt >= weekAgo; });
+            var wkSeen = wk.filter(function(it){ return it.watched; }).length;
+            return h('div', null,
+              h('p',{style:{margin:'0 0 4px'}}, h('b',null,'7 ngày qua: '), wk.length ? ('đã xem lại ' + wkSeen + '/' + wk.length + ' câu sai có video') : 'không có câu sai nào có video'),
+              h('p',{style:{margin:'0 0 8px'}}, h('b',null,'Từ trước tới nay (100 lượt gần nhất): '), videoReview.watched + '/' + videoReview.total + ' câu'),
+              h('p',{style:{color:'var(--muted)', fontSize:'0.76rem', margin:'0 0 4px'}}, '"Đã xem" = xem ít nhất 50% đoạn thầy chữa câu đó (tua qua không tính). Câu chưa xem ở trên cùng.'),
+              h('table',{className:'sm-history-table'},
+                h('thead',null, h('tr',null, h('th',null,'Câu'), h('th',null,'Đề'), h('th',null,'Đã xem'), h('th',null,'Lần mở'), h('th',null,'Xem lần cuối'))),
+                h('tbody',null, videoReview.items.slice(0, 20).map(function(it){
+                  return h('tr',{key:it.qId},
+                    h('td',null, 'Câu ' + it.index),
+                    h('td',null, it.examTitle),
+                    h('td',{style:{fontWeight:700, color: it.watched ? 'var(--good)' : (it.pct ? '#b8790a' : 'var(--critical, #d03b3b)')}}, it.watched ? '✓ ' + it.pct + '%' : (it.pct ? it.pct + '%' : 'Chưa xem')),
+                    h('td',null, it.opens || 0),
+                    h('td',null, it.lastAt ? fmtDate(it.lastAt) : '—'));
+                }))),
+              videoReview.items.length > 20 ? h('p',{style:{color:'var(--muted)', fontSize:'0.76rem', marginTop:'6px'}}, '… và ' + (videoReview.items.length - 20) + ' câu khác.') : null);
+          })()
+        ),
+
         h('div',{className:'sm-info-block'},
           h('div',{className:'sm-info-title'}, '🔐 Thông tin đăng nhập (chưa dùng để đăng nhập thật)'),
           h('p',null, h('b',null,'Tên đăng nhập: '), h('span',{className:'sm-mono-pill'}, selected.username)),
@@ -6286,7 +6376,7 @@
   };
   var REPORT_STALE_DAYS = 7;
   // Mẫu tin nhắn Zalo gợi ý — THÊM 29/9/2026, thầy sửa lại trong panel.
-  var DEFAULT_REPORT_HEADER = 'Kính gửi Quý phụ huynh em {ten},\nThầy gửi báo cáo học tập môn Vật lí của em trong tuần {tuNgay} – {denNgay}.\n📊 Số bài đã làm: {soBai} · Điểm trung bình tuần: {diemTB}';
+  var DEFAULT_REPORT_HEADER = 'Kính gửi Quý phụ huynh em {ten},\nThầy gửi báo cáo học tập môn Vật lí của em trong tuần {tuNgay} – {denNgay}.\n📊 Số bài đã làm: {soBai} · Điểm trung bình tuần: {diemTB}\n🎥 Đã xem lại video thầy chữa: {videoXem}';
   var DEFAULT_REPORT_FOOTER = 'Nếu cần trao đổi thêm, phụ huynh cứ nhắn thầy qua Zalo này. Trân trọng cảm ơn Quý phụ huynh!';
 
   function ParentReportsPanel(props){
@@ -6419,6 +6509,9 @@
         periodLabel: week ? week.label : '7 ngày qua',
         completedInPeriod: week ? week.count : null,
         periodAvgScore: week && week.avg != null ? week.avg : null,
+        // THÊM 16/10/2026 — câu sai trong tuần có video thầy chữa / em đã xem lại
+        videoReviewTotal: (week && week.video) ? week.video.total : null,
+        videoReviewWatched: (week && week.video) ? week.video.watched : null,
         averageScore: s.averageScore != null ? Number(Number(s.averageScore).toFixed(2)) : null,
         recentAvgScore: s.recentAvgScore != null ? Number(Number(s.recentAvgScore).toFixed(2)) : null,
         priorAvgScore: s.priorAvgScore != null ? Number(Number(s.priorAvgScore).toFixed(2)) : null,
@@ -6450,6 +6543,12 @@
           return !isNaN(t) && t >= since;
         });
         out.count = inWeek.length;
+        // THÊM 16/10/2026 — câu sai trong tuần có video thầy chữa: em đã xem lại bao nhiêu câu
+        try{
+          var views = OPCref.videoViews ? await OPCref.videoViews.loadForStudent(s.id) : {};
+          var vr = await computeVideoReview(inWeek, views, since);
+          out.video = { total: vr.total, watched: vr.watched };
+        }catch(e2){ console.warn('Lỗi tính lượt xem video (báo cáo phụ huynh):', e2); out.video = null; }
         var scores = inWeek.map(function(a){ return Number(a.scaledScore10); }).filter(function(v){ return !isNaN(v); });
         if(scores.length) out.avg = Math.round(scores.reduce(function(x, y){ return x + y; }, 0) / scores.length * 100) / 100;
       }catch(e){
@@ -6459,7 +6558,7 @@
       return out;
     }
 
-    // Ghép mẫu tin nhắn: {ten} {tuNgay} {denNgay} {soBai} {diemTB}
+    // Ghép mẫu tin nhắn: {ten} {tuNgay} {denNgay} {soBai} {diemTB} {videoXem}
     function fillTemplate(text, s, week){
       var avg = week && week.avg != null ? String(week.avg.toFixed ? week.avg.toFixed(1) : week.avg).replace('.', ',') + '/10' : 'chưa có';
       return String(text || '')
@@ -6467,7 +6566,9 @@
         .replace(/\{tuNgay\}/g, week ? week.from : '')
         .replace(/\{denNgay\}/g, week ? week.to : '')
         .replace(/\{soBai\}/g, week && week.count != null ? String(week.count) : '—')
-        .replace(/\{diemTB\}/g, avg);
+        .replace(/\{diemTB\}/g, avg)
+        // THÊM 16/10/2026 — {videoXem}: "4/6 câu sai" em đã xem lại video thầy chữa trong tuần
+        .replace(/\{videoXem\}/g, (week && week.video && week.video.total) ? (week.video.watched + '/' + week.video.total + ' câu sai') : 'chưa có câu sai nào có video chữa');
     }
     function composeMessage(body, s, week){
       var parts = [];
@@ -6594,7 +6695,7 @@
         tplOpen && tplDraft ? h('div', { style: { marginTop: '14px', padding: '14px', border: '1px solid var(--line)', borderRadius: '12px', background: 'var(--surface-2)' } },
           h('div', { style: { fontWeight: 700, fontSize: '0.9rem' } }, '✉️ Mẫu tin nhắn Zalo (soạn 1 lần, dùng cho mọi báo cáo)'),
           h('p', { style: { fontSize: '0.78rem', color: 'var(--muted)', margin: '4px 0 10px' } },
-            'Tin nhắn gửi đi = Phần mở đầu + nội dung AI soạn riêng cho từng em + Phần kết. Chỗ trống tự điền: {ten} tên học sinh · {tuNgay} {denNgay} khoảng ngày của tuần · {soBai} số bài em làm trong 7 ngày · {diemTB} điểm trung bình tuần.'),
+            'Tin nhắn gửi đi = Phần mở đầu + nội dung AI soạn riêng cho từng em + Phần kết. Chỗ trống tự điền: {ten} tên học sinh · {tuNgay} {denNgay} khoảng ngày của tuần · {soBai} số bài em làm trong 7 ngày · {diemTB} điểm trung bình tuần · {videoXem} số câu sai em đã xem lại video thầy chữa (vd. "4/6 câu sai").'),
           h('label', { style: { fontSize: '0.8rem', fontWeight: 600 } }, 'Phần mở đầu'),
           h('textarea', { rows: 4, value: tplDraft.header, onChange: function(e){ setTplDraft(Object.assign({}, tplDraft, { header: e.target.value })); },
             style: { width: '100%', boxSizing: 'border-box', margin: '4px 0 10px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--line)', fontFamily: 'inherit', fontSize: '0.86rem' } }),

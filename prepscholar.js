@@ -1065,6 +1065,12 @@
     computeLevelXP: computeLevelXP,
     getCurrentChuDe: getCurrentChuDe,
     QUESTION_BANK: QUESTION_BANK,
+    // THÊM 16/10/2026 — tra 1 câu theo mã trong TOÀN BỘ ngân hàng đã nạp (kể cả chương đang khoá) — dùng cho
+    // tab "🕓 Lịch sử" của học sinh để dựng lại màn hình xem lại bài làm cũ.
+    getQuestionById: function(id){
+      for(var i = 0; i < ALL_QUESTIONS.length; i++){ if(ALL_QUESTIONS[i] && ALL_QUESTIONS[i].id === id) return ALL_QUESTIONS[i]; }
+      return null;
+    },
     replaceQuestionBank: replaceQuestionBank,
     setUnlockedChapters: setUnlockedChapters,
     getUnlockedChapters: function(){ return UNLOCKED_CHAPTERS.slice(); },

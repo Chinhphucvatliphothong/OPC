@@ -1076,6 +1076,34 @@
       document.addEventListener('keydown', onKey);
       return function(){ document.removeEventListener('keydown', onKey); };
     }, [wtModal]);
+    // THÊM 16/10/2026 — LƯỢT XEM VIDEO THẦY CHỮA của em (students/{id}/videoViews, xem opc-live-data.js):
+    // nút "🎥 Thầy chữa câu này" hiện "✓ Đã xem", tab "🕓 Lịch sử" đếm số câu sai đã xem lại, và admin /
+    // báo cáo phụ huynh đọc được. Chỉ ghi với tài khoản thật (student.isLive).
+    var videoViewsState = React.useState({});
+    var videoViews = videoViewsState[0];
+    var setVideoViews = videoViewsState[1];
+    var liveStudentId = (student && student.isLive) ? student.id : null;
+    React.useEffect(function(){
+      setVideoViews({});
+      if(!liveStudentId || !window.OPC_LIVE || !window.OPC_LIVE.loadVideoViews) return;
+      var alive = true;
+      window.OPC_LIVE.loadVideoViews(liveStudentId).then(function(m){ if(alive) setVideoViews(m || {}); });
+      return function(){ alive = false; };
+    }, [liveStudentId]);
+    function onVideoProgress(ev){
+      if(!liveStudentId || !ev || !ev.qId) return;
+      setVideoViews(function(prev){
+        var o = prev[ev.qId] || {};
+        var n = Object.assign({}, prev);
+        n[ev.qId] = Object.assign({}, o, { pct: Math.max(o.pct || 0, ev.pct || 0), completed: !!(o.completed || ev.completed) });
+        return n;
+      });
+      if(window.OPC_LIVE && window.OPC_LIVE.recordVideoView) window.OPC_LIVE.recordVideoView(liveStudentId, ev);
+    }
+    function isVideoSeen(qId){
+      var vv = videoViews[qId];
+      return !!(vv && (vv.completed || (vv.pct || 0) >= 50));
+    }
     // THÊM 1/10/2026 — HỘP THOẠI XÁC NHẬN TRONG ỨNG DỤNG (thay window.confirm).
     // Lý do: confirm() của trình duyệt bị chặn/không hiện ở nhiều nơi học sinh
     // hay dùng (trình duyệt nhúng Zalo/Messenger/TikTok, Safari/Chrome sau khi
@@ -1118,13 +1146,17 @@
       var WT = window.OPC_WALKTHROUGH;
       var info = WT ? WT.forQuestion(q) : null;
       if(!info) return null;
+      // SỬA 16/10/2026 — gắn onProgress để ghi em đã xem bao nhiêu; nút ghi rõ đã xem chưa
+      var qIdV = info.examId + '_q' + info.index;
+      var vv = videoViews[qIdV];
+      var seenTxt = isVideoSeen(qIdV) ? ' · ✓ Đã xem' : ((vv && vv.pct) ? ' · đã xem ' + vv.pct + '%' : '');
       return h('div', { className: 'ps-wt-row', style: { margin: '0 0 12px' } },
         h('button', {
           type: 'button',
-          className: 'btn ' + (wrong ? 'btn-primary' : 'btn-secondary'),
+          className: 'btn ' + (wrong && !isVideoSeen(qIdV) ? 'btn-primary' : 'btn-secondary'),
           style: { fontSize: '0.86rem', textAlign: 'left', lineHeight: 1.45, whiteSpace: 'normal' },
-          onClick: function(){ setWtModal(info); }
-        }, info.buttonText)
+          onClick: function(){ setWtModal(Object.assign({}, info, { onProgress: liveStudentId ? onVideoProgress : null })); }
+        }, info.buttonText + seenTxt)
       );
     }
 
@@ -1616,6 +1648,109 @@
       setUserAnswers(attempt.answers || {});
       setScoreResult(scored);
       setMasteryImpact(null);
+    }
+
+    // ===== THÊM 16/10/2026 — TAB "🕓 LỊCH SỬ" CỦA HỌC SINH =====
+    // Liệt kê MỌI lượt đã làm (thích ứng, trọng tâm, đầu vào, thi thử, sổ tay câu sai, đề được giao, bài giấy —
+    // cả lượt làm dở) và mở lại đúng màn hình KẾT QUẢ (reviewOnly + fromHistory). Câu hỏi lấy từ đề được giao
+    // (nếu là đề giao) hoặc tra trong toàn bộ ngân hàng đã nạp (PrepScholarEngine.getQuestionById).
+    var HIST_TYPE_LABEL = { diagnostic: 'Kiểm tra đầu vào', adaptive: 'Luyện tập thích ứng', drill: 'Luyện trọng tâm', exam: 'Thi thử', mock: 'Thi thử', assigned: 'Đề được giao', mistakes: 'Sửa câu sai', paper: 'Bài làm giấy' };
+    var histShowAllState = React.useState(false);
+    var histShowAll = histShowAllState[0];
+    var setHistShowAll = histShowAllState[1];
+    var histNoticeState = React.useState(null);
+    var histNotice = histNoticeState[0];
+    var setHistNotice = histNoticeState[1];
+    function histWhen(v){
+      try{
+        var d = v && v.toDate ? v.toDate() : (v ? new Date(v) : null);
+        if(!d || isNaN(d.getTime())) return '';
+        return d.toLocaleDateString('vi-VN') + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      }catch(e){ return ''; }
+    }
+    function histQuestionIds(a){
+      if(Array.isArray(a.questionIds) && a.questionIds.length){
+        if(!a.partial) return a.questionIds.slice();
+        // lượt làm dở: chỉ những câu đã chấm (có trong danh sách đúng/sai)
+        var chk = {};
+        (a.wrongQuestions || []).concat(a.rightQuestions || []).forEach(function(r){ if(r && r.qId) chk[r.qId] = 1; });
+        var only = a.questionIds.filter(function(id){ return chk[id]; });
+        return only.length ? only : a.questionIds.slice();
+      }
+      var seen = {}, out = [];
+      Object.keys(a.answers || {}).concat((a.wrongQuestions || []).map(function(r){ return r && r.qId; }), (a.rightQuestions || []).map(function(r){ return r && r.qId; }))
+        .forEach(function(id){ if(id && !seen[id]){ seen[id] = 1; out.push(id); } });
+      return out;
+    }
+    function histQuestions(a){
+      var aeId = a.assignedExamId || a.liveAssignedExamId || null;
+      var ae = aeId ? assignedExams.filter(function(x){ return x.id === aeId; })[0] : null;
+      var aeMap = {};
+      if(ae) (ae.questions || []).forEach(function(q){ if(q && q.id) aeMap[q.id] = q; });
+      var ids = histQuestionIds(a), qs = [], missing = 0;
+      ids.forEach(function(id){
+        var q = aeMap[id] || (window.PrepScholarEngine.getQuestionById ? window.PrepScholarEngine.getQuestionById(id) : null);
+        if(q) qs.push(q); else missing++;
+      });
+      return { questions: qs, missing: missing, ae: ae };
+    }
+    function startHistoryReview(a){
+      setHistNotice(null);
+      if(!a || !a.answers){ setHistNotice('Lượt này được lưu từ trước nên không có đáp án em đã chọn — không xem lại chi tiết được.'); return; }
+      var r = histQuestions(a);
+      if(!r.questions.length){ setHistNotice('Các câu của lượt này không còn trong ngân hàng đề (thầy đã sửa/xoá đề) — không xem lại được.'); return; }
+      var scored = window.PrepScholarEngine.scoreExam(r.questions, a.answers || {});
+      setExamSession({
+        type: a.type || 'drill',
+        title: a.examTitle || (r.ae && r.ae.title) || HIST_TYPE_LABEL[a.type] || 'Lượt luyện tập',
+        questions: r.questions,
+        isSubmitted: true,
+        reviewOnly: true,
+        fromHistory: true,
+        historyPartial: !!a.partial,
+        historyMissing: r.missing,
+        assignedExamId: (r.ae && a.assignedExamId) ? r.ae.id : null
+      });
+      setUserAnswers(a.answers || {});
+      setScoreResult(scored);
+      setMasteryImpact(null);
+      try{ window.scrollTo(0, 0); }catch(e){}
+    }
+    function renderHistoryTab(){
+      var list = attempts.filter(function(a){ return a && a.type !== 'ping'; });
+      if(!list.length){
+        return h('div', { style: { textAlign: 'center', padding: '40px', background: 'var(--surface)', borderRadius: '14px', border: '1px solid var(--line)' } },
+          h('div', { style: { fontSize: '2.5rem', marginBottom: '10px' } }, '🕓'),
+          h('h4', null, 'Em chưa có lượt luyện tập nào'),
+          h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem', marginTop: '4px' } }, 'Mỗi lần em làm bài (kể cả làm dở), lượt đó sẽ hiện ở đây để em xem lại.'));
+      }
+      var WT = window.OPC_WALKTHROUGH;
+      var shown = histShowAll ? list : list.slice(0, 20);
+      return h('div', null,
+        h('p', { style: { color: 'var(--muted)', fontSize: '0.85rem', margin: '0 0 12px' } },
+          'Các lượt em đã làm, mới nhất ở trên. Bấm "Xem lại" để xem từng câu, đáp án em chọn, lời giải và video thầy chữa.'),
+        histNotice ? h('div', { role: 'alert', style: { marginBottom: '12px', padding: '10px 14px', borderRadius: '10px', background: 'var(--surface-2)', fontSize: '0.88rem' } }, histNotice) : null,
+        shown.map(function(a){
+          var wrongIds = (a.wrongQuestions || []).map(function(r){ return r && r.qId; }).filter(Boolean);
+          var withVideo = WT ? wrongIds.filter(function(id){ return !!WT.forQuestion({ id: id }); }) : [];
+          var seenN = withVideo.filter(isVideoSeen).length;
+          var score = a.partial ? null : (typeof a.scaledScore10 === 'number' ? a.scaledScore10 : null);
+          return h('div', { key: a.id, className: 'ps-solution-card ' + (a.partial ? '' : (score != null && score >= 8 ? 'correct' : '')), style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' } },
+            h('div', { style: { minWidth: 0 } },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' } },
+                h('span', { className: 'ps-q-badge' }, HIST_TYPE_LABEL[a.type] || 'Luyện tập'),
+                a.examTitle ? h('b', { style: { fontSize: '0.92rem' } }, a.examTitle) : null,
+                a.partial ? h('span', { className: 'ps-assigned-status pending' }, '⏸ Làm dở') :
+                  (score != null ? h('span', { className: 'ps-assigned-status done' }, score.toFixed(2) + '/10') : null)),
+              h('div', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } },
+                histWhen(a.createdAt) + ' · Đúng ' + (a.correctCount != null ? a.correctCount : '—') + '/' + (a.totalQuestions != null ? a.totalQuestions : '—') + ' câu' +
+                (withVideo.length ? ' · 🎥 đã xem lại ' + seenN + '/' + withVideo.length + ' câu sai có video thầy chữa' : ''))),
+            h('button', { type: 'button', className: 'btn ' + (withVideo.length > seenN ? 'btn-primary' : 'btn-secondary'), disabled: !a.answers,
+              title: a.answers ? '' : 'Lượt cũ không lưu đáp án — không xem lại chi tiết được',
+              onClick: function(){ startHistoryReview(a); } }, '👁 Xem lại'));
+        }),
+        list.length > 20 ? h('button', { type: 'button', className: 'btn btn-secondary', style: { marginTop: '6px' }, onClick: function(){ setHistShowAll(!histShowAll); } },
+          histShowAll ? 'Thu gọn' : 'Xem tất cả ' + list.length + ' lượt') : null);
     }
 
     // Bước 3 (Luyện tập tức thì) của quy trình Vá lỗi — giống startNanoDrill
@@ -2494,6 +2629,13 @@
           pendingAssignedCount ? h('span', { className: 'ps-tab-badge pending-pulse' }, pendingAssignedCount) :
             (assignedExams.length ? h('span', { className: 'ps-tab-badge' }, assignedExams.length) : null)
         ),
+        // THÊM 16/10/2026 — Lịch sử mọi lượt làm bài
+        h('button', {
+          type: 'button',
+          className: 'ps-tab-btn ' + (tab === 'history' ? 'active' : ''),
+          title: 'Tất cả các lượt em đã làm (kể cả làm dở) — xem lại từng câu, lời giải và video thầy chữa.',
+          onClick: function(){ setTab('history'); setExamSession(null); setHistNotice(null); }
+        }, '🕓 Lịch sử'),
         h('button', {
           type: 'button',
           className: 'ps-tab-btn ' + (tab === 'special' ? 'active' : ''),
@@ -2515,7 +2657,9 @@
           h('div', { className: 'ps-exam-screen' },
             h('div', { className: 'ps-result-banner' },
               h('div', { style: { fontSize: '1rem', color: 'var(--muted)', fontWeight: 700, marginBottom: '6px' } },
-                examSession.reviewOnly ? '👁 XEM LẠI BÀI LÀM ĐÃ NỘP' : 'BÁO CÁO KẾT QUẢ THÍCH ỨNG PREPSCHOLAR'),
+                examSession.reviewOnly ? (examSession.historyPartial ? '👁 XEM LẠI LƯỢT LÀM DỞ (chỉ các câu đã chấm)' : '👁 XEM LẠI BÀI LÀM ĐÃ NỘP') : 'BÁO CÁO KẾT QUẢ THÍCH ỨNG PREPSCHOLAR'),
+              (examSession.reviewOnly && examSession.historyMissing) ? h('div', { style: { fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '4px' } },
+                'Có ' + examSession.historyMissing + ' câu không còn trong ngân hàng đề nên không hiện lại được.') : null,
               h('div', { className: 'ps-result-score-val' }, scoreResult.scaledScore10.toFixed(2) + ' / 10'),
               h('div', { className: 'ps-result-sub' },
                 'Đúng ' + scoreResult.correctCount + ' / ' + scoreResult.totalQuestions + ' câu · ' +
@@ -2562,6 +2706,12 @@
                     '🔁 Làm thêm 1 lượt (' + (round + 1) + '/' + MAX_SIMILAR_TRIES + ')'));
               })() : null,
               h('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' } },
+                // SỬA 16/10/2026 — xem lại từ tab Lịch sử: chỉ có "Làm lại" khi là đề được giao còn tồn tại
+                (examSession.reviewOnly && examSession.fromHistory && !examSession.assignedExamId) ? h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  onClick: function(){ setExamSession(null); setTab('history'); }
+                }, '🕓 Quay lại Lịch sử') :
                 examSession.reviewOnly ? h('button', {
                   type: 'button',
                   className: 'btn btn-primary',
@@ -2593,8 +2743,13 @@
                 h('button', {
                   type: 'button',
                   className: 'btn btn-secondary',
-                  onClick: function(){ setExamSession(null); setTab(examSession.reviewOnly ? 'assigned' : 'mistakes'); }
-                }, examSession.reviewOnly ? '📋 Quay lại Đề được giao' : 'Xem Sổ tay câu sai (' + mistakeLog.length + ')')
+                  onClick: function(){
+                    setExamSession(null);
+                    setTab(examSession.reviewOnly ? (examSession.fromHistory ? (examSession.assignedExamId ? 'history' : 'mistakes') : 'assigned') : 'mistakes');
+                  }
+                }, examSession.reviewOnly
+                  ? (examSession.fromHistory ? (examSession.assignedExamId ? '🕓 Quay lại Lịch sử' : 'Xem Sổ tay câu sai (' + mistakeLog.length + ')') : '📋 Quay lại Đề được giao')
+                  : 'Xem Sổ tay câu sai (' + mistakeLog.length + ')')
               )
             ),
 
@@ -3392,6 +3547,8 @@
                 })
               )
             );
+          } else if(tab === 'history'){
+            return renderHistoryTab();
           } else if(tab === 'special'){
             return renderSpecialTab();
           } else {

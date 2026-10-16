@@ -238,6 +238,56 @@ async function loadAttempts(studentId, max){
   }
 }
 
+// ================= THÊM 16/10/2026 — EM ĐÃ XEM VIDEO THẦY CHỮA CHƯA =================
+// students/{studentId}/videoViews/{examId_qN} — 1 doc cho mỗi câu (đoạn video) em từng mở:
+//   { qId, examId, index, segSec, opens, watchedSec, pct, completed, totalPlaySec, firstAt, lastAt }
+// watchedSec/pct giữ MỨC CAO NHẤT qua các lần xem (xem lại lần 2 xem ít hơn không làm tụt);
+// totalPlaySec cộng dồn thời gian phát thật. Ghi do video-walkthrough.js báo lên (info.onProgress).
+// Rules: chỉ đúng em đó hoặc admin đọc/ghi (khối match /videoViews trong firestore.rules).
+var videoWriteChain = Promise.resolve(); // ghi lần lượt, tránh 2 lần ghi cùng lúc đè nhau
+function recordVideoView(studentId, ev){
+  if(!studentId || !ev || !ev.qId) return Promise.resolve(null);
+  videoWriteChain = videoWriteChain.then(async function(){
+    try{
+      var ref = doc(db, 'students', String(studentId), 'videoViews', String(ev.qId));
+      var snap = await getDoc(ref);
+      var old = snap.exists() ? (snap.data() || {}) : {};
+      var now = new Date().toISOString();
+      var rec = {
+        qId: String(ev.qId),
+        examId: ev.examId || old.examId || null,
+        index: ev.index != null ? Number(ev.index) : (old.index != null ? old.index : null),
+        segSec: Number(ev.segSec) || old.segSec || 0,
+        opens: (Number(old.opens) || 0) + (ev.kind === 'open' ? 1 : 0),
+        watchedSec: Math.max(Number(old.watchedSec) || 0, Number(ev.watchedSec) || 0),
+        pct: Math.max(Number(old.pct) || 0, Number(ev.pct) || 0),
+        completed: !!(old.completed || ev.completed),
+        totalPlaySec: (Number(old.totalPlaySec) || 0) + Math.max(0, Math.min(3600, Number(ev.deltaSec) || 0)),
+        firstAt: old.firstAt || now,
+        lastAt: now
+      };
+      await setDoc(ref, rec);
+      return rec;
+    }catch(e){
+      console.warn('Không ghi được lượt xem video chữa đề:', e && e.code);
+      return null;
+    }
+  });
+  return videoWriteChain;
+}
+async function loadVideoViews(studentId){
+  if(!studentId) return {};
+  try{
+    var snap = await getDocs(collection(db, 'students', String(studentId), 'videoViews'));
+    var out = {};
+    snap.forEach(function(d){ out[d.id] = d.data(); });
+    return out;
+  }catch(e){
+    console.warn('Không tải được lượt xem video:', e && e.code);
+    return {};
+  }
+}
+
 // ================= Đề cá nhân hóa được giao =================
 // Lưu dưới subcollection students/{studentId}/assignedExams — GHI chỉ do
 // admin.html (Firebase Auth thật) khi giáo viên bấm "Giao đề cho học sinh"
@@ -722,6 +772,8 @@ window.OPC_LIVE = {
   flushPendingAttempts: flushPendingAttempts,
   diagnoseSave: diagnoseSave,
   loadAttempts: loadAttempts,
+  recordVideoView: recordVideoView, // THÊM 16/10/2026
+  loadVideoViews: loadVideoViews,
   loadAssignedExams: loadAssignedExams,
   submitRegistration: submitRegistration,
   saveStudentStats: saveStudentStats,

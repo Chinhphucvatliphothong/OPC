@@ -97,6 +97,12 @@ service cloud.firestore {
       match /specialAttempts/{attemptId} {
         allow read, write: if isOpcAdmin() || isSelf(studentId);
       }
+
+      // THÊM 16/10/2026 — em đã xem video thầy chữa câu nào, bao nhiêu % (video-walkthrough.js ghi qua
+      // OPC_LIVE.recordVideoView). Chỉ đúng em đó (ghi lượt xem của chính mình) hoặc admin (xem + báo cáo phụ huynh).
+      match /videoViews/{qId} {
+        allow read, write: if isOpcAdmin() || isSelf(studentId);
+      }
     }
 
     // Đăng ký lớp thử nghiệm từ trang giới thiệu công khai (index.html) —

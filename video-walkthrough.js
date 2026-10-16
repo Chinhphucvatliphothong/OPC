@@ -216,6 +216,10 @@
     var sPass = R.useState(false), passThrough = sPass[0], setPassThrough = sPass[1];
     var sRate = R.useState(1), rate = sRate[0], setRate = sRate[1];
     var sSegEnd = R.useState(end), segEnd = sSegEnd[0], setSegEnd = sSegEnd[1];
+    // THÊM 16/10/2026 — THEO DÕI EM ĐÃ XEM BAO NHIÊU (chỉ khi nơi gọi truyền info.onProgress — trang học sinh;
+    // admin xem thử không truyền nên không ghi gì). Đếm số GIÂY KHÁC NHAU trong đoạn đã thực sự phát (tua vượt
+    // qua không tính), báo lên khi: bắt đầu phát, tạm dừng, mỗi 20 giây đang phát, hết đoạn, đóng video.
+    var watchedRef = R.useRef({}), playedRef = R.useRef(0), openedRef = R.useRef(false), segEndRef = R.useRef(end);
 
     R.useEffect(function(){
       var alive = true, timer = null, player = null;
@@ -224,13 +228,29 @@
       var mount = document.createElement('div');
       if(mountRef.current){ mountRef.current.innerHTML = ''; mountRef.current.appendChild(mount); }
 
+      var lastT = null, lastReportAt = 0;
+      function report(kind){
+        var cb = info.onProgress;
+        if(typeof cb !== 'function') return;
+        if(kind !== 'open' && !openedRef.current) return; // chưa phát giây nào -> không ghi
+        var segSec = segEndRef.current != null ? Math.max(1, segEndRef.current - start) : 0;
+        var watchedSec = Object.keys(watchedRef.current).length;
+        var pct = segSec ? Math.min(100, Math.round(watchedSec / segSec * 100)) : 0;
+        var delta = Math.round(playedRef.current);
+        playedRef.current = 0; lastReportAt = Date.now();
+        try {
+          cb({ kind: kind, examId: info.examId || null, index: info.index, qId: info.examId ? (info.examId + '_q' + info.index) : null,
+               segSec: segSec, watchedSec: watchedSec, pct: pct, deltaSec: delta, completed: kind === 'done' || pct >= 90 });
+        } catch(_){ }
+      }
       function finish(p){
         try { p.pauseVideo(); p.seekTo(start, true); } catch(_){ }
         setPlaying(false); setDone(true); setCur(start);
+        report('done');
       }
       function learnDuration(p){
         if(end != null) return;
-        try { var d = p.getDuration(); if(d > 0) setSegEnd(Math.floor(d)); } catch(_){ }
+        try { var d = p.getDuration(); if(d > 0){ segEndRef.current = Math.floor(d); setSegEnd(Math.floor(d)); } } catch(_){ }
       }
 
       loadYouTubeApi().then(function(YT){
@@ -252,7 +272,11 @@
               if(!alive) return;
               var s = e.data;
               setPlaying(s === 1 || s === 3);
-              if(s === 1){ setPassThrough(false); setDone(false); learnDuration(e.target); }
+              if(s === 1){
+                setPassThrough(false); setDone(false); learnDuration(e.target);
+                if(!openedRef.current){ openedRef.current = true; report('open'); }
+              }
+              if(s === 2) report('pause');
               if(s === 0) finish(e.target);
             },
             onError: function(){ if(alive) setStatus('error'); }
@@ -262,13 +286,22 @@
           var p = playerRef.current;
           if(!p || !p.getCurrentTime) return;
           var t = p.getCurrentTime() || 0;
-          if(end != null && t >= end - 0.2){ if(p.getPlayerState && p.getPlayerState() === 1) finish(p); return; }
+          var isPlaying = p.getPlayerState && p.getPlayerState() === 1;
+          if(end != null && t >= end - 0.2){ if(isPlaying) finish(p); return; }
           if(t < start - 1){ try { p.seekTo(start, true); } catch(_){ } t = start; }
+          if(isPlaying){
+            // chỉ cộng khi phát liền mạch (bước nhảy < 1,5 s) — tua thì không tính là đã xem
+            if(lastT != null && t > lastT && t - lastT < 1.5) playedRef.current += (t - lastT);
+            if(t >= start && (end == null || t < end)) watchedRef.current[Math.floor(t - start)] = 1;
+            if(Date.now() - lastReportAt > 20000) report('progress');
+          }
+          lastT = t;
           setCur(t);
         }, 250);
       }).catch(function(){ if(alive) setStatus('error'); });
 
       return function(){
+        report('close');
         alive = false;
         if(timer) clearInterval(timer);
         try { if(player && player.destroy) player.destroy(); } catch(_){ }
