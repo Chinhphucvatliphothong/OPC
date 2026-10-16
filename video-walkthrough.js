@@ -1,7 +1,8 @@
 /**
  * OPC Luyện Thi Vật Lí — VIDEO CHỮA ĐỀ GẮN MỐC THỜI GIAN
  * ---------------------------------------------------------------------
- * THÊM 1/10/2026. File dùng CHUNG cho admin.html (dán link + mốc, xem thử)
+ * THÊM 1/10/2026 · SỬA 16/10/2026 (khoá video trong đúng đoạn của câu, bỏ link YouTube).
+ * File dùng CHUNG cho admin.html (dán link + mốc, xem thử)
  * và trang học sinh (index.html -> prepscholar-ui.js, opc-live-data.js).
  * Không phụ thuộc Firebase / React build: chỉ nhận React.createElement (h)
  * từ nơi gọi, nên nạp bằng <script src="/video-walkthrough.js"> thường.
@@ -169,9 +170,202 @@
     };
   }
 
+  // ---------- Trình phát CHỈ ĐÚNG ĐOẠN của 1 câu ----------
+  // SỬA 16/10/2026: thay iframe YouTube thường bằng YouTube IFrame Player API:
+  //  - Ẩn toàn bộ thanh điều khiển của YouTube (controls=0): không còn thanh tua
+  //    cả video, nút sao chép link, nút chia sẻ, logo "Xem trên YouTube".
+  //  - Một lớp phủ trong suốt che kín khung video để học sinh không bấm được vào
+  //    tiêu đề / kênh / logo YouTube (các chỗ đó mở ra trang YouTube xem cả đề).
+  //  - Thanh tua RIÊNG chỉ chạy trong đoạn [start, end] của câu đang xem.
+  //  - Tới cuối đoạn: tự dừng, tua về đầu đoạn, hiện "Xem lại" / "Đóng".
+  //  - Lùi về trước đầu đoạn (vd. lỗi seek) thì tự kéo lại đầu đoạn.
+  var ytApiPromise = null;
+  function loadYouTubeApi(){
+    if(window.YT && window.YT.Player) return Promise.resolve(window.YT);
+    if(ytApiPromise) return ytApiPromise;
+    ytApiPromise = new Promise(function(resolve, reject){
+      var prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function(){
+        if(typeof prev === 'function'){ try { prev(); } catch(_){ } }
+        resolve(window.YT);
+      };
+      var s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.async = true;
+      s.onerror = function(){ ytApiPromise = null; reject(new Error('Không tải được YouTube API')); };
+      document.head.appendChild(s);
+      // Mạng chậm/chặn: báo lỗi sau 15 giây thay vì quay mãi
+      setTimeout(function(){ if(!(window.YT && window.YT.Player)) reject(new Error('YouTube API quá thời gian')); }, 15000);
+    });
+    return ytApiPromise;
+  }
+
+  var RATES = [1, 1.25, 1.5, 2];
+
+  function SegmentPlayer(props){
+    var R = window.React, h = R.createElement;
+    var info = props.info;
+    var start = Math.max(0, Math.floor(info.start || 0));
+    var end = (info.end != null && info.end > start) ? Math.floor(info.end) : null;
+
+    var boxRef = R.useRef(null), mountRef = R.useRef(null), playerRef = R.useRef(null);
+    var sStatus = R.useState('loading'), status = sStatus[0], setStatus = sStatus[1]; // loading | ready | error
+    var sPlaying = R.useState(false), playing = sPlaying[0], setPlaying = sPlaying[1];
+    var sCur = R.useState(start), cur = sCur[0], setCur = sCur[1];
+    var sDone = R.useState(false), done = sDone[0], setDone = sDone[1];
+    var sPass = R.useState(false), passThrough = sPass[0], setPassThrough = sPass[1];
+    var sRate = R.useState(1), rate = sRate[0], setRate = sRate[1];
+    var sSegEnd = R.useState(end), segEnd = sSegEnd[0], setSegEnd = sSegEnd[1];
+
+    R.useEffect(function(){
+      var alive = true, timer = null, player = null;
+      // YT.Player THAY THẾ phần tử được giao bằng iframe -> tự tạo 1 div con,
+      // không để React quản lý nó (tránh lỗi removeChild khi đóng modal).
+      var mount = document.createElement('div');
+      if(mountRef.current){ mountRef.current.innerHTML = ''; mountRef.current.appendChild(mount); }
+
+      function finish(p){
+        try { p.pauseVideo(); p.seekTo(start, true); } catch(_){ }
+        setPlaying(false); setDone(true); setCur(start);
+      }
+      function learnDuration(p){
+        if(end != null) return;
+        try { var d = p.getDuration(); if(d > 0) setSegEnd(Math.floor(d)); } catch(_){ }
+      }
+
+      loadYouTubeApi().then(function(YT){
+        if(!alive) return;
+        var vars = { start: start, autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0,
+                     iv_load_policy: 3, modestbranding: 1, playsinline: 1, origin: window.location.origin };
+        if(end != null) vars.end = end; // chốt chặn thứ 2 phía YouTube
+        player = new YT.Player(mount, {
+          host: 'https://www.youtube-nocookie.com',
+          videoId: info.videoId, width: '100%', height: '100%', playerVars: vars,
+          events: {
+            onReady: function(e){
+              if(!alive) return;
+              playerRef.current = e.target;
+              setStatus('ready'); learnDuration(e.target);
+              try { e.target.playVideo(); } catch(_){ }
+            },
+            onStateChange: function(e){
+              if(!alive) return;
+              var s = e.data;
+              setPlaying(s === 1 || s === 3);
+              if(s === 1){ setPassThrough(false); setDone(false); learnDuration(e.target); }
+              if(s === 0) finish(e.target);
+            },
+            onError: function(){ if(alive) setStatus('error'); }
+          }
+        });
+        timer = setInterval(function(){
+          var p = playerRef.current;
+          if(!p || !p.getCurrentTime) return;
+          var t = p.getCurrentTime() || 0;
+          if(end != null && t >= end - 0.2){ if(p.getPlayerState && p.getPlayerState() === 1) finish(p); return; }
+          if(t < start - 1){ try { p.seekTo(start, true); } catch(_){ } t = start; }
+          setCur(t);
+        }, 250);
+      }).catch(function(){ if(alive) setStatus('error'); });
+
+      return function(){
+        alive = false;
+        if(timer) clearInterval(timer);
+        try { if(player && player.destroy) player.destroy(); } catch(_){ }
+        playerRef.current = null;
+        if(mountRef.current) mountRef.current.innerHTML = '';
+      };
+    }, [info.videoId, start, end]);
+
+    function toggle(){
+      var p = playerRef.current;
+      if(!p) return;
+      if(done){ setDone(false); p.seekTo(start, true); p.playVideo(); return; }
+      if(playing){ p.pauseVideo(); return; }
+      p.playVideo();
+      // iPhone/iPad đôi khi chặn lệnh phát từ ngoài khung -> cho chạm thẳng vào video 1 lần
+      setTimeout(function(){
+        var s = p.getPlayerState ? p.getPlayerState() : -1;
+        if(s !== 1 && s !== 3) setPassThrough(true);
+      }, 900);
+    }
+    function seekTo(t){
+      var p = playerRef.current;
+      if(!p) return;
+      var maxT = segEnd != null ? segEnd - 0.5 : t;
+      t = Math.min(Math.max(start, t), maxT);
+      setDone(false); setCur(t);
+      p.seekTo(t, true);
+    }
+    function cycleRate(){
+      var p = playerRef.current;
+      var next = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+      setRate(next);
+      if(p && p.setPlaybackRate) p.setPlaybackRate(next);
+    }
+    var canFull = !!(typeof document !== 'undefined' && (document.fullscreenEnabled || document.webkitFullscreenEnabled));
+    function fullscreen(){
+      var el = boxRef.current;
+      if(!el) return;
+      var isFull = document.fullscreenElement || document.webkitFullscreenElement;
+      if(isFull){ (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if(req) req.call(el);
+    }
+
+    var total = segEnd != null ? Math.max(1, segEnd - start) : 0;
+    var pos = Math.min(Math.max(0, cur - start), total || 0);
+    var btn = { border: '1px solid var(--line, #cbd5e1)', background: 'var(--surface, #fff)', color: 'inherit', borderRadius: '8px', padding: '6px 10px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', minWidth: '44px' };
+
+    return h('div', null,
+      h('div', { ref: boxRef, style: { position: 'relative', width: '100%', paddingTop: '56.25%', background: '#000', borderRadius: '10px', overflow: 'hidden' } },
+        h('div', { ref: mountRef, style: { position: 'absolute', inset: 0 } }),
+        // Lớp phủ: chặn bấm vào tiêu đề / kênh / logo YouTube; chạm = phát/dừng
+        h('div', {
+          onClick: toggle,
+          onContextMenu: function(e){ e.preventDefault(); },
+          style: { position: 'absolute', inset: 0, zIndex: 2, cursor: 'pointer',
+                   pointerEvents: passThrough ? 'none' : 'auto',
+                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                   background: done ? 'rgba(15,23,42,0.88)' : 'transparent' }
+        },
+          status === 'loading' ? h('div', { style: { color: '#fff', fontSize: '0.9rem' } }, 'Đang tải video…') :
+          status === 'error' ? h('div', { style: { color: '#fff', fontSize: '0.9rem', textAlign: 'center', padding: '0 16px' } }, 'Không tải được video. Em thử lại sau hoặc báo thầy nhé.') :
+          done ? h('div', { style: { color: '#fff', textAlign: 'center' }, onClick: function(e){ e.stopPropagation(); } },
+            h('div', { style: { fontWeight: 700, fontSize: '1.05rem', marginBottom: '12px' } }, 'Hết phần thầy chữa Câu ' + info.index),
+            h('div', { style: { display: 'flex', gap: '10px', justifyContent: 'center' } },
+              h('button', { type: 'button', onClick: function(e){ e.stopPropagation(); toggle(); }, style: btn }, '↺ Xem lại'),
+              props.onClose ? h('button', { type: 'button', onClick: function(e){ e.stopPropagation(); props.onClose(); }, style: btn }, 'Đóng') : null
+            )
+          ) :
+          !playing ? h('div', { style: { width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem' } }, '▶') :
+          null
+        ),
+        passThrough ? h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 3, pointerEvents: 'none', textAlign: 'center', padding: '6px', fontSize: '0.8rem', color: '#fff', background: 'rgba(0,0,0,0.6)' } }, 'Chạm vào video để bắt đầu phát') : null
+      ),
+      // Thanh điều khiển riêng — chỉ trong đoạn của câu này
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' } },
+        h('button', { type: 'button', onClick: toggle, disabled: status !== 'ready', style: btn, 'aria-label': playing ? 'Tạm dừng' : 'Phát' }, playing ? '❚❚' : '▶'),
+        h('button', { type: 'button', onClick: function(){ seekTo(cur - 10); }, disabled: status !== 'ready', style: btn, 'aria-label': 'Lùi 10 giây' }, '↺10'),
+        h('input', {
+          type: 'range', min: 0, max: total || 1, step: 1, value: pos, disabled: status !== 'ready' || !total,
+          onChange: function(e){ seekTo(start + Number(e.target.value)); },
+          'aria-label': 'Tua trong đoạn chữa câu ' + info.index,
+          style: { flex: 1, minWidth: 0, accentColor: 'var(--accent-strong, #2563eb)' }
+        }),
+        h('span', { style: { fontSize: '0.8rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', color: 'var(--muted, #64748b)' } },
+          fmtClock(pos) + ' / ' + (total ? fmtClock(total) : '--:--')),
+        h('button', { type: 'button', onClick: cycleRate, disabled: status !== 'ready', style: btn, 'aria-label': 'Tốc độ phát' }, rate + '×'),
+        canFull ? h('button', { type: 'button', onClick: fullscreen, style: btn, 'aria-label': 'Toàn màn hình' }, '⛶') : null
+      )
+    );
+  }
+
   // ---------- Modal phát đoạn video (dùng cho cả admin xem thử và học sinh) ----------
   // info: kết quả forQuestion() hoặc { videoId, index, examTitle, start, end }.
   // onClose: đóng modal. Trả phần tử React (h = React.createElement).
+  // SỬA 16/10/2026: bỏ link "Mở trên YouTube" (học sinh mở ra sẽ xem được câu
+  // khác / cả đề và sao chép link gửi người khác); dùng SegmentPlayer ở trên.
   function renderModal(h, info, onClose){
     if(!info) return null;
     var span = info.end != null ? ('Đoạn ' + fmtClock(info.start) + ' → ' + fmtClock(info.end)) : ('Từ ' + fmtClock(info.start) + ' đến hết video');
@@ -188,20 +382,8 @@
           ),
           h('button', { type: 'button', onClick: onClose, 'aria-label': 'Đóng', style: { border: 'none', background: 'transparent', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer', color: 'inherit', padding: '2px 6px' } }, '✕')
         ),
-        h('div', { style: { position: 'relative', width: '100%', paddingTop: '56.25%', background: '#000', borderRadius: '10px', overflow: 'hidden' } },
-          h('iframe', {
-            key: info.videoId + ':' + info.start + ':' + info.end,
-            src: embedUrl(info.videoId, info.start, info.end),
-            title: 'Video chữa đề — Câu ' + info.index,
-            allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen',
-            allowFullScreen: true, referrerPolicy: 'strict-origin-when-cross-origin',
-            style: { position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }
-          })
-        ),
-        h('div', { style: { marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', fontSize: '0.8rem', color: 'var(--muted, #64748b)' } },
-          h('a', { href: watchUrl(info.videoId, info.start), target: '_blank', rel: 'noopener noreferrer', style: { color: 'var(--accent-strong, #2563eb)', fontWeight: 600 } }, 'Mở trên YouTube ↗'),
-          h('span', null, 'Không xem được video? Em báo thầy nhé.')
-        )
+        h(SegmentPlayer, { key: info.videoId + ':' + info.start + ':' + info.end, info: info, onClose: onClose }),
+        h('div', { style: { marginTop: '8px', fontSize: '0.8rem', color: 'var(--muted, #64748b)' } }, 'Không xem được video? Em báo thầy nhé.')
       )
     );
   }
