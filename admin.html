@@ -1959,8 +1959,65 @@
     [60, 350, 1100].forEach(function(t){ setTimeout(init, t); });
   }
 
+  // SỬA 17/10/2026 — ĐIỆN THOẠI / iPAD: in & xuất PDF không chạy vì (1) tab in mở bằng document.write bị iOS/Android
+  // "đóng băng" trang gốc khi chuyển sang tab mới → ảnh/đề không bao giờ tải xong, tab kẹt ở "Đang chuẩn bị…"; (2) mở ở chế
+  // độ app (Thêm vào MH chính) thì không mở được tab mới. Nay trên máy cảm ứng: chuẩn bị bản in NGAY TRÊN TRANG (hiện khung
+  // chờ), xong thì hiện nút "📄 Mở bản in" — bấm là mở 1 trang in hoàn chỉnh (tab mới; chế độ app thì mở ngay trong khung).
+  // Ở trang in bấm "In / Lưu PDF" (iPad/iPhone: chọn máy in, hoặc nút Chia sẻ → Lưu vào Tệp để có file PDF).
+  function printUsesSheet(){
+    try{
+      var ua = navigator.userAgent || '';
+      return /iPad|iPhone|iPod|Android|Mobile/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }catch(e){ return false; }
+  }
+  function isStandaloneApp(){
+    try{ return !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)); }catch(e){ return false; }
+  }
+  function openPrintSheet(){
+    var ov = document.createElement('div');
+    ov.setAttribute('style', 'position:fixed;inset:0;z-index:6000;background:rgba(10,13,18,.6);display:flex;align-items:center;justify-content:center;padding:16px;font-family:"Be Vietnam Pro",system-ui,sans-serif;');
+    ov.innerHTML = '<div style="background:var(--surface,#fff);color:var(--ink,#12161c);border-radius:16px;max-width:420px;width:100%;padding:20px 18px;box-shadow:0 20px 60px rgba(0,0,0,.35)">' +
+      '<div style="font-weight:800;font-size:1.05rem;margin-bottom:6px">🖨️ Bản in / PDF</div>' +
+      '<div data-st style="font-size:.92rem;line-height:1.55;color:var(--ink-2,#4a5262)">Đang chuẩn bị bản in… (đề nhiều ảnh có thể mất vài giây)</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
+        '<button type="button" data-open style="display:none;flex:1;border:0;border-radius:10px;padding:12px 14px;font-weight:700;font-size:.95rem;font-family:inherit;background:#a86a1c;color:#fff;cursor:pointer">📄 Mở bản in</button>' +
+        '<button type="button" data-close style="border:1px solid var(--line,#dde1d5);border-radius:10px;padding:12px 14px;font-weight:700;font-size:.95rem;font-family:inherit;background:var(--surface-2,#eceee5);color:inherit;cursor:pointer">Đóng</button>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+    var url = null;
+    function close(){ ov.remove(); if(url) setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 60000); }
+    ov.querySelector('[data-close]').onclick = close;
+    function viewInFrame(){
+      // chế độ app (không mở được tab mới): xem & in ngay trong khung phủ kín màn hình
+      var fr = document.createElement('div');
+      fr.setAttribute('style', 'position:fixed;inset:0;z-index:6001;background:#e9e7e2;display:flex;flex-direction:column;');
+      fr.innerHTML = '<div style="display:flex;justify-content:flex-end;padding:max(8px,env(safe-area-inset-top)) 10px 8px;background:#14181f"><button type="button" style="border:0;border-radius:8px;padding:8px 14px;font:700 14px system-ui;background:#e6c27a;cursor:pointer">✕ Đóng bản in</button></div>' +
+        '<iframe style="flex:1;width:100%;border:0;background:#fff" src="' + url + '"></iframe>';
+      fr.querySelector('button').onclick = function(){ fr.remove(); };
+      document.body.appendChild(fr);
+      close();
+    }
+    return {
+      __sheet: true,
+      ready: function(html){
+        var base = '<base href="' + location.origin + '/">';
+        html = /<head[^>]*>/i.test(html) ? html.replace(/<head([^>]*)>/i, '<head$1>' + base) : base + html;
+        try{ url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' })); }catch(e){ ov.querySelector('[data-st]').textContent = 'Không tạo được bản in trên máy này.'; return; }
+        var st = ov.querySelector('[data-st]'), btn = ov.querySelector('[data-open]');
+        st.innerHTML = '✅ Bản in đã sẵn sàng. Bấm <b>Mở bản in</b>, rồi bấm <b>In / Lưu PDF</b> ở thanh trên cùng trang in.<br><span style="font-size:.82rem">iPad/iPhone: trong màn In, chọn máy in — hoặc bấm nút Chia sẻ → <b>Lưu vào Tệp</b> để có file PDF. Android: chọn "Lưu dưới dạng PDF".</span>';
+        btn.style.display = '';
+        btn.onclick = function(){
+          if(isStandaloneApp()){ viewInFrame(); return; }
+          var w = null; try{ w = window.open(url, '_blank'); }catch(e){}
+          if(!w){ viewInFrame(); return; }
+          close();
+        };
+      }
+    };
+  }
   // Mở tab in ĐỒNG BỘ ngay lúc bấm (tránh bị chặn popup), rồi mới ghi nội dung (có thể sau khi tải ảnh xong).
   function openPrintWindow(){
+    if(printUsesSheet()) return openPrintSheet(); // THÊM 17/10/2026 — điện thoại / iPad
     var win = window.open('', '_blank');
     if(!win){ alert('Trình duyệt đã chặn cửa sổ mới — hãy cho phép popup cho trang này rồi thử lại.'); return null; }
     win.document.open();
@@ -1970,6 +2027,7 @@
   }
   function writePrintWindow(win, html){
     if(!win) return;
+    if(win.__sheet){ win.ready(html); return; } // THÊM 17/10/2026 — điện thoại / iPad (xem openPrintSheet)
     win.document.open();
     win.document.write(html);
     win.document.close();
