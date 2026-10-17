@@ -840,6 +840,28 @@
         var refDoc = doc(collection(db, 'students', studentId, 'assignedExams'));
         await setDoc(refDoc, Object.assign({}, examData, { createdAt: serverTimestamp() }));
         return refDoc;
+      },
+      // THÊM 17/10/2026 — SỬA ĐÁP ÁN LAN SANG ĐỀ ĐÃ GIAO. Đề giao cho học sinh lưu BẢN SAO câu hỏi
+      // (students/{id}/assignedExams/{id}.questions), nên sửa đáp án ở ngân hàng không tự sửa các bản sao đó.
+      // Hàm này quét mọi học sinh, thay options/shortans của câu có mã qId trong mọi đề đã giao.
+      // Trả { exams, students } = số đề / số học sinh đã cập nhật. KHÔNG chấm lại các lượt đã nộp.
+      patchQuestionEverywhere: async function(qId, patch){
+        var stuSnap = await getDocs(collection(db, 'students'));
+        var nExams = 0, nStudents = 0;
+        for(var i = 0; i < stuSnap.docs.length; i++){
+          var sid = stuSnap.docs[i].id, touched = false;
+          var aeSnap = await getDocs(collection(db, 'students', sid, 'assignedExams'));
+          for(var j = 0; j < aeSnap.docs.length; j++){
+            var d = aeSnap.docs[j], data = d.data() || {};
+            var qs = Array.isArray(data.questions) ? data.questions : [];
+            if(!qs.some(function(x){ return x && x.id === qId; })) continue;
+            var nqs = qs.map(function(x){ return (x && x.id === qId) ? Object.assign({}, x, patch) : x; });
+            await updateDoc(doc(db, 'students', sid, 'assignedExams', d.id), { questions: nqs });
+            nExams++; touched = true;
+          }
+          if(touched) nStudents++;
+        }
+        return { exams: nExams, students: nStudents };
       }
     };
 
@@ -8471,9 +8493,24 @@
         });
         await bankApi.updateQuestions(selected.id, newQuestions);
         setSelected(function(prev){ return prev ? Object.assign({}, prev, { questions: newQuestions }) : prev; });
+        setExams(function(prev){ return prev.map(function(x){ return x.id === selected.id ? Object.assign({}, x, { questions: newQuestions }) : x; }); });
         setEditingQIndex(null);
         setEditDraft(null);
-        props.fireToast('Đã cập nhật đáp án câu ' + q.index + '.');
+        props.fireToast('Đã cập nhật đáp án câu ' + q.index + ' trong ngân hàng. Đang sửa tiếp ở các đề đã giao…');
+        // THÊM 17/10/2026 — sửa luôn bản sao câu này trong các đề đã giao cho học sinh
+        try{
+          var OPCx = window.OPC;
+          if(OPCx && OPCx.assignedExams && OPCx.assignedExams.patchQuestionEverywhere){
+            var patch = q.type === 'shortans' ? { shortans: editDraft.shortans.trim() } : { options: editDraft.options };
+            var r = await OPCx.assignedExams.patchQuestionEverywhere(selected.id + '_q' + q.index, patch);
+            props.fireToast(r.exams
+              ? 'Đã sửa đáp án câu ' + q.index + ' ở ngân hàng và ' + r.exams + ' đề đã giao (' + r.students + ' học sinh). Điểm các lượt đã nộp trước đó KHÔNG tự chấm lại.'
+              : 'Đã sửa đáp án câu ' + q.index + '. Câu này chưa nằm trong đề đã giao nào.');
+          }
+        }catch(e2){
+          console.error('Lỗi sửa đáp án ở đề đã giao:', e2);
+          props.fireToast('Đã sửa ở ngân hàng, nhưng chưa sửa được ở các đề đã giao — thử lưu lại lần nữa.', true);
+        }
       }catch(err){
         console.error('Lỗi cập nhật đáp án:', err);
         props.fireToast('Lưu đáp án thất bại — thử lại.', true);
@@ -8906,6 +8943,46 @@
 
     function setField(key, val){ setForm(function(prev){ var next = Object.assign({}, prev); next[key] = val; return next; }); }
 
+    // ===== THÊM 17/10/2026 — TÌM 1 CÂU TRONG TOÀN BỘ NGÂN HÀNG để sửa đáp án =====
+    // Dán vài chữ trong đề bài / phương án (không cần dấu, không cần công thức đúng y) hoặc mã câu (examId_qN).
+    // So khớp sau khi bỏ dấu tiếng Việt, bỏ ký hiệu LaTeX/khoảng trắng.
+    var qFindState = React.useState(''); var qFind = qFindState[0], setQFind = qFindState[1];
+    var focusQState = React.useState(null); var focusQ = focusQState[0], setFocusQ = focusQState[1];
+    function ebNorm(t){
+      return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase()
+        .replace(/\\[a-z]+/g, '').replace(/[^a-z0-9]+/g, '');
+    }
+    var qFindKey = ebNorm(qFind);
+    var qFindHits = [];
+    if(qFind.trim()){
+      var raw = qFind.trim();
+      exams.forEach(function(x){
+        (x.questions || []).forEach(function(qq){
+          if(qFindHits.length >= 30) return;
+          var code = x.id + '_q' + qq.index;
+          var hit = raw === code || raw === x.id + '_q' + qq.index;
+          if(!hit && qFindKey.length >= 8){
+            var hay = ebNorm([qq.stem || qq.raw || '', qq.groupPassage || '', (qq.options || []).map(function(o){ return o && o.text; }).join(' ')].join(' '));
+            hit = hay.indexOf(qFindKey) > -1;
+          }
+          if(hit) qFindHits.push({ exam: x, q: qq });
+        });
+      });
+    }
+    function openQuestionForEdit(x, qq){
+      setSelected(x); setDetailTab('questions'); setModalPartFilter('ALL'); setModalLevelFilter('ALL');
+      setFocusQ({ examId: x.id, index: qq.index });
+      if(qq.type === 'choice' || qq.type === 'choiceTF' || qq.type === 'shortans') startEditAnswer(qq);
+    }
+    React.useEffect(function(){
+      if(!focusQ || !selected || selected.id !== focusQ.examId) return;
+      var t = setTimeout(function(){
+        var el = document.getElementById('ebq-' + focusQ.index);
+        if(el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+      return function(){ clearTimeout(t); };
+    }, [focusQ, selected && selected.id, detailTab]);
+
     var q = search.trim().toLowerCase();
     var filtered = exams.filter(function(x){
       if(filterChuDe !== 'Tất cả' && x.chuDe !== filterChuDe) return false;
@@ -9273,7 +9350,8 @@
                 h('div',{style:{maxHeight:'480px', overflowY:'auto', marginTop:'12px', paddingRight:'6px'}},
                   filteredQuestions.map(function(q, qIdx){
                     var lvlObj = MUC_DO_LIST.filter(function(m){ return m.code === q.level; })[0] || {};
-                    return h('div',{key:qIdx, className:'eb-q-card'},
+                    var isFocus = focusQ && selected && focusQ.examId === selected.id && focusQ.index === q.index;
+                    return h('div',{key:qIdx, id:'ebq-' + q.index, className:'eb-q-card', style: isFocus ? { outline:'2px solid #d97706', outlineOffset:'2px' } : undefined},
                       h('div',{className:'eb-q-head'},
                         h('div',{className:'eb-q-left'},
                           h('span',{className:'eb-q-idx'}, 'Câu ' + (q.index || (qIdx+1))),
@@ -9604,7 +9682,28 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, filterRow, tableOrEmpty), detailModal, addModal,
+    // THÊM 17/10/2026 — ô tìm câu hỏi trong toàn bộ ngân hàng
+    var qFindBlock = h('div',{style:{margin:'4px 0 14px', padding:'10px 12px', border:'1px dashed var(--line)', borderRadius:'10px'}},
+      h('div',{style:{fontWeight:700, fontSize:'0.88rem', marginBottom:'6px'}}, '🔎 Tìm câu hỏi để sửa đáp án'),
+      h('input',{type:'search', value:qFind, placeholder:'Dán vài chữ trong đề bài (vd. "đường đẳng nhiệt biểu diễn liên hệ") hoặc mã câu…',
+        onChange:function(e){ setQFind(e.target.value); },
+        style:{width:'100%', boxSizing:'border-box', padding:'8px 10px', border:'1px solid var(--line)', borderRadius:'8px', fontSize:'0.88rem', background:'var(--surface)', color:'inherit'}}),
+      qFind.trim() && qFindKey.length < 8 && !qFindHits.length ? h('div',{style:{fontSize:'0.78rem', color:'var(--muted)', marginTop:'6px'}}, 'Gõ thêm vài chữ nữa (ít nhất khoảng 2–3 từ).') : null,
+      qFind.trim() && qFindKey.length >= 8 && !qFindHits.length ? h('div',{style:{fontSize:'0.78rem', color:'var(--muted)', marginTop:'6px'}}, 'Không thấy câu nào khớp. Thử một đoạn ngắn hơn, tránh phần công thức.') : null,
+      qFindHits.length ? h('div',{style:{marginTop:'8px', maxHeight:'280px', overflowY:'auto'}},
+        qFindHits.map(function(r){
+          var qq = r.q, x = r.exam;
+          var stem = String(qq.stem || qq.raw || '').replace(/\s+/g, ' ');
+          return h('div',{key:x.id + '_' + qq.index, style:{display:'flex', gap:'10px', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--line)', flexWrap:'wrap'}},
+            h('div',{style:{minWidth:0, flex:'1 1 320px'}},
+              h('div',{style:{fontSize:'0.84rem'}}, h('b',null, x.title), ' · Câu ' + qq.index + ' · Phần ' + (qq.part || '?') + (qq.level ? ' · ' + qq.level : '')),
+              h('div',{style:{fontSize:'0.78rem', color:'var(--ink-2)', marginTop:'2px'}}, stem.length > 160 ? stem.slice(0, 160) + '…' : stem),
+              h('div',{style:{fontSize:'0.72rem', color:'var(--muted)', marginTop:'2px', fontFamily:'"IBM Plex Mono",monospace'}}, 'Mã câu: ' + x.id + '_q' + qq.index + (x.tex ? ' · file gốc: ' + (x.tex.name || x.tex.fileName || 'có .tex') : ''))),
+            h('button',{type:'button', className:'btn btn-primary', style:{fontSize:'0.8rem'}, onClick:function(){ openQuestionForEdit(x, qq); }}, '✏️ Mở & sửa đáp án'));
+        }),
+        qFindHits.length >= 30 ? h('div',{style:{fontSize:'0.76rem', color:'var(--muted)', marginTop:'6px'}}, 'Hiện 30 kết quả đầu — gõ cụ thể hơn để thu hẹp.') : null) : null
+    );
+    return h('div',null, h('div',{className:'card'}, toolbar, filterRow, qFindBlock, tableOrEmpty), detailModal, addModal,
       paperEntry ? h(PaperEntryModal, { bankExamId: paperEntry.exam.id, questions: paperEntry.questions, title: paperEntry.exam.title || 'Đề', sheetKey: 'bank_' + paperEntry.exam.id,
         fireToast: props.fireToast, onClose: function(){ setPaperEntry(null); } }) : null);
   }
