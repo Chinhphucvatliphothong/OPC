@@ -4977,7 +4977,7 @@
     ids.forEach(function(id){
       var sp = hvSplitQid(id); if(!sp) return;
       var ex = exams[sp.examId], vw = ex && ex.videoWalkthrough;
-      if(!vw || !vw.videoId || !WT.getSegment(vw, sp.index)) return;
+      if(!vw || !WT.getSegment(vw, sp.index)) return; // SỬA 17/10/2026 — nhận cả đề nhiều video
       var v = views[id] || null;
       var ok = !!(v && (v.completed || (Number(v.pct) || 0) >= 50));
       out.total++; if(ok) out.watched++;
@@ -8048,57 +8048,202 @@
   // THÊM 1/10/2026 — khối trong "Chi tiết đề" (tab Tổng quan). Thầy dán link
   // YouTube (chế độ "Không công khai") + danh sách mốc kiểu mô tả YouTube
   // ("0:00 Câu 1", "1:25 Câu 2"...). Tự nhận số câu, báo câu thiếu mốc,
-  // xem thử từng đoạn. Lưu vào chính doc đề: videoWalkthrough { url, videoId,
-  // marks:{ '<q.index>': giâyBắtĐầu }, updatedAt }. Học sinh tra theo mã câu
-  // (examId + '_q' + index) lúc hiển thị — xem video-walkthrough.js.
+  // xem thử từng đoạn. Học sinh tra theo mã câu (examId + '_q' + index) lúc
+  // hiển thị — xem video-walkthrough.js.
+  // SỬA 17/10/2026:
+  //  - NHIỀU VIDEO cho 1 đề (quay làm nhiều lần): mỗi video có link + mốc riêng, lưu videoWalkthrough.parts[].
+  //  - "📍 Bấm mốc khi xem lại": mở video ngay trong admin, thầy xem (tua nhanh 1.5–2×) và bấm 1 nút mỗi khi
+  //    bắt đầu chữa câu mới — mốc tự điền, không phải gõ tay giờ:phút:giây.
+  function vwMarksToText(marks){
+    var WT = window.OPC_WALKTHROUGH;
+    if(!marks) return '';
+    return Object.keys(marks).map(Number).sort(function(a, b){ return marks[String(a)] - marks[String(b)] || a - b; }).map(function(k){
+      return WT.fmtClock(marks[String(k)]) + ' Câu ' + k;
+    }).join('\n');
+  }
+
+  // Hộp thoại bấm mốc: trình phát YouTube ĐẦY ĐỦ điều khiển (chỉ admin thấy) + nút "📍 Câu N bắt đầu ở đây".
+  // Mỗi lần bấm: ghi mốc = giây hiện tại − 1 (khỏi hụt chữ đầu), rồi tự chuyển sang câu kế tiếp của đề.
+  function VwMarkerModal(props){
+    var WT = window.OPC_WALKTHROUGH;
+    var order = props.indexes; // số câu của đề, tăng dần
+    var marksState = React.useState(Object.assign({}, props.initialMarks || {})); var marks = marksState[0], setMarks = marksState[1];
+    var nextState = React.useState(props.startIndex); var next = nextState[0], setNext = nextState[1];
+    var histState = React.useState([]); var hist = histState[0], setHist = histState[1];
+    var statusState = React.useState('loading'); var status = statusState[0], setStatus = statusState[1];
+    var nowState = React.useState(0); var now = nowState[0], setNow = nowState[1];
+    var mountRef = React.useRef(null), playerRef = React.useRef(null);
+
+    React.useEffect(function(){
+      var alive = true, timer = null, player = null;
+      var mount = document.createElement('div');
+      if(mountRef.current){ mountRef.current.innerHTML = ''; mountRef.current.appendChild(mount); }
+      WT.loadYouTubeApi().then(function(YT){
+        if(!alive) return;
+        player = new YT.Player(mount, {
+          host: 'https://www.youtube-nocookie.com', videoId: props.videoId, width: '100%', height: '100%',
+          playerVars: { controls: 1, rel: 0, modestbranding: 1, playsinline: 1, start: Math.max(0, Math.floor(props.startAt || 0)) },
+          events: {
+            onReady: function(e){ if(alive){ playerRef.current = e.target; setStatus('ready'); } },
+            onError: function(){ if(alive) setStatus('error'); }
+          }
+        });
+        timer = setInterval(function(){ var p = playerRef.current; if(p && p.getCurrentTime) setNow(p.getCurrentTime() || 0); }, 300);
+      }).catch(function(){ if(alive) setStatus('error'); });
+      return function(){
+        alive = false; if(timer) clearInterval(timer);
+        try{ if(player && player.destroy) player.destroy(); }catch(_){ }
+        playerRef.current = null;
+        if(mountRef.current) mountRef.current.innerHTML = '';
+      };
+    }, [props.videoId]);
+
+    function nextAfter(n){
+      for(var i = 0; i < order.length; i++){ if(order[i] > n) return order[i]; }
+      return null;
+    }
+    function mark(){
+      var p = playerRef.current;
+      if(!p || next == null) return;
+      var t = Math.max(0, Math.floor((p.getCurrentTime() || 0) - 1));
+      setMarks(function(prev){ var o = Object.assign({}, prev); o[String(next)] = t; return o; });
+      setHist(function(prev){ return prev.concat([{ idx: next, had: marks[String(next)] }]); });
+      setNext(nextAfter(next));
+    }
+    function undo(){
+      if(!hist.length) return;
+      var last = hist[hist.length - 1];
+      setMarks(function(prev){ var o = Object.assign({}, prev); if(last.had == null) delete o[String(last.idx)]; else o[String(last.idx)] = last.had; return o; });
+      setHist(hist.slice(0, -1));
+      setNext(last.idx);
+    }
+    function seekBy(d){ var p = playerRef.current; if(p) p.seekTo(Math.max(0, (p.getCurrentTime() || 0) + d), true); }
+    // Phím tắt: M hoặc Enter = bấm mốc · Z = bỏ mốc vừa bấm
+    React.useEffect(function(){
+      function onKey(e){
+        var tag = (e.target && e.target.tagName) || '';
+        if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if(e.key === 'm' || e.key === 'M' || e.key === 'Enter'){ e.preventDefault(); mark(); }
+        else if(e.key === 'z' || e.key === 'Z'){ e.preventDefault(); undo(); }
+        else if(e.key === 'Escape'){ props.onClose(); }
+      }
+      document.addEventListener('keydown', onKey);
+      return function(){ document.removeEventListener('keydown', onKey); };
+    });
+
+    var list = Object.keys(marks).map(Number).sort(function(a, b){ return marks[String(a)] - marks[String(b)] || a - b; });
+    var btnS = { fontSize: '0.85rem' };
+    return h('div', { className: 'sm-overlay', style: { zIndex: 100000 }, onClick: function(e){ if(e.target === e.currentTarget) props.onClose(); } },
+      h('div', { className: 'sm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Bấm mốc video', style: { maxWidth: '820px', width: '100%' } },
+        h('div', { className: 'sm-modal-head' },
+          h('h3', null, '📍 Bấm mốc — ' + props.label),
+          h('button', { type: 'button', className: 'sm-modal-close', onClick: props.onClose }, h(IconClose))),
+        h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', margin: '0 0 8px', lineHeight: 1.5 } },
+          'Cho video chạy (có thể chỉnh tốc độ 1.5×–2× trong nút ⚙ của YouTube). Đúng lúc thầy bắt đầu chữa câu mới thì bấm nút 📍 (hoặc phím M / Enter). Mốc tự lùi 1 giây cho khỏi hụt chữ đầu. Bấm nhầm thì "↶ Bỏ mốc vừa bấm" (phím Z).'),
+        h('div', { style: { position: 'relative', width: '100%', paddingTop: '56.25%', background: '#000', borderRadius: '10px', overflow: 'hidden' } },
+          h('div', { ref: mountRef, style: { position: 'absolute', inset: 0 } }),
+          status !== 'ready' ? h('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.9rem', pointerEvents: 'none' } },
+            status === 'error' ? 'Không tải được video — kiểm tra link / chế độ cho phép nhúng.' : 'Đang tải video…') : null),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginTop: '10px' } },
+          h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '1rem', padding: '10px 16px' }, disabled: status !== 'ready' || next == null, onClick: mark },
+            next == null ? '✓ Đã bấm tới câu cuối' : '📍 Câu ' + next + ' bắt đầu ở đây (' + WT.fmtClock(Math.max(0, now - 1)) + ')'),
+          h('button', { type: 'button', className: 'btn btn-secondary', style: btnS, disabled: !hist.length, onClick: undo }, '↶ Bỏ mốc vừa bấm'),
+          h('button', { type: 'button', className: 'btn btn-secondary', style: btnS, disabled: status !== 'ready', onClick: function(){ seekBy(-5); } }, '⏪ 5s'),
+          h('button', { type: 'button', className: 'btn btn-secondary', style: btnS, disabled: status !== 'ready', onClick: function(){ seekBy(5); } }, '5s ⏩'),
+          h('label', { style: { fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' } }, 'Câu kế tiếp:',
+            h('select', { value: next == null ? '' : String(next), onChange: function(e){ setNext(e.target.value === '' ? null : Number(e.target.value)); },
+              style: { padding: '4px 6px', borderRadius: '6px', border: '1px solid var(--line)' } },
+              order.map(function(n){ return h('option', { key: n, value: String(n) }, 'Câu ' + n + (marks[String(n)] != null ? ' ✓' : '')); }),
+              h('option', { value: '' }, '— hết —')))),
+        h('div', { style: { marginTop: '10px', maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', padding: '6px 10px', fontFamily: '"IBM Plex Mono",monospace', fontSize: '0.82rem', lineHeight: 1.6 } },
+          list.length ? list.map(function(n){ return h('div', { key: n }, WT.fmtClock(marks[String(n)]) + ' Câu ' + n); }) : h('span', { style: { color: 'var(--muted)' } }, 'Chưa có mốc nào trong video này.')),
+        h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: props.onClose }, 'Huỷ'),
+          h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ props.onApply(marks); } }, '✓ Dùng ' + list.length + ' mốc này'))
+      )
+    );
+  }
+
   function VideoWalkthroughBlock(props){
     var WT = window.OPC_WALKTHROUGH;
     var exam = props.exam;
     var existing = exam.videoWalkthrough || null;
-    function marksToText(vw){
-      if(!vw || !vw.marks) return '';
-      return Object.keys(vw.marks).map(Number).sort(function(a, b){ return a - b; }).map(function(k){
-        return WT.fmtClock(vw.marks[String(k)]) + ' Câu ' + k;
-      }).join('\n');
+    function initialParts(){
+      var ps = WT ? WT.getParts(existing) : [];
+      return ps.length ? ps.map(function(p){ return { url: p.url || ('https://youtu.be/' + p.videoId), text: vwMarksToText(p.marks) }; }) : [{ url: '', text: '' }];
     }
-    var urlState = React.useState(existing ? (existing.url || '') : ''); var url = urlState[0], setUrl = urlState[1];
-    var textState = React.useState(marksToText(existing)); var text = textState[0], setText = textState[1];
+    var partsState = React.useState(initialParts); var parts = partsState[0], setParts = partsState[1];
     var previewState = React.useState(null); var preview = previewState[0], setPreview = previewState[1];
+    var markerState = React.useState(null); var marker = markerState[0], setMarker = markerState[1]; // index của video đang bấm mốc
     var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
 
-    if(!WT) return h('div', { className: 'sm-info-block', style: { marginTop: '14px' } }, 'Thiếu file video-walkthrough.js — tải file này lên cùng thư mục với admin.html.');
+    if(!WT || !WT.getParts) return h('div', { className: 'sm-info-block', style: { marginTop: '14px' } }, 'Thiếu file video-walkthrough.js (bản mới) — tải file này lên cùng thư mục với admin.html.');
 
     var indexes = (exam.questions || []).map(function(q){ return q.index; }).filter(function(n){ return n != null; });
-    var videoId = WT.parseYouTubeId(url);
-    var parsed = WT.parseMarks(text);
-    var check = WT.checkMarks(parsed.marks, indexes);
-    var markCount = Object.keys(parsed.marks).length;
+    var sortedIdx = indexes.slice().map(Number).sort(function(a, b){ return a - b; });
+
+    // Đọc từng video
+    var pInfo = parts.map(function(p){
+      var videoId = WT.parseYouTubeId(p.url);
+      var parsed = WT.parseMarks(p.text);
+      return { url: p.url.trim(), videoId: videoId, parsed: parsed, marks: parsed.marks };
+    });
+    // Gộp mốc của mọi video để đối chiếu với đề; 1 câu có mốc ở 2 video là lỗi
+    var allMarks = {}, owner = {}, dupProblems = [];
+    pInfo.forEach(function(pi, k){
+      Object.keys(pi.marks).forEach(function(idx){
+        if(owner[idx] != null){ dupProblems.push('Câu ' + idx + ' có mốc ở cả Video ' + (owner[idx] + 1) + ' và Video ' + (k + 1) + ' — học sinh sẽ xem đoạn ở Video ' + (owner[idx] + 1) + '.'); return; }
+        owner[idx] = k; allMarks[idx] = pi.marks[idx];
+      });
+    });
+    var check = WT.checkMarks(allMarks, indexes);
     var matched = indexes.length - check.missing.length;
-    var vwNow = { videoId: videoId, marks: parsed.marks };
-    var dirty = !existing || (existing.url || '') !== url.trim() || marksToText(existing) !== marksToText(vwNow);
+    var savedParts = pInfo.filter(function(pi){ return pi.videoId && Object.keys(pi.marks).length; })
+      .map(function(pi){ return { url: pi.url, videoId: pi.videoId, marks: pi.marks }; });
+    var vwNow = { parts: savedParts };
+    var badLink = pInfo.some(function(pi){ return pi.url && !pi.videoId; });
+    var noLinkWithMarks = pInfo.some(function(pi){ return !pi.videoId && Object.keys(pi.marks).length; });
+    function sig(ps){ return JSON.stringify((ps || []).map(function(p){ return [p.videoId, vwMarksToText(p.marks)]; })); }
+    var dirty = sig(WT.getParts(existing)) !== sig(savedParts) || (!existing && savedParts.length > 0);
+
+    function setPart(k, patch){ setParts(function(prev){ return prev.map(function(p, i){ return i === k ? Object.assign({}, p, patch) : p; }); }); }
+    function addPart(){ setParts(function(prev){ return prev.concat([{ url: '', text: '' }]); }); }
+    function removePart(k){
+      if(parts[k].text.trim() && !window.confirm('Xoá Video ' + (k + 1) + ' cùng các mốc của nó (chỉ xoá ở đây, bấm Lưu mới có hiệu lực)?')) return;
+      setParts(function(prev){ var n = prev.filter(function(_, i){ return i !== k; }); return n.length ? n : [{ url: '', text: '' }]; });
+    }
+    // Câu bắt đầu bấm mốc cho video k: câu đầu tiên CHƯA có mốc ở video khác (vd. Video 2 nối tiếp Video 1)
+    function startIndexFor(k){
+      for(var i = 0; i < sortedIdx.length; i++){
+        var o = owner[String(sortedIdx[i])];
+        if(o == null || o === k){ if(o == null) return sortedIdx[i]; }
+      }
+      return sortedIdx.length ? sortedIdx[0] : 1;
+    }
 
     async function save(){
-      if(!videoId){ props.fireToast('Link YouTube chưa đúng — dán lại link video.', true); return; }
-      if(!matched){ props.fireToast('Chưa có mốc nào khớp với câu của đề này.', true); return; }
+      if(badLink || noLinkWithMarks){ props.fireToast('Có video chưa dán đúng link YouTube — sửa lại trước khi lưu.', true); return; }
+      if(!savedParts.length || !matched){ props.fireToast('Chưa có mốc nào khớp với câu của đề này.', true); return; }
       if(check.missing.length && !window.confirm('Còn ' + check.missing.length + ' câu chưa có mốc (câu ' + check.missing.join(', ') + ') — các câu này sẽ KHÔNG hiện nút video cho học sinh. Vẫn lưu?')) return;
       setSaving(true);
       try{
-        var vw = { url: url.trim(), videoId: videoId, marks: parsed.marks, updatedAt: new Date().toISOString() };
+        var first = savedParts[0];
+        var vw = { parts: savedParts, url: first.url, videoId: first.videoId, marks: first.marks, updatedAt: new Date().toISOString() };
         await props.bankApi.updateVideoWalkthrough(exam.id, vw);
         props.onSaved(vw);
-        props.fireToast('Đã lưu video chữa đề (' + matched + '/' + indexes.length + ' câu có mốc).');
+        props.fireToast('Đã lưu video chữa đề: ' + savedParts.length + ' video, ' + matched + '/' + indexes.length + ' câu có mốc.');
       }catch(err){
         console.error('Lỗi lưu video chữa đề:', err);
         props.fireToast('Lưu video chữa đề thất bại — thử lại.', true);
       }finally{ setSaving(false); }
     }
     async function remove(){
-      if(!window.confirm('Gỡ video chữa đề khỏi đề này? Học sinh sẽ không còn thấy nút video.')) return;
+      if(!window.confirm('Gỡ TOÀN BỘ video chữa đề khỏi đề này? Học sinh sẽ không còn thấy nút video.')) return;
       setSaving(true);
       try{
         await props.bankApi.updateVideoWalkthrough(exam.id, null);
         props.onSaved(null);
-        setUrl(''); setText('');
+        setParts([{ url: '', text: '' }]);
         props.fireToast('Đã gỡ video chữa đề.');
       }catch(err){
         console.error('Lỗi gỡ video chữa đề:', err);
@@ -8110,49 +8255,75 @@
       var col = kind === 'bad' ? '#b91c1c' : (kind === 'warn' ? '#b45309' : '#15803d');
       return h('span', { style: { display: 'inline-block', fontSize: '0.78rem', fontWeight: 700, color: col, border: '1px solid ' + col, borderRadius: '999px', padding: '2px 10px', marginRight: '6px', marginBottom: '4px' } }, txt);
     };
-    var sortedIdx = indexes.slice().sort(function(a, b){ return a - b; });
+    var inputS = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '8px', fontSize: '0.88rem', marginBottom: '6px' };
 
     return h('div', { className: 'sm-info-block', style: { marginTop: '16px' } },
       h('div', { style: { fontWeight: 700, fontSize: '0.92rem', marginBottom: '4px' } }, '🎥 Video chữa đề'),
       h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', margin: '0 0 10px', lineHeight: 1.5 } },
-        'Đăng video lên YouTube ở chế độ "Không công khai" (Unlisted), để cho phép nhúng. Dán link và danh sách mốc như trong phần mô tả YouTube. Đoạn của mỗi câu chạy tới mốc của câu kế tiếp.'),
-      h('input', { type: 'url', value: url, placeholder: 'https://youtu.be/...', onChange: function(e){ setUrl(e.target.value); },
-        style: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '8px', fontSize: '0.88rem', marginBottom: '6px' } }),
-      url.trim() && !videoId ? h('div', { style: { fontSize: '0.78rem', color: '#b91c1c', marginBottom: '6px' } }, '⚠ Chưa nhận ra link YouTube.') : null,
-      h('textarea', { value: text, rows: 7, placeholder: '0:00 Câu 1\n1:25 Câu 2\n3:10 Câu 3', onChange: function(e){ setText(e.target.value); },
-        style: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: '8px', fontSize: '0.86rem', fontFamily: '"IBM Plex Mono",monospace', resize: 'vertical' } }),
+        'Đăng video lên YouTube ở chế độ "Không công khai" (Unlisted), cho phép nhúng. Quay làm nhiều lần thì bấm "➕ Thêm video" cho mỗi phần. Mốc: dán như mô tả YouTube, hoặc bấm "📍 Bấm mốc khi xem lại" để đánh dấu ngay trên video. Đoạn của mỗi câu chạy tới mốc của câu kế tiếp trong CÙNG video.'),
 
-      h('div', { style: { marginTop: '8px' } },
+      parts.map(function(p, k){
+        var pi = pInfo[k];
+        var cnt = Object.keys(pi.marks).length;
+        var mine = Object.keys(pi.marks).map(Number).sort(function(a, b){ return a - b; });
+        return h('div', { key: k, style: { border: '1px solid var(--line)', borderRadius: '10px', padding: '10px 12px', marginBottom: '10px', background: 'var(--surface)' } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' } },
+            h('b', { style: { fontSize: '0.88rem' } }, 'Video ' + (k + 1) + (cnt ? ' · ' + cnt + ' mốc' + (mine.length ? ' (Câu ' + mine[0] + (mine.length > 1 ? '–' + mine[mine.length - 1] : '') + ')' : '') : '')),
+            h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+              h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.8rem' }, disabled: !pi.videoId, title: pi.videoId ? '' : 'Dán link YouTube trước',
+                onClick: function(){ setMarker(k); } }, '📍 Bấm mốc khi xem lại'),
+              parts.length > 1 ? h('button', { type: 'button', className: 'sm-link-btn', onClick: function(){ removePart(k); } }, '🗑 Xoá video này') : null)),
+          h('input', { type: 'url', value: p.url, placeholder: 'https://youtu.be/...', onChange: function(e){ setPart(k, { url: e.target.value }); }, style: inputS }),
+          p.url.trim() && !pi.videoId ? h('div', { style: { fontSize: '0.78rem', color: '#b91c1c', marginBottom: '6px' } }, '⚠ Chưa nhận ra link YouTube.') : null,
+          h('textarea', { value: p.text, rows: 5, placeholder: k === 0 ? '0:00 Câu 1\n1:25 Câu 2\n3:10 Câu 3' : '0:00 Câu 15\n1:40 Câu 16', onChange: function(e){ setPart(k, { text: e.target.value }); },
+            style: Object.assign({}, inputS, { fontSize: '0.86rem', fontFamily: '"IBM Plex Mono",monospace', resize: 'vertical', marginBottom: 0 }) }),
+          pi.parsed.problems.length ? h('div', { style: { fontSize: '0.78rem', color: '#b91c1c', margin: '4px 0 0' } }, pi.parsed.problems.map(function(t, i){ return h('div', { key: i }, '⚠ ' + t); })) : null,
+          pi.parsed.ignored.length ? h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', margin: '4px 0 0' } }, pi.parsed.ignored.map(function(t, i){ return h('div', { key: i }, 'ℹ ' + t); })) : null
+        );
+      }),
+      h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, onClick: addPart }, '➕ Thêm video (phần tiếp theo)'),
+
+      h('div', { style: { marginTop: '10px' } },
         chip('Khớp ' + matched + '/' + indexes.length + ' câu', matched === indexes.length && indexes.length ? 'ok' : 'warn'),
         check.missing.length ? chip('Thiếu mốc: câu ' + check.missing.join(', '), 'bad') : null,
         check.extra.length ? chip('Mốc thừa (đề không có): câu ' + check.extra.join(', '), 'warn') : null
       ),
-      check.order.length ? h('div', { style: { fontSize: '0.78rem', color: '#b45309', margin: '4px 0' } }, check.order.map(function(t, i){ return h('div', { key: i }, '⚠ ' + t); })) : null,
-      parsed.problems.length ? h('div', { style: { fontSize: '0.78rem', color: '#b91c1c', margin: '4px 0' } }, parsed.problems.map(function(t, i){ return h('div', { key: i }, '⚠ ' + t); })) : null,
-      parsed.ignored.length ? h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', margin: '4px 0' } }, parsed.ignored.map(function(t, i){ return h('div', { key: i }, 'ℹ ' + t); })) : null,
+      dupProblems.length ? h('div', { style: { fontSize: '0.78rem', color: '#b91c1c', margin: '4px 0' } }, dupProblems.map(function(t, i){ return h('div', { key: i }, '⚠ ' + t); })) : null,
 
-      markCount ? h('div', { style: { marginTop: '10px', maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px' } },
+      Object.keys(allMarks).length ? h('div', { style: { marginTop: '10px', maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px' } },
         h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' } },
           h('tbody', null, sortedIdx.map(function(n){
             var seg = WT.getSegment(vwNow, n);
             return h('tr', { key: n, style: { borderBottom: '1px solid var(--line)' } },
               h('td', { style: { padding: '5px 10px', fontWeight: 700 } }, 'Câu ' + n),
+              h('td', { style: { padding: '5px 10px', color: 'var(--muted)' } }, seg && savedParts.length > 1 ? 'Video ' + seg.part : ''),
               h('td', { style: { padding: '5px 10px', fontFamily: '"IBM Plex Mono",monospace' } },
                 seg ? (WT.fmtClock(seg.start) + ' → ' + (seg.end != null ? WT.fmtClock(seg.end) : 'hết video')) : h('span', { style: { color: '#b91c1c' } }, 'thiếu mốc')),
               h('td', { style: { padding: '5px 10px', textAlign: 'right' } },
-                h('button', { type: 'button', className: 'sm-link-btn', disabled: !seg || !videoId,
-                  onClick: function(){ setPreview({ videoId: videoId, index: n, examTitle: exam.title, start: seg.start, end: seg.end }); } }, '▶ Xem thử'))
+                h('button', { type: 'button', className: 'sm-link-btn', disabled: !seg,
+                  onClick: function(){ setPreview({ videoId: seg.videoId, index: n, examTitle: exam.title, start: seg.start, end: seg.end }); } }, '▶ Xem thử'))
             );
           })))
       ) : null,
 
       h('div', { style: { marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
-        h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.85rem' }, disabled: saving || !videoId || !matched || !dirty, onClick: save },
+        h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.85rem' }, disabled: saving || !savedParts.length || !matched || !dirty, onClick: save },
           saving ? 'Đang lưu…' : (existing ? '💾 Cập nhật video' : '💾 Lưu video chữa đề')),
         existing ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, disabled: saving, onClick: remove }, '🗑 Gỡ video') : null,
         existing && !dirty ? h('span', { style: { fontSize: '0.78rem', color: '#15803d', fontWeight: 700 } }, '✓ Đã lưu') : null
       ),
-      preview ? WT.renderModal(h, preview, function(){ setPreview(null); }) : null
+      preview ? WT.renderModal(h, preview, function(){ setPreview(null); }) : null,
+      (marker != null && pInfo[marker] && pInfo[marker].videoId) ? h(VwMarkerModal, {
+        key: 'mk' + marker + pInfo[marker].videoId,
+        videoId: pInfo[marker].videoId,
+        label: 'Video ' + (marker + 1),
+        indexes: sortedIdx,
+        initialMarks: pInfo[marker].marks,
+        startIndex: startIndexFor(marker),
+        startAt: (function(){ var ms = pInfo[marker].marks, mx = null; Object.keys(ms).forEach(function(k){ if(mx == null || ms[k] > mx) mx = ms[k]; }); return mx || 0; })(),
+        onClose: function(){ setMarker(null); },
+        onApply: function(m){ setPart(marker, { text: vwMarksToText(m) }); setMarker(null); props.fireToast('Đã điền mốc vào Video ' + (marker + 1) + ' — kiểm tra rồi bấm Lưu.'); }
+      }) : null
     );
   }
 

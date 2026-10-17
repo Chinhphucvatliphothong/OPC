@@ -17,6 +17,14 @@
  * Đoạn của câu N: từ marks[N] đến mốc LỚN HƠN gần nhất của câu khác (câu kế
  * tiếp trong video). Câu có mốc lớn nhất -> phát tới hết video (không có end).
  *
+ * SỬA 17/10/2026 — NHIỀU VIDEO CHO 1 ĐỀ (quay làm nhiều lần):
+ *   videoWalkthrough: { parts: [ { url, videoId, marks:{ '1':0, '2':85 } },
+ *                                { url, videoId, marks:{ '15':0, '16':70 } } ],
+ *                       url, videoId, marks,   // = video đầu tiên (giữ cho bản cũ đọc được)
+ *                       updatedAt }
+ *   Mỗi câu thuộc ĐÚNG 1 video (video có mốc của câu đó); đoạn chỉ tính trong video đó.
+ *   Dữ liệu cũ (1 video, không có parts) vẫn đọc bình thường qua getParts().
+ *
  * TRA CỨU LÚC HIỂN THỊ (không copy vào câu hỏi): mã câu hỏi luôn là
  * examId + '_q' + q.index ở MỌI chế độ (transformQuestion trong
  * opc-live-data.js, toStudentQuestionShape trong admin.html) — kể cả đề đã
@@ -123,26 +131,42 @@
     return { missing: missing, extra: extra, order: order };
   }
 
+  // ---------- Các video của 1 đề (THÊM 17/10/2026) ----------
+  // Trả mảng [{ url, videoId, marks }] — đọc được cả dữ liệu mới (parts) lẫn cũ (1 video).
+  function getParts(vw){
+    if(!vw) return [];
+    if(Array.isArray(vw.parts) && vw.parts.length){
+      return vw.parts.filter(function(p){ return p && p.videoId && p.marks; });
+    }
+    if(vw.videoId && vw.marks) return [{ url: vw.url || '', videoId: vw.videoId, marks: vw.marks }];
+    return [];
+  }
+
   // ---------- Đoạn của 1 câu ----------
-  // vw = videoWalkthrough ; trả { start, end|null } hoặc null nếu câu thiếu mốc.
+  // vw = videoWalkthrough ; trả { start, end|null, videoId, part } hoặc null nếu câu thiếu mốc.
+  // SỬA 17/10/2026: tìm đúng video chứa mốc của câu; mốc kết thúc chỉ xét trong video đó.
   function getSegment(vw, index){
-    if(!vw || !vw.marks) return null;
-    var start = vw.marks[String(index)];
-    if(start == null || isNaN(Number(start))) return null;
-    start = Number(start);
-    var end = null;
-    Object.keys(vw.marks).forEach(function(k){
-      var t = Number(vw.marks[k]);
-      if(k !== String(index) && t > start && (end == null || t < end)) end = t;
-    });
-    return { start: start, end: end };
+    var parts = getParts(vw);
+    for(var pi = 0; pi < parts.length; pi++){
+      var marks = parts[pi].marks;
+      var start = marks[String(index)];
+      if(start == null || isNaN(Number(start))) continue;
+      start = Number(start);
+      var end = null;
+      Object.keys(marks).forEach(function(k){
+        var t = Number(marks[k]);
+        if(k !== String(index) && t > start && (end == null || t < end)) end = t;
+      });
+      return { start: start, end: end, videoId: parts[pi].videoId, part: pi + 1, partCount: parts.length };
+    }
+    return null;
   }
 
   // ---------- Bảng tra phía học sinh ----------
   var registry = {}; // examId -> { title, vw }
   function register(examId, title, vw){
     if(!examId) return;
-    if(vw && vw.videoId && vw.marks) registry[examId] = { title: title || '', vw: vw };
+    if(getParts(vw).length) registry[examId] = { title: title || '', vw: vw }; // SỬA 17/10/2026 — nhận cả nhiều video
     else delete registry[examId];
   }
   function clearRegistry(){ registry = {}; }
@@ -164,9 +188,11 @@
     if(!seg) return null;
     var examTitle = rec.title || (q && q.examTitle) || '';
     return {
-      videoId: rec.vw.videoId, index: ref.index, examId: ref.examId, examTitle: examTitle,
-      start: seg.start, end: seg.end,
-      buttonText: '🎥 Thầy chữa câu này — trong video là Câu ' + ref.index + ', đề ' + examTitle + ' (' + (seg.start > 0 ? fmtVi(seg.start) : 'từ đầu video') + ')'
+      videoId: seg.videoId, index: ref.index, examId: ref.examId, examTitle: examTitle,
+      start: seg.start, end: seg.end, part: seg.part, partCount: seg.partCount,
+      buttonText: '🎥 Thầy chữa câu này — trong video là Câu ' + ref.index + ', đề ' + examTitle +
+        (seg.partCount > 1 ? ' · video ' + seg.part + '/' + seg.partCount : '') +
+        ' (' + (seg.start > 0 ? fmtVi(seg.start) : 'từ đầu video') + ')'
     };
   }
 
@@ -425,6 +451,7 @@
     parseTime: parseTime, fmtClock: fmtClock, fmtVi: fmtVi,
     parseYouTubeId: parseYouTubeId, embedUrl: embedUrl, watchUrl: watchUrl,
     parseMarks: parseMarks, checkMarks: checkMarks, getSegment: getSegment,
+    getParts: getParts, loadYouTubeApi: loadYouTubeApi, // THÊM 17/10/2026
     register: register, clearRegistry: clearRegistry, splitQuestionId: splitQuestionId,
     forQuestion: forQuestion, renderModal: renderModal
   };
