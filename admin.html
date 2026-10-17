@@ -7,6 +7,12 @@
 <title>FaradayAI Quản Lý Học Sinh &amp; Ngân Hàng Đề</title>
 <!-- THÊM 13/10/2026 — trang quản trị: không cho Google lập chỉ mục -->
 <meta name="robots" content="noindex, nofollow">
+<!-- THÊM 17/10/2026 — iPad: "Thêm vào Màn hình chính" trang admin để mở như app (không thanh địa chỉ Safari) — dạy toàn màn hình -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FaradayAI GV">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <!-- THÊM 1/10/2026 — favicon FaradayAI -->
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -362,8 +368,14 @@
   .sm-overlay.hv-overlay{ z-index:1200; }
   .sm-modal.sm-modal-review{ max-width:880px; padding:22px; }
   /* THÊM 16/10/2026 — Phòng dạy: chế độ TOÀN MÀN HÌNH (giảng qua Meet dễ nhìn) + phóng chữ A−/A+ */
-  .sm-overlay.tr-fs-ov{ padding:0; backdrop-filter:none; }
-  .sm-modal.sm-modal-review.tr-fs{ max-width:none; width:100vw; height:100vh; max-height:none; border-radius:0; padding:16px 4vw 28px; }
+  .sm-overlay.tr-fs-ov{ padding:0; backdrop-filter:none; align-items:stretch; overscroll-behavior:contain; }
+  .sm-modal.tr-fs{ max-width:none; width:100vw; height:100vh; height:100dvh; max-height:none; border-radius:0;
+    padding:max(16px, env(safe-area-inset-top)) max(4vw, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(4vw, env(safe-area-inset-left));
+    overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+  html.tr-fs-lock, html.tr-fs-lock body{ overflow:hidden; overscroll-behavior:none; }
+  /* SỬA 17/10/2026 — Hồ sơ học sinh toàn màn hình: nội dung giữa màn, phóng to cả khối bằng A−/A+ */
+  .sm-modal.sm-modal-profile.tr-fs > *{ max-width:1100px; margin-left:auto; margin-right:auto; zoom: var(--trz, 1.15); }
+  .sm-modal.sm-modal-profile.tr-fs > .sm-modal-head{ zoom:1; }
   .tr-fs .hv-text{ font-size:calc(0.92rem * var(--trz,1.25)); line-height:1.75; }
   .tr-fs .hv-opt{ font-size:calc(0.9rem * var(--trz,1.25)); padding:10px 14px; }
   .tr-fs .hv-passage{ font-size:calc(0.86rem * var(--trz,1.25)); }
@@ -5277,6 +5289,10 @@
     var reviewState = React.useState(null); var reviewAttempt = reviewState[0], setReviewAttempt = reviewState[1];
     var paperEntryState = React.useState(null); var paperEntry = paperEntryState[0], setPaperEntry = paperEntryState[1]; // THÊM 12/10/2026
     var histAllState = React.useState(false); var histAll = histAllState[0], setHistAll = histAllState[1];
+    // THÊM 17/10/2026 — Hồ sơ học sinh: nút ⛶ Toàn màn hình + A−/A+ (dùng chung useTeachFullscreen của Phòng dạy)
+    var profModalElState = React.useState(null); var profModalEl = profModalElState[0], setProfModalEl = profModalElState[1];
+    var profFs = useTeachFullscreen(profModalEl, null, null, { zoomKey: 'opc-prof-zoom', zoomDefault: 1.15, cssOnly: true }); // cssOnly: hồ sơ còn mở các cửa sổ con (xem lại bài, nhập bài giấy…) — toàn màn hình thật sẽ che mất chúng
+    React.useEffect(function(){ if(!selected && profFs.fs) profFs.exit(); }, [selected && selected.id]);
     React.useEffect(function(){
       setReviewAttempt(null); setHistAll(false);
       if(!selected || !selected.id || !OPCref){ setSelectedAssigned([]); setSelectedAttempts([]); return; }
@@ -6032,10 +6048,11 @@
       predictedScore: selLivePred.predicted, prediction: window.PrepScholarEngine.compactPrediction(selLivePred) }) : selected) : null;
     var nanoPreview = selected ? pickWeakNanoPoints(selected) : [];
     var nanoTestedCount = selected && selected.nanoMastery ? Object.keys(selected.nanoMastery).filter(function(id){ return typeof selected.nanoMastery[id] === 'number'; }).length : 0;
-    var detailModal = selected ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget) setSelected(null); }},
-      h('div',{className:'sm-modal', role:'dialog', 'aria-modal':'true', 'aria-label':'Hồ sơ học sinh'},
+    var detailModal = selected ? h('div',{className:'sm-overlay' + profFs.overlayClass, onClick:function(e){ if(e.target===e.currentTarget && !profFs.fs) setSelected(null); }},
+      h('div',{className:'sm-modal sm-modal-profile' + profFs.modalClass, style: profFs.modalStyle, ref: setProfModalEl, role:'dialog', 'aria-modal':'true', 'aria-label':'Hồ sơ học sinh'},
         h('div',{className:'sm-modal-head'}, h('h3',null,'Hồ sơ học sinh & KPI'),
-          h('button',{type:'button', className:'sm-modal-close', onClick:function(){ setSelected(null); }}, h(IconClose))),
+          h('div',{style:{display:'flex', alignItems:'center'}}, profFs.controls,
+            h('button',{type:'button', className:'sm-modal-close', onClick:function(){ setSelected(null); }}, h(IconClose)))),
         h('div',{className:'sm-profile-head'}, h('div',{className:'sm-profile-avatar'}, initials(selected.name)), h('h4',null, selected.name), h('p',null, selected.school)),
         h('div',{className:'sm-stat-grid'},
           h('div',null, h('div',{className:'sm-stat-label'},'Đã làm'), h('div',{className:'sm-stat-value'}, (selected.completedExamsCount||0)+' đề')),
@@ -7375,14 +7392,25 @@
 
   // THÊM 16/10/2026 — TOÀN MÀN HÌNH cho màn giảng (Phòng dạy): dùng Fullscreen API trên chính khung giảng (iPad: bản webkit);
   // trình duyệt không cho thì vẫn phủ kín cửa sổ bằng CSS. A−/A+ phóng chữ đề, ←/→ trên bàn phím để chuyển câu.
-  function useTeachFullscreen(modalEl, onPrev, onNext){
+  // SỬA 17/10/2026 — iPad/iPhone: KHÔNG dùng Fullscreen API của Safari nữa (vuốt/cuộn lên là iPadOS tự thoát toàn màn hình,
+  // rất khó chịu khi đang dạy). Thay bằng chế độ "phủ kín cửa sổ" bằng CSS — không bao giờ tự thoát. Muốn ẩn luôn thanh địa
+  // chỉ của Safari: "Thêm vào Màn hình chính" rồi mở FaradayAI từ biểu tượng đó. Máy tính (Chrome/Edge…) vẫn dùng toàn màn hình thật.
+  // opts: { zoomKey, zoomDefault } — dùng chung cho Hồ sơ học sinh.
+  var IS_IOS = (function(){
+    try{ var ua = navigator.userAgent || ''; return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }catch(e){ return false; }
+  })();
+  function useTeachFullscreen(modalEl, onPrev, onNext, opts){
+    opts = opts || {};
+    var zKey = opts.zoomKey || 'opc-tr-zoom', zDef = opts.zoomDefault || 1.25;
     var fsState = React.useState(false); var fs = fsState[0], setFs = fsState[1];
-    var zState = React.useState(function(){ try{ return Number(localStorage.getItem('opc-tr-zoom')) || 1.25; }catch(e){ return 1.25; } });
+    var zState = React.useState(function(){ try{ return Number(localStorage.getItem(zKey)) || zDef; }catch(e){ return zDef; } });
     var zoom = zState[0], setZoomRaw = zState[1];
-    function setZoom(z){ z = Math.max(1, Math.min(2.2, Math.round(z * 100) / 100)); setZoomRaw(z); try{ localStorage.setItem('opc-tr-zoom', String(z)); }catch(e){} }
+    function setZoom(z){ z = Math.max(0.8, Math.min(2.2, Math.round(z * 100) / 100)); setZoomRaw(z); try{ localStorage.setItem(zKey, String(z)); }catch(e){} }
     function nativeEl(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
     function enter(){
       setFs(true);
+      document.documentElement.classList.add('tr-fs-lock'); // khoá cuộn trang phía sau (không "kéo" cả trang khi vuốt)
+      if(IS_IOS || opts.cssOnly) return;
       var el = modalEl;
       try{
         if(el && el.requestFullscreen) el.requestFullscreen().catch(function(){});
@@ -7391,19 +7419,22 @@
     }
     function exit(){
       setFs(false);
+      document.documentElement.classList.remove('tr-fs-lock');
       try{
         if(nativeEl()){ if(document.exitFullscreen) document.exitFullscreen().catch(function(){}); else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }
       }catch(e){}
     }
     React.useEffect(function(){
-      function onChange(){ if(!nativeEl()) setFs(false); }
+      function onChange(){ if(!nativeEl() && !IS_IOS && !opts.cssOnly){ setFs(false); document.documentElement.classList.remove('tr-fs-lock'); } }
       document.addEventListener('fullscreenchange', onChange); document.addEventListener('webkitfullscreenchange', onChange);
-      return function(){ document.removeEventListener('fullscreenchange', onChange); document.removeEventListener('webkitfullscreenchange', onChange); if(nativeEl()){ try{ (document.exitFullscreen || document.webkitExitFullscreen).call(document); }catch(e){} } };
+      return function(){ document.documentElement.classList.remove('tr-fs-lock'); document.removeEventListener('fullscreenchange', onChange); document.removeEventListener('webkitfullscreenchange', onChange); if(nativeEl()){ try{ (document.exitFullscreen || document.webkitExitFullscreen).call(document); }catch(e){} } };
     }, []);
     var navRef = React.useRef({}); navRef.current = { prev: onPrev, next: onNext };
+    var fsRef = React.useRef(false); fsRef.current = fs;
     React.useEffect(function(){
       function onKey(e){
         var t = e.target && e.target.tagName; if(/INPUT|TEXTAREA|SELECT/.test(t || '')) return;
+        if(e.key === 'Escape' && fsRef.current && (IS_IOS || opts.cssOnly)){ exit(); return; }
         if(e.key === 'ArrowLeft' && navRef.current.prev){ e.preventDefault(); navRef.current.prev(); }
         else if(e.key === 'ArrowRight' && navRef.current.next){ e.preventDefault(); navRef.current.next(); }
       }
@@ -7414,8 +7445,8 @@
       fs ? h('button', { type: 'button', title: 'Chữ nhỏ lại', onClick: function(){ setZoom(zoom - 0.15); } }, 'A−') : null,
       fs ? h('button', { type: 'button', title: 'Chữ to hơn', onClick: function(){ setZoom(zoom + 0.15); } }, 'A+') : null,
       (window.OPC_TOOLS && window.OPC_TOOLS.toggleCalc) ? h('button', { type: 'button', title: 'Máy tính khoa học nổi', onClick: function(){ window.OPC_TOOLS.toggleCalc(); } }, '🧮') : null,
-      h('button', { type: 'button', title: fs ? 'Thoát toàn màn hình (Esc)' : 'Xem toàn màn hình để giảng', onClick: function(){ if(fs) exit(); else enter(); } }, fs ? '🗗 Thoát' : '⛶ Toàn màn hình'));
-    return { fs: fs, zoom: zoom, controls: controls,
+      h('button', { type: 'button', title: fs ? 'Thoát toàn màn hình (Esc)' : (IS_IOS ? 'Phủ kín màn hình (mẹo: Thêm FaradayAI vào Màn hình chính để ẩn cả thanh địa chỉ Safari)' : 'Xem toàn màn hình'), onClick: function(){ if(fs) exit(); else enter(); } }, fs ? '🗗 Thoát' : '⛶ Toàn màn hình'));
+    return { fs: fs, zoom: zoom, controls: controls, exit: exit,
       modalClass: fs ? ' tr-fs' : '', overlayClass: fs ? ' tr-fs-ov' : '', modalStyle: fs ? { '--trz': zoom } : undefined };
   }
 
