@@ -840,28 +840,6 @@
         var refDoc = doc(collection(db, 'students', studentId, 'assignedExams'));
         await setDoc(refDoc, Object.assign({}, examData, { createdAt: serverTimestamp() }));
         return refDoc;
-      },
-      // THÊM 17/10/2026 — SỬA ĐÁP ÁN LAN SANG ĐỀ ĐÃ GIAO. Đề giao cho học sinh lưu BẢN SAO câu hỏi
-      // (students/{id}/assignedExams/{id}.questions), nên sửa đáp án ở ngân hàng không tự sửa các bản sao đó.
-      // Hàm này quét mọi học sinh, thay options/shortans của câu có mã qId trong mọi đề đã giao.
-      // Trả { exams, students } = số đề / số học sinh đã cập nhật. KHÔNG chấm lại các lượt đã nộp.
-      patchQuestionEverywhere: async function(qId, patch){
-        var stuSnap = await getDocs(collection(db, 'students'));
-        var nExams = 0, nStudents = 0;
-        for(var i = 0; i < stuSnap.docs.length; i++){
-          var sid = stuSnap.docs[i].id, touched = false;
-          var aeSnap = await getDocs(collection(db, 'students', sid, 'assignedExams'));
-          for(var j = 0; j < aeSnap.docs.length; j++){
-            var d = aeSnap.docs[j], data = d.data() || {};
-            var qs = Array.isArray(data.questions) ? data.questions : [];
-            if(!qs.some(function(x){ return x && x.id === qId; })) continue;
-            var nqs = qs.map(function(x){ return (x && x.id === qId) ? Object.assign({}, x, patch) : x; });
-            await updateDoc(doc(db, 'students', sid, 'assignedExams', d.id), { questions: nqs });
-            nExams++; touched = true;
-          }
-          if(touched) nStudents++;
-        }
-        return { exams: nExams, students: nStudents };
       }
     };
 
@@ -899,6 +877,35 @@
       save: function(studentId, rec){
         return setDoc(doc(db, 'students', studentId, 'attempts', String(rec.clientId)), rec);
       }
+    };
+
+    // THÊM 17/10/2026 — SỬA CÂU HỎI Ở NGÂN HÀNG → SỬA LAN + CHẤM LẠI (xem rescoreAfterQuestionFix).
+    // Đề đã giao (students/{id}/assignedExams) và bài kiểm tra lớp (class_tests) lưu BẢN SAO câu hỏi,
+    // nên phải quét và sửa từng bản sao; lượt làm bài (attempts) được chấm lại bằng đáp án mới.
+    OPC.qfix = {
+      listStudents: async function(){
+        var snap = await getDocs(collection(db, 'students'));
+        return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); });
+      },
+      listAssigned: async function(studentId){
+        var snap = await getDocs(collection(db, 'students', studentId, 'assignedExams'));
+        return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); });
+      },
+      setAssignedQuestions: function(studentId, aeId, questions){
+        return updateDoc(doc(db, 'students', studentId, 'assignedExams', aeId), { questions: questions });
+      },
+      listAttempts: async function(studentId){ // TẤT CẢ lượt (không giới hạn 100)
+        var snap = await getDocs(collection(db, 'students', studentId, 'attempts'));
+        return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); });
+      },
+      patchAttempt: function(studentId, attemptId, patch){
+        return updateDoc(doc(db, 'students', studentId, 'attempts', attemptId), patch);
+      },
+      listClassTests: async function(){
+        var snap = await getDocs(collection(db, 'class_tests'));
+        return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); });
+      },
+      patchClassTest: function(id, patch){ return updateDoc(doc(db, 'class_tests', id), patch); }
     };
 
     // THÊM 16/10/2026 — em đã xem video thầy chữa câu nào (students/{id}/videoViews/{examId_qN}, học sinh tự ghi
@@ -8066,6 +8073,117 @@
   // field này không có examKind -> mọi chỗ đọc phải coi thiếu field = 'nganHang'.
   function blankExamForm(){ return {title:'', chuDe: CHU_DE_LIST[0], bai:'', mucDo: 2, examKind: 'nganHang'}; }
 
+  // ================= THÊM 17/10/2026 — SỬA CÂU Ở NGÂN HÀNG → SỬA LAN + CHẤM LẠI ĐIỂM =================
+  // examNew: đề (ngân hàng) SAU khi sửa · qIndex: số câu vừa sửa · doRescore: đáp án có đổi không
+  // allExams: toàn bộ đề trong ngân hàng (để dựng lại câu của các lượt luyện tập lấy câu từ ngân hàng).
+  // 1) Sửa bản sao câu này trong: đề đã giao từng em (cá nhân / cả lớp / phiếu ôn) và bài kiểm tra lớp.
+  // 2) Nếu đáp án đổi: chấm lại MỌI lượt đã nộp có câu này (online, đề giao, bài giấy/kiểm tra lớp) bằng
+  //    scoreExam với đúng bộ câu của lượt đó; cập nhật điểm, danh sách câu đúng/sai, điểm trong bài kiểm tra lớp,
+  //    rồi tính lại số liệu tổng hợp (student_stats) của em bị đổi điểm. Mỗi lượt ghi rescoreLog (điểm cũ → mới).
+  // Lượt làm dở (partial) và lượt cũ không lưu đáp án (answers) thì bỏ qua.
+  async function rescoreAfterQuestionFix(examNew, qIndex, doRescore, allExams, onProgress){
+    var OPCx = window.OPC, NE = window.PrepScholarEngine;
+    var report = { copiesAe: 0, copiesCt: 0, rescored: [], unchanged: 0, skipped: 0, students: 0, doRescore: doRescore };
+    if(!OPCx || !OPCx.qfix || !NE) return report;
+    var qId = examNew.id + '_q' + qIndex;
+    var bankQ = (examNew.questions || []).filter(function(x){ return String(x.index) === String(qIndex); })[0];
+    if(!bankQ) return report;
+    var fresh = toStudentQuestionShape(bankQ, examNew.id, examNew.title, examNew.images || []);
+    function merge(old){
+      var o = Object.assign({}, old, { stem: fresh.stem, loiGiai: fresh.loiGiai });
+      // dọn trường thừa do bản 17/10 (sáng) ghi nhầm kiểu ngân hàng vào bản sao (options có isTrue / shortans)
+      if(fresh.statements){ o.statements = fresh.statements; delete o.options; delete o.shortans; }
+      else if(bankQ.type === 'shortans'){ o.correctAnswer = fresh.correctAnswer; o.tolerance = fresh.tolerance; delete o.shortans; delete o.options; }
+      else if(fresh.options){ o.options = fresh.options; o.correctKey = fresh.correctKey; }
+      return o;
+    }
+    function patchList(qs){
+      var hit = false;
+      var out = (qs || []).map(function(x){ if(x && x.id === qId){ hit = true; return merge(x); } return x; });
+      return hit ? out : null;
+    }
+    var examMap = {};
+    (allExams || []).forEach(function(x){ examMap[x.id] = x; });
+    examMap[examNew.id] = examNew;
+    var shapeCache = {};
+    function bankShape(id){
+      if(Object.prototype.hasOwnProperty.call(shapeCache, id)) return shapeCache[id];
+      var m = String(id).match(/^(.+)_q(\d+)$/), r = null;
+      if(m){
+        var ex = examMap[m[1]];
+        var bq = ex && (ex.questions || []).filter(function(x){ return String(x.index) === m[2]; })[0];
+        if(bq) r = toStudentQuestionShape(bq, ex.id, ex.title, ex.images || []);
+      }
+      shapeCache[id] = r; return r;
+    }
+
+    // Bài kiểm tra lớp
+    var tests = await OPCx.qfix.listClassTests(), testMap = {};
+    for(var ti = 0; ti < tests.length; ti++){
+      var t = tests[ti]; testMap[t.id] = t;
+      var nq = patchList(t.questions);
+      if(nq){ await OPCx.qfix.patchClassTest(t.id, { questions: nq }); t.questions = nq; report.copiesCt++; }
+    }
+
+    var students = await OPCx.qfix.listStudents();
+    for(var si = 0; si < students.length; si++){
+      var st = students[si];
+      if(onProgress) onProgress(si + 1, students.length);
+      var aes = await OPCx.qfix.listAssigned(st.id), aeMap = {};
+      for(var ai = 0; ai < aes.length; ai++){
+        var ae = aes[ai]; aeMap[ae.id] = ae;
+        var nqa = patchList(ae.questions);
+        if(nqa){ await OPCx.qfix.setAssignedQuestions(st.id, ae.id, nqa); ae.questions = nqa; report.copiesAe++; }
+      }
+      if(!doRescore) continue;
+      var atts = await OPCx.qfix.listAttempts(st.id), changed = false;
+      for(var k = 0; k < atts.length; k++){
+        var a = atts[k];
+        if(!a || a.partial || !a.answers || a.type === 'ping') continue;
+        var ids = (Array.isArray(a.questionIds) && a.questionIds.length) ? a.questionIds.slice() : (function(){
+          var seen = {}, out = [];
+          Object.keys(a.answers).concat((a.wrongQuestions || []).map(function(r){ return r && r.qId; }), (a.rightQuestions || []).map(function(r){ return r && r.qId; }))
+            .forEach(function(id){ if(id && !seen[id]){ seen[id] = 1; out.push(id); } });
+          return out;
+        })();
+        if(ids.indexOf(qId) < 0) continue;
+        var src = null;
+        if(a.assignedExamId && aeMap[a.assignedExamId]) src = aeMap[a.assignedExamId].questions;
+        else if(a.classTestId && testMap[a.classTestId] && (testMap[a.classTestId].questions || []).length) src = testMap[a.classTestId].questions;
+        var byId = {}; (src || []).forEach(function(x){ if(x && x.id) byId[x.id] = x; });
+        var qs = [], miss = 0;
+        ids.forEach(function(id){ var x = byId[id] || bankShape(id); if(x) qs.push(x); else miss++; });
+        if(miss || !qs.length){ report.skipped++; continue; }
+        var sc = NE.scoreExam(qs, a.answers);
+        var oldScore = typeof a.scaledScore10 === 'number' ? a.scaledScore10 : null;
+        if(oldScore != null && Math.abs(sc.scaledScore10 - oldScore) < 0.005 && sc.correctCount === a.correctCount){ report.unchanged++; continue; }
+        var lists = paperBuildLists(sc), nowIso = new Date().toISOString();
+        await OPCx.qfix.patchAttempt(st.id, a.id, paperClean({
+          scaledScore10: sc.scaledScore10, correctCount: sc.correctCount, totalQuestions: sc.totalQuestions, topicStats: sc.topicStats,
+          wrongQuestions: lists.wrongQuestions, rightQuestions: lists.rightQuestions, rescoredAt: nowIso,
+          rescoreLog: (Array.isArray(a.rescoreLog) ? a.rescoreLog : []).concat([{ at: nowIso, qId: qId, from: oldScore, to: sc.scaledScore10 }]).slice(-10)
+        }));
+        var tt = a.classTestId ? testMap[a.classTestId] : null;
+        if(tt && tt.results && tt.results[st.id] && OPCx.classTests && OPCx.classTests.setResult){
+          var nr = Object.assign({}, tt.results[st.id], { score: sc.scaledScore10, correct: sc.correctCount, total: sc.totalQuestions });
+          await OPCx.classTests.setResult(tt.id, st.id, paperClean(nr));
+          tt.results[st.id] = nr;
+        }
+        report.rescored.push({ name: st.name || st.id, title: a.examTitle || HV_TYPE_LABEL_SAFE(a.type), from: oldScore, to: sc.scaledScore10, at: a.createdAt });
+        changed = true;
+      }
+      if(changed){
+        report.students++;
+        try{ await paperRefreshStats(st.id); }catch(e){ console.warn('Chưa cập nhật số liệu tổng hợp của ' + st.name, e); }
+      }
+    }
+    return report;
+  }
+  function HV_TYPE_LABEL_SAFE(t){
+    var m = { diagnostic: 'Kiểm tra đầu vào', adaptive: 'Luyện tập thích ứng', drill: 'Luyện trọng tâm', exam: 'Thi thử', mock: 'Thi thử', assigned: 'Đề được giao', mistakes: 'Sửa câu sai', paper: 'Bài làm giấy' };
+    return m[t] || 'Luyện tập';
+  }
+
   // ================= VIDEO CHỮA ĐỀ GẮN MỐC THỜI GIAN =================
   // THÊM 1/10/2026 — khối trong "Chi tiết đề" (tab Tổng quan). Thầy dán link
   // YouTube (chế độ "Không công khai") + danh sách mốc kiểu mô tả YouTube
@@ -8441,11 +8559,25 @@
 
     function startEditAnswer(q){
       setEditingQIndex(q.index);
+      // SỬA 17/10/2026 — sửa được cả nội dung đề bài, chữ từng phương án/ý và lời giải (không chỉ đáp án)
       setEditDraft({
+        stem: q.stem || q.raw || '',
+        loigiai: q.loigiai || '',
         options: (q.options || []).map(function(o){ return Object.assign({}, o); }),
         shortans: q.shortans || ''
       });
     }
+    function setDraftField(key, val){
+      setEditDraft(function(prev){ if(!prev) return prev; var n = Object.assign({}, prev); n[key] = val; return n; });
+    }
+    function setDraftOptionText(key, text){
+      setEditDraft(function(prev){
+        if(!prev) return prev;
+        return Object.assign({}, prev, { options: prev.options.map(function(o){ return o.key === key ? Object.assign({}, o, { text: text }) : o; }) });
+      });
+    }
+    // THÊM 17/10/2026 — kết quả sửa lan + chấm lại (hiện trong hộp thoại)
+    var fixReportState = React.useState(null); var fixReport = fixReportState[0], setFixReport = fixReportState[1];
     function cancelEditAnswer(){
       setEditingQIndex(null);
       setEditDraft(null);
@@ -8471,49 +8603,61 @@
     }
     async function saveAnswerEdit(q){
       if(!editDraft || !selected) return;
-      if(q.type !== 'shortans' && !editDraft.options.some(function(o){ return o.isTrue; })){
-        props.fireToast('Cần chọn ít nhất 1 đáp án đúng trước khi lưu.', true);
+      if(q.type !== 'shortans' && (q.type === 'choice' || q.type === 'choiceTF') && !editDraft.options.some(function(o){ return o.isTrue; }) && q.type === 'choice'){
+        props.fireToast('Cần chọn 1 đáp án đúng trước khi lưu.', true);
         return;
       }
       if(q.type === 'shortans' && !String(editDraft.shortans || '').trim()){
         props.fireToast('Đáp án không được để trống.', true);
         return;
       }
+      if(!String(editDraft.stem || '').trim()){
+        props.fireToast('Nội dung câu hỏi không được để trống.', true);
+        return;
+      }
+      // Đáp án có đổi không (đổi thì phải chấm lại điểm các lượt đã làm)
+      var answerChanged;
+      if(q.type === 'shortans') answerChanged = String(q.shortans || '').trim() !== String(editDraft.shortans || '').trim();
+      else answerChanged = (q.options || []).some(function(o){
+        var d = editDraft.options.filter(function(x){ return x.key === o.key; })[0];
+        return !d || !!d.isTrue !== !!o.isTrue;
+      });
       setSavingAnswer(true);
       try{
         var newQuestions = (selected.questions || []).map(function(qq){
           if(qq.index !== q.index) return qq;
           var updated = Object.assign({}, qq);
+          updated.stem = editDraft.stem; // SỬA 17/10/2026
+          updated.loigiai = editDraft.loigiai;
           if(qq.type === 'shortans'){
             updated.shortans = editDraft.shortans.trim();
-          } else {
+          } else if(qq.options){
             updated.options = editDraft.options;
           }
+          updated.editedAt = new Date().toISOString();
           return updated;
         });
         await bankApi.updateQuestions(selected.id, newQuestions);
+        var examNew = Object.assign({}, selected, { questions: newQuestions });
         setSelected(function(prev){ return prev ? Object.assign({}, prev, { questions: newQuestions }) : prev; });
         setExams(function(prev){ return prev.map(function(x){ return x.id === selected.id ? Object.assign({}, x, { questions: newQuestions }) : x; }); });
         setEditingQIndex(null);
         setEditDraft(null);
-        props.fireToast('Đã cập nhật đáp án câu ' + q.index + ' trong ngân hàng. Đang sửa tiếp ở các đề đã giao…');
-        // THÊM 17/10/2026 — sửa luôn bản sao câu này trong các đề đã giao cho học sinh
+        // THÊM 17/10/2026 — sửa lan sang đề đã giao / bài kiểm tra lớp + chấm lại nếu đáp án đổi
+        setFixReport({ running: true, qIndex: q.index, title: selected.title, answerChanged: answerChanged, done: 0, total: 0 });
         try{
-          var OPCx = window.OPC;
-          if(OPCx && OPCx.assignedExams && OPCx.assignedExams.patchQuestionEverywhere){
-            var patch = q.type === 'shortans' ? { shortans: editDraft.shortans.trim() } : { options: editDraft.options };
-            var r = await OPCx.assignedExams.patchQuestionEverywhere(selected.id + '_q' + q.index, patch);
-            props.fireToast(r.exams
-              ? 'Đã sửa đáp án câu ' + q.index + ' ở ngân hàng và ' + r.exams + ' đề đã giao (' + r.students + ' học sinh). Điểm các lượt đã nộp trước đó KHÔNG tự chấm lại.'
-              : 'Đã sửa đáp án câu ' + q.index + '. Câu này chưa nằm trong đề đã giao nào.');
-          }
+          var allEx = exams.map(function(x){ return x.id === examNew.id ? examNew : x; });
+          var r = await rescoreAfterQuestionFix(examNew, q.index, answerChanged, allEx, function(d, t){
+            setFixReport(function(prev){ return prev ? Object.assign({}, prev, { done: d, total: t }) : prev; });
+          });
+          setFixReport(Object.assign({ running: false, qIndex: q.index, title: selected.title, answerChanged: answerChanged }, r));
         }catch(e2){
-          console.error('Lỗi sửa đáp án ở đề đã giao:', e2);
-          props.fireToast('Đã sửa ở ngân hàng, nhưng chưa sửa được ở các đề đã giao — thử lưu lại lần nữa.', true);
+          console.error('Lỗi sửa lan / chấm lại:', e2);
+          setFixReport({ running: false, error: true, qIndex: q.index, title: selected.title });
         }
       }catch(err){
-        console.error('Lỗi cập nhật đáp án:', err);
-        props.fireToast('Lưu đáp án thất bại — thử lại.', true);
+        console.error('Lỗi cập nhật câu hỏi:', err);
+        props.fireToast('Lưu câu hỏi thất bại — thử lại.', true);
       }finally{
         setSavingAnswer(false);
       }
@@ -9373,6 +9517,13 @@
                       editingQIndex === q.index ? (
                         // ===== Chế độ sửa đáp án =====
                         h('div',{className:'eb-answer-edit'},
+                          // THÊM 17/10/2026 — sửa nội dung đề bài (LaTeX như trong file .tex)
+                          h('div',{className:'sm-field', style:{marginBottom:'10px'}},
+                            h('label',null,'Nội dung câu hỏi (LaTeX):'),
+                            h('textarea',{rows:5, value: editDraft ? editDraft.stem : '', onChange:function(e){ setDraftField('stem', e.target.value); },
+                              style:{width:'100%', boxSizing:'border-box', fontFamily:'"IBM Plex Mono",monospace', fontSize:'0.82rem', padding:'8px', border:'1px solid var(--line)', borderRadius:'8px', background:'var(--surface)', color:'inherit', resize:'vertical'}})),
+                          (q.type === 'choice' || q.type === 'choiceTF') ? h('div',{style:{fontSize:'0.78rem', color:'var(--ink-2)', margin:'0 0 4px'}},
+                            q.type === 'choiceTF' ? 'Tích ô = ý ĐÚNG; bỏ tích = ý SAI. Sửa chữ của từng ý ngay trong ô.' : 'Chọn nút tròn = đáp án đúng. Sửa chữ của từng phương án ngay trong ô.') : null,
                           q.type === 'shortans' ? h('div',{className:'sm-field'},
                             h('label',null,'Đáp án đúng (điền số ngắn):'),
                             h('input',{type:'text', value: editDraft ? editDraft.shortans : '', onChange:function(e){ setDraftShortans(e.target.value); }})
@@ -9386,12 +9537,20 @@
                                   onChange: function(){ if(q.type === 'choiceTF'){ toggleDraftTF(opt.key); } else { setDraftCorrectChoice(opt.key); } }
                                 }),
                                 h('span',{className:'eb-q-opt-key'}, opt.key + '.'),
-                                h('span',{style:{flex:1}}, opt.text)
+                                editDraft ? h('input',{type:'text', value: opt.text || '', onClick:function(e){ e.preventDefault(); e.stopPropagation(); }, onChange:function(e){ setDraftOptionText(opt.key, e.target.value); },
+                                  style:{flex:1, minWidth:0, fontFamily:'"IBM Plex Mono",monospace', fontSize:'0.82rem', padding:'4px 6px', border:'1px solid var(--line)', borderRadius:'6px', background:'var(--surface)', color:'inherit'}})
+                                  : h('span',{style:{flex:1}}, opt.text)
                               );
                             })
                           ),
+                          h('div',{className:'sm-field', style:{marginTop:'10px'}},
+                            h('label',null,'Lời giải (LaTeX):'),
+                            h('textarea',{rows:5, value: editDraft ? editDraft.loigiai : '', onChange:function(e){ setDraftField('loigiai', e.target.value); },
+                              style:{width:'100%', boxSizing:'border-box', fontFamily:'"IBM Plex Mono",monospace', fontSize:'0.82rem', padding:'8px', border:'1px solid var(--line)', borderRadius:'8px', background:'var(--surface)', color:'inherit', resize:'vertical'}})),
+                          h('div',{style:{fontSize:'0.76rem', color:'var(--muted)', marginTop:'6px'}},
+                            'Bấm Lưu: sửa ở ngân hàng, sửa luôn bản sao trong mọi đề đã giao (cá nhân, cả lớp, phiếu ôn) và bài kiểm tra lớp. Nếu ĐÁP ÁN đổi, điểm mọi lượt đã nộp có câu này được chấm lại.'),
                           h('div',{style:{display:'flex', gap:'8px', marginTop:'10px'}},
-                            h('button',{type:'button', className:'btn btn-primary', style:{fontSize:'0.82rem'}, disabled:savingAnswer, onClick:function(){ saveAnswerEdit(q); }}, savingAnswer ? 'Đang lưu…' : '💾 Lưu đáp án'),
+                            h('button',{type:'button', className:'btn btn-primary', style:{fontSize:'0.82rem'}, disabled:savingAnswer, onClick:function(){ saveAnswerEdit(q); }}, savingAnswer ? 'Đang lưu…' : '💾 Lưu câu hỏi'),
                             h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.82rem'}, disabled:savingAnswer, onClick:cancelEditAnswer}, 'Huỷ')
                           )
                         )
@@ -9412,7 +9571,7 @@
                           h('b',null,'Điền số ngắn: '), h('span',{className:'sm-mono-pill'}, q.shortans)
                         ) : null,
 
-                        (q.type === 'choice' || q.type === 'choiceTF' || q.type === 'shortans') ? h('button',{type:'button', className:'sm-link-btn', style:{marginTop:'8px', fontSize:'0.8rem'}, onClick:function(){ startEditAnswer(q); }}, '✏️ Sửa đáp án') : null
+                        (q.type === 'choice' || q.type === 'choiceTF' || q.type === 'shortans') ? h('button',{type:'button', className:'sm-link-btn', style:{marginTop:'8px', fontSize:'0.8rem'}, onClick:function(){ startEditAnswer(q); }}, '✏️ Sửa câu hỏi / đáp án / lời giải') : null
                       ),
 
                       // Solution block
@@ -9703,7 +9862,30 @@
         }),
         qFindHits.length >= 30 ? h('div',{style:{fontSize:'0.76rem', color:'var(--muted)', marginTop:'6px'}}, 'Hiện 30 kết quả đầu — gõ cụ thể hơn để thu hẹp.') : null) : null
     );
-    return h('div',null, h('div',{className:'card'}, toolbar, filterRow, qFindBlock, tableOrEmpty), detailModal, addModal,
+    // THÊM 17/10/2026 — hộp thoại kết quả sửa lan + chấm lại
+    var fixModal = fixReport ? h('div',{className:'sm-overlay', style:{zIndex: 100001}, onClick:function(e){ if(e.target===e.currentTarget && !fixReport.running) setFixReport(null); }},
+      h('div',{className:'sm-modal', role:'dialog', 'aria-modal':'true', 'aria-label':'Kết quả sửa câu hỏi', style:{maxWidth:'640px'}},
+        h('div',{className:'sm-modal-head'}, h('h3',null, fixReport.running ? '⏳ Đang sửa lan & chấm lại…' : (fixReport.error ? '⚠️ Chưa sửa lan xong' : '✅ Đã sửa Câu ' + fixReport.qIndex)),
+          fixReport.running ? null : h('button',{type:'button', className:'sm-modal-close', onClick:function(){ setFixReport(null); }}, h(IconClose))),
+        fixReport.running ? h('p',null, 'Đã lưu ở ngân hàng. Đang quét học sinh ' + (fixReport.done || 0) + '/' + (fixReport.total || '…') + ' — đừng đóng trang.') :
+        fixReport.error ? h('p',null, 'Câu hỏi đã lưu ở ngân hàng, nhưng sửa lan / chấm lại bị lỗi giữa chừng. Mở câu này và bấm Lưu lại một lần nữa (an toàn — không chấm trùng).') :
+        h('div',null,
+          h('p',{style:{margin:'0 0 6px'}}, '📚 Ngân hàng: đã lưu. 📋 Đề đã giao: sửa ', h('b',null, fixReport.copiesAe), ' bản sao. 🏫 Bài kiểm tra lớp: sửa ', h('b',null, fixReport.copiesCt), ' bài.'),
+          !fixReport.answerChanged ? h('p',{style:{color:'var(--muted)'}}, 'Đáp án không đổi (chỉ sửa nội dung / lời giải) nên không cần chấm lại điểm.') :
+          h('div',null,
+            h('p',{style:{margin:'0 0 6px'}}, '🧮 Chấm lại: ', h('b',null, fixReport.rescored.length), ' lượt đổi điểm (' + fixReport.students + ' học sinh) · ' + fixReport.unchanged + ' lượt điểm giữ nguyên' + (fixReport.skipped ? ' · ' + fixReport.skipped + ' lượt không dựng lại được bộ câu (bỏ qua)' : '') + '.'),
+            fixReport.rescored.length ? h('div',{style:{maxHeight:'300px', overflowY:'auto', border:'1px solid var(--line)', borderRadius:'8px'}},
+              h('table',{className:'sm-history-table'},
+                h('thead',null, h('tr',null, h('th',null,'Học sinh'), h('th',null,'Bài'), h('th',null,'Ngày làm'), h('th',null,'Điểm cũ → mới'))),
+                h('tbody',null, fixReport.rescored.map(function(r, i){
+                  var up = (r.to || 0) >= (r.from || 0);
+                  return h('tr',{key:i}, h('td',null, r.name), h('td',null, r.title), h('td',null, r.at ? fmtDate(r.at) : '—'),
+                    h('td',{style:{fontWeight:700, color: up ? 'var(--good)' : 'var(--critical, #d03b3b)'}}, (r.from != null ? r.from.toFixed(2) : '—') + ' → ' + r.to.toFixed(2)));
+                })))) : null,
+            h('p',{style:{fontSize:'0.78rem', color:'var(--muted)', marginTop:'8px'}}, 'Điểm trong hồ sơ học sinh, lịch sử làm bài, bài kiểm tra lớp và số liệu tổng hợp đã cập nhật. Báo cáo phụ huynh ĐÃ GỬI trước đó thì không tự sửa — nếu cần, thầy nhắn bổ sung.')),
+          h('div',{style:{display:'flex', justifyContent:'flex-end', marginTop:'12px'}}, h('button',{type:'button', className:'btn btn-primary', onClick:function(){ setFixReport(null); }}, 'Đóng')))
+      )) : null;
+    return h('div',null, h('div',{className:'card'}, toolbar, filterRow, qFindBlock, tableOrEmpty), detailModal, addModal, fixModal,
       paperEntry ? h(PaperEntryModal, { bankExamId: paperEntry.exam.id, questions: paperEntry.questions, title: paperEntry.exam.title || 'Đề', sheetKey: 'bank_' + paperEntry.exam.id,
         fireToast: props.fireToast, onClose: function(){ setPaperEntry(null); } }) : null);
   }
