@@ -1573,7 +1573,8 @@
   }
   function pdfQuestionHtml(q, num){
     // THÊM 10/10/2026 — nút ▦ (chỉ hiện trên màn hình) bật/tắt khung ô li dưới từng câu để viết tay khi quay video
-    var out = '<div class="q-card"><button type="button" class="q-ruled-btn" onclick="toggleRuled(this)" title="Bật/tắt khung ô li dưới câu này">▦ Ô li</button>';
+    var hasImg = !!(q.images && q.images.some(function(im){ return im && (im.url || im.dataUrl); }));
+    var out = '<div class="q-card' + (hasImg ? ' has-img' : '') + '"><button type="button" class="q-ruled-btn" onclick="toggleRuled(this)" title="Bật/tắt khung ô li dưới câu này">▦ Ô li</button>';
     out += '<div class="q-stem"><span class="q-num">Câu ' + num + '.</span> ' + latexToHtmlPDF(q.stem) + '</div>';
     out += pdfImagesHtml(q.images);
     if(q.part === 'II' && q.statements && q.statements.length){
@@ -1613,7 +1614,7 @@
     var hasSolution = qs.some(function(q){ return q.loiGiai && String(q.loiGiai).trim(); });
 
     // ---- Thân đề ----
-    var bodyHtml = '';
+    var bodyHtml = '<div class="qbody">'; // SỬA 17/10/2026 — bọc thân đề để chia 2 cột (bố cục tiết kiệm giấy)
     ['I', 'II', 'III'].forEach(function(p){
       var list = parts[p];
       if(!list.length) return;
@@ -1632,7 +1633,7 @@
       }
       bodyHtml += '</section>';
     });
-    bodyHtml += '<div class="the-end">— HẾT —</div>';
+    bodyHtml += '<div class="the-end">— HẾT —</div></div>'; // "HẾT" nằm trong dòng chảy 2 cột (không bị đẩy sang trang riêng)
     // THÊM 12/10/2026 — PHIẾU TRẢ LỜI (trang riêng, tô ô kiểu đề TN THPT) để học sinh làm trên giấy rồi thầy chụp phiếu chấm tự động
     var omrHtml = '';
     if(window.OPC_OMR){
@@ -1774,7 +1775,29 @@
       'body:not(.mode-school) .tb-school{display:none !important;} .tb-school{display:flex;gap:6px;align-items:center;}' +
       '@media print{.q-ruled-btn{display:none !important;} .q-card .q-stem{padding-right:0;}}' +
       '@media print{html{background:#fff;} .toolbar{display:none !important;} .sheet{width:auto;max-width:none;margin:0;padding:0;box-shadow:none;}}' +
-      '@media (max-width:700px){.sheet{padding:16px 12px;} .student-box{grid-template-columns:1fr;}}';
+      '@media (max-width:700px){.sheet{padding:16px 12px;} .student-box{grid-template-columns:1fr;}}' +
+      // THÊM 17/10/2026 — BỐ CỤC TIẾT KIỆM GIẤY. Màn hình: khổ trong của tờ = đúng bề rộng vùng in (để ước lượng số trang khớp).
+      'body.fs-10{font-size:10.5pt;}' +
+      '.sheet{width:200mm;} body.lay-compact .sheet,body.lay-twocol .sheet{width:206mm;padding:10mm 10mm;}' +
+      'body.lay-compact,body.lay-twocol{line-height:1.33;}' +
+      '.lay-compact .brand-logo,.lay-twocol .brand-logo{height:9mm;} .lay-compact .doc-title,.lay-twocol .doc-title{margin:9px 0 1px;font-size:1.2em;}' +
+      '.lay-compact .student-box,.lay-twocol .student-box{margin:7px 0 8px;padding:4px 10px;} .lay-compact .score-box div,.lay-twocol .score-box div{height:9mm;}' +
+      '.lay-compact .part-head,.lay-twocol .part-head{margin:8px 0 5px;padding:3px 9px;}' +
+      '.lay-compact .q-card,.lay-twocol .q-card{margin:0 0 6px;}' +
+      '.lay-compact .q-opts,.lay-compact .q-statements,.lay-compact .q-short{margin-left:1em;}' +
+      '.lay-compact .q-card.has-img{display:flow-root;}' +
+      '.lay-compact .q-card.has-img>.q-images{float:right;width:37%;margin:1px 0 4px 10px;text-align:center;}' +
+      '.lay-compact .q-images img{max-width:100%;max-height:46mm;margin:0 0 3px;}' +
+      '.lay-compact .q-card .q-stem{padding-right:0;} .lay-twocol .q-card .q-stem{padding-right:0;}' +
+      '.lay-twocol .qbody{column-count:2;column-gap:7mm;column-rule:.6px solid #cfc9bc;}' +
+      '.lay-twocol .part{margin-top:0;} .lay-twocol .part-head{break-inside:avoid;}' +
+      '.lay-twocol .q-opts,.lay-twocol .q-statements,.lay-twocol .q-short{margin-left:.5em;}' +
+      '.lay-twocol .q-images{margin:4px 0;} .lay-twocol .q-images img{max-width:100%;max-height:40mm;margin:1px 0;}' +
+      '.lay-twocol .q-short .blank{width:28mm;} .lay-twocol .group-passage{padding:4px 7px;}' +
+      '.lay-twocol .the-end{margin:10px 0 0;break-inside:avoid;} .lay-twocol .qbody{column-fill:balance;}' +
+      '.lay-compact .q-ruled-btn,.lay-twocol .q-ruled-btn{top:-4px;padding:1px 5px;}' +
+      '.tb-est{font-weight:700;color:#e6c27a;white-space:nowrap;}' +
+      '@media print{body.lay-compact .sheet,body.lay-twocol .sheet{width:auto;padding:0;}}';
 
     // Script chạy trong tab in: bật/tắt tuỳ chọn + xếp cột phương án theo độ rộng đo thật.
     var script =
@@ -1783,7 +1806,7 @@
         'box.querySelectorAll(".q-opt").forEach(function(o){mx=Math.max(mx,o.getBoundingClientRect().width);});' +
         'var c=(mx<=w/4-12)?4:((mx<=w/2-12)?2:1);box.className="q-opts cols-"+c;});}' +
       'function setOpt(cls,on){document.body.classList.toggle(cls,!!on);}' +
-      'function setFs(v){document.body.classList.remove("fs-11","fs-13");if(v!=="12")document.body.classList.add("fs-"+v);layoutOpts();}' +
+      'function setFs(v){document.body.classList.remove("fs-10","fs-11","fs-13");if(v!=="12")document.body.classList.add("fs-"+v);layoutOpts();}' +
       'function setDur(v){var e=document.getElementById("dur");if(e)e.textContent=v||"…";}' +
       // SỬA 9/10/2026 — tiêu đề tự sửa: nhớ theo từng đề (localStorage cùng nguồn với trang admin), tên file PDF theo tiêu đề
       'var ED_KEY=' + JSON.stringify(cfg.storeKey ? 'faraday_print_' + cfg.storeKey : '') + ',ED_DEF=null;' +
@@ -1809,11 +1832,11 @@
     return '<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<title>' + escapeHtmlPDF(cfg.docTitle || 'Đề luyện thi — FaradayAI.vn') + '</title>' +
       // Script đặt TRƯỚC các thẻ <link> CSS: script nằm sau stylesheet đang tải sẽ bị chặn chạy trong tab document.write
-      '<script>' + script + '(' + printTabRuntime.toString() + ')(' + JSON.stringify({ storeKey: cfg.storeKey || '' }).replace(/</g, '\\u003c') + ');<\/script>' +
+      '<script>' + script + '(' + printLayoutRuntime.toString() + ')();(' + printTabRuntime.toString() + ')(' + JSON.stringify({ storeKey: cfg.storeKey || '' }).replace(/</g, '\\u003c') + ');<\/script>' +
       '<link rel="icon" href="' + origin + '/favicon.svg">' +
       '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap">' +
       '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">' +
-      '<style>' + css + '</style><style id="pagecss">' + printPageCss('fa', '') + '</style></head><body class="fs-12 show-omr">' +
+      '<style>' + css + '</style><style id="pagecss">' + printPageCss('fa', '') + '</style><style id="pagemargin"></style></head><body class="fs-12 show-omr">' +
       '<div class="toolbar">' +
         '<span class="tb-title">🖨️ Bản in đề · FaradayAI.vn</span>' +
         '<label><input type="checkbox" onchange="setOpt(\'show-key\',this.checked)"> Bảng đáp án (trang cuối)</label>' +
@@ -1825,7 +1848,12 @@
         '<span class="tb-school"><label class="tb-file">🖼 Chọn logo trường<input type="file" accept="image/*" style="display:none" onchange="pickLogo(this)"></label><button type="button" class="tb-mini" onclick="clearLogo()">Bỏ logo</button></span>' +
         '<label><input type="checkbox" id="ruledAll" onchange="ruledAll(this.checked)"> Ô li dưới mọi câu</label>' +
         '<label>Khung ô li cao <select id="ruledH" onchange="setRuledH(this.value)"><option value="30">3 cm</option><option value="50" selected>5 cm</option><option value="80">8 cm</option><option value="130">13 cm</option></select></label>' +
-        '<label>Cỡ chữ <select id="fsSel" onchange="setFs(this.value)"><option value="11">Nhỏ</option><option value="12" selected>Vừa (12)</option><option value="13">Lớn</option></select></label>' +
+        '<label>Cỡ chữ <select id="fsSel" onchange="setFs(this.value)"><option value="10">Rất nhỏ (10,5)</option><option value="11">Nhỏ (11)</option><option value="12" selected>Vừa (12)</option><option value="13">Lớn (13)</option></select></label>' +
+        // THÊM 17/10/2026 — bố cục tiết kiệm giấy + tự co vừa số trang
+        '<label>Bố cục <select id="layoutSel" onchange="setLayout(this.value)"><option value="std">Tiêu chuẩn (1 cột)</option><option value="compact">Gọn 1 cột (hình bên phải)</option><option value="twocol">2 cột tiết kiệm giấy</option></select></label>' +
+        '<button type="button" class="tb-mini" onclick="fitPages(4)" title="Tự chọn bố cục + cỡ chữ để phần đề vừa 4 mặt A4">🎯 Vừa 4 trang</button>' +
+        '<button type="button" class="tb-mini" onclick="fitPages(6)" title="Tự chọn bố cục + cỡ chữ để phần đề vừa 6 mặt A4">🎯 Vừa 6 trang</button>' +
+        '<span class="tb-est" id="pgEst" title="Ước lượng số mặt giấy A4 khi in (có thể lệch ±1)"></span>' +
         '<label>Thời gian <input type="number" min="5" max="180" value="' + (cfg.durationMin || 50) + '" oninput="setDur(this.value)"> phút</label>' +
         '<button type="button" class="tb-reset" onclick="edReset()" title="Trả tiêu đề, mã đề, ghi chú về như lúc tạo tự động">↺ Tiêu đề tự động</button>' +
         '<button type="button" onclick="layoutOpts();window.print()">In / Lưu PDF</button>' +
@@ -1856,6 +1884,79 @@
         '</section>' +
       '</main>' +
       '</body></html>';
+  }
+  // THÊM 17/10/2026 — BỐ CỤC TIẾT KIỆM GIẤY (chạy TRONG tab in, chèn bằng toString — không dùng biến ngoài):
+  //  • std: như cũ · compact: 1 cột gọn, lề 10–12 mm, hình đặt bên phải câu (kiểu \immini) · twocol: chia 2 cột như đề in báo.
+  //  • Ước lượng số mặt A4 (đo chiều cao thật trên màn hình, khổ trong tờ = khổ in) · fitPages(n): thử lần lượt các bố cục/cỡ
+  //    chữ từ "đẹp nhất" tới "gọn nhất", dừng ở cách đầu tiên phần đề vừa ≤ n mặt.
+  function printLayoutRuntime(){
+    var MARGINS = { std: [14, 15, 16], compact: [10, 12, 12], twocol: [10, 12, 12] }; // trên, hai bên, dưới (mm)
+    var cur = 'std';
+    function pxPerMm(){ var d = document.createElement('div'); d.style.cssText = 'position:absolute;visibility:hidden;width:100mm'; document.body.appendChild(d); var v = d.getBoundingClientRect().width / 100; d.remove(); return v || 3.7795; }
+    function moveImages(compact){
+      document.querySelectorAll('.q-card.has-img').forEach(function(c){
+        var im = c.querySelector(':scope > .q-images'), st = c.querySelector(':scope > .q-stem');
+        if(!im || !st) return;
+        if(compact && im.nextElementSibling !== st) c.insertBefore(im, st);           // hình lên trước đề → nổi bên phải
+        if(!compact && st.nextElementSibling !== im) c.insertBefore(im, st.nextSibling); // trả về dưới đề
+      });
+    }
+    window.setLayout = function(v, noSave){
+      cur = MARGINS[v] ? v : 'std';
+      document.body.classList.remove('lay-compact', 'lay-twocol');
+      if(cur !== 'std') document.body.classList.add('lay-' + cur);
+      moveImages(cur === 'compact');
+      var m = MARGINS[cur], st = document.getElementById('pagemargin');
+      if(st) st.textContent = '@page{margin:' + m[0] + 'mm ' + m[1] + 'mm ' + m[2] + 'mm;}';
+      var sel = document.getElementById('layoutSel'); if(sel) sel.value = cur;
+      if(window.layoutOpts) window.layoutOpts();
+      if(!noSave){ try{ var p = JSON.parse(localStorage.getItem('faraday_print_prefs') || '{}') || {}; p.layout = cur; localStorage.setItem('faraday_print_prefs', JSON.stringify(p)); }catch(e){} }
+      setTimeout(window.updateEst, 80);
+    };
+    // số mặt A4 của PHẦN ĐỀ (từ đầu tờ tới "— HẾT —")
+    window.estimatePages = function(){
+      var sheet = document.querySelector('.sheet'), end = document.querySelector('.the-end');
+      if(!sheet || !end) return 0;
+      var k = pxPerMm(), m = MARGINS[cur];
+      var pad = parseFloat(getComputedStyle(sheet).paddingTop) || 0;
+      var hMm = (end.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top - pad) / k;
+      var pageH = 297 - m[0] - m[2];
+      // chừa hao hụt do không cắt đôi câu giữa 2 trang (~6% mỗi trang, 2 cột hao hơn)
+      var eff = pageH * (cur === 'twocol' ? 0.8 : 0.94); // 2 cột: mỗi trang chỉ cân 2 cột ở trang cuối + câu không cắt đôi → hao nhiều hơn
+      if(cur === 'twocol'){
+        // màn hình chia đều 2 cột trên 1 khối dài → chiều cao ≈ nửa tổng; khi in mỗi trang có 2 cột
+        return Math.max(1, Math.ceil(hMm / eff));
+      }
+      return Math.max(1, Math.ceil(hMm / eff));
+    };
+    window.updateEst = function(){
+      var el = document.getElementById('pgEst'); if(!el) return;
+      var n = window.estimatePages(); if(!n) { el.textContent = ''; return; }
+      var extra = [];
+      if(document.body.classList.contains('show-omr')) extra.push('phiếu trả lời 1');
+      if(document.body.classList.contains('show-key') || document.body.classList.contains('show-sol')) extra.push('đáp án/lời giải');
+      el.textContent = '≈ ' + n + ' mặt A4 phần đề' + (extra.length ? ' (+ ' + extra.join(', ') + ')' : '');
+    };
+    window.fitPages = function(target){
+      var plans = [['std', '12'], ['compact', '12'], ['compact', '11'], ['twocol', '12'], ['twocol', '11'], ['twocol', '10']];
+      var chosen = null;
+      for(var i = 0; i < plans.length; i++){
+        window.setLayout(plans[i][0], true); if(window.setFs) window.setFs(plans[i][1]);
+        if(window.layoutOpts) window.layoutOpts();
+        var n = window.estimatePages();
+        if(n <= target){ chosen = plans[i]; break; }
+      }
+      if(!chosen){ chosen = plans[plans.length - 1]; }
+      window.setLayout(chosen[0]); if(window.setFs) window.setFs(chosen[1]);
+      setTimeout(function(){
+        window.updateEst();
+        var n = window.estimatePages(), el = document.getElementById('pgEst');
+        if(el && n > target) el.textContent += ' — đề quá dài/nhiều hình, gọn nhất được ' + n + ' mặt';
+      }, 120);
+    };
+    var obs = function(){ setTimeout(window.updateEst, 50); };
+    document.addEventListener('change', obs, true);
+    [700, 1600, 3200].forEach(function(t){ setTimeout(window.updateEst, t); });
   }
   // THÊM 10/10/2026 — chân trang theo đầu đề (FaradayAI / tên trường). @page không đổi được theo class nên ghi lại cả khối.
   function printPageCss(mode, schoolName){
@@ -1930,13 +2031,15 @@
     window.ruledAll = function(on){ cards().forEach(function(c){ c.classList.toggle('ruled', !!on); }); saveRuled(); };
     window.setRuledH = function(v){ document.body.style.setProperty('--ruled-h', (Number(v) || 50) + 'mm'); var hs = document.getElementById('ruledH'); if(hs) hs.value = String(v); saveRuled(); };
     var origFs = window.setFs;
-    window.setFs = function(v){ if(origFs) origFs(v); var sel = document.getElementById('fsSel'); if(sel) sel.value = v; var p = lsGet(PREF_KEY) || {}; p.fs = v; lsSet(PREF_KEY, p); };
+    window.setFs = function(v){ if(origFs) origFs(v); var sel = document.getElementById('fsSel'); if(sel) sel.value = v; var p = lsGet(PREF_KEY) || {}; p.fs = v; lsSet(PREF_KEY, p); if(window.updateEst) setTimeout(window.updateEst, 60); };
     var inited = false;
     function init(){
       if(inited || !document.querySelector('.doc-note')) return;
       inited = true;
       var p = lsGet(PREF_KEY);
       if(p && p.fs && p.fs !== '12') window.setFs(p.fs);
+      if(p && p.layout && p.layout !== 'std' && window.setLayout) window.setLayout(p.layout, true); // THÊM 17/10/2026
+      if(window.updateEst) setTimeout(window.updateEst, 400);
       var b = lsGet(BRAND_KEY);
       if(b){
         brandEls().forEach(function(e){ var k = e.getAttribute('data-br'); if(typeof b[k] === 'string') e.innerHTML = b[k]; });
