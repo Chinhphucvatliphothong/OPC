@@ -2,6 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
+<script>/* THÊM 17/10/2026 — áp giao diện sáng/tối đã chọn TRƯỚC khi vẽ trang (xem theme-toggle.js) */(function(){try{var t=localStorage.getItem("opc-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- SỬA 13/10/2026 — SEO: tiêu đề/mô tả chứa từ khoá phụ huynh, học sinh hay tìm ("luyện thi Vật lí 12", "tốt nghiệp THPT") -->
 <title>FaradayAI – Luyện thi Vật lí 12, ôn thi tốt nghiệp THPT cá nhân hoá bằng AI</title>
@@ -848,6 +849,7 @@
       <a class="btn-login" href="#luyen-thi-prepscholar">Đăng nhập</a>
       <a class="cta" href="#lien-he">Đăng ký học</a>
     </div>
+    <button type="button" class="theme-btn" data-theme-toggle aria-label="Đổi giao diện sáng/tối">🌙</button>
   </div>
 </nav>
 
@@ -3024,6 +3026,7 @@
 <script src="/prepscholar.js"></script>
 <script src="/video-walkthrough.js"></script>
 <script src="/tikz-lite.js"></script>
+<script src="/theme-toggle.js"></script> <!-- THÊM 17/10/2026 — nút sáng/tối -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — bút dạ quang + máy tính nổi -->
 <script src="/prepscholar-ui.js"></script>
 <!-- Kết nối dữ liệu thật (Firestore): đăng nhập học sinh + ngân hàng đề thật.

@@ -23,6 +23,12 @@
     '::highlight(opc-hl-g){background-color:rgba(110,231,140,.55);color:inherit;}' +
     '::highlight(opc-hl-p){background-color:rgba(249,148,206,.55);color:inherit;}' +
     '::highlight(opc-hl-tmp){background-color:rgba(255,200,0,.38);color:inherit;}' +
+    // THÊM 17/10/2026 — giao diện tối: nền dạ quang đậm hơn + chữ tối để vẫn đọc rõ
+    ':root[data-theme="dark"] ::highlight(opc-hl-y){background-color:#facc15;color:#111;}' +
+    ':root[data-theme="dark"] ::highlight(opc-hl-g){background-color:#4ade80;color:#111;}' +
+    ':root[data-theme="dark"] ::highlight(opc-hl-p){background-color:#f472b6;color:#111;}' +
+    '@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) ::highlight(opc-hl-y){background-color:#facc15;color:#111;}' +
+    ':root:not([data-theme="light"]) ::highlight(opc-hl-g){background-color:#4ade80;color:#111;}:root:not([data-theme="light"]) ::highlight(opc-hl-p){background-color:#f472b6;color:#111;}}' +
     '.opc-hlzone.on{cursor:text;touch-action:none;-webkit-user-select:none;user-select:none;outline:2px dashed rgba(234,179,8,.55);outline-offset:4px;border-radius:6px;}' +
     '.opc-sbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 8px;font:600 .8rem "Be Vietnam Pro",system-ui,sans-serif;}' +
     '.opc-sbar button{border:1px solid var(--line,#dde1d5);background:var(--surface,#fff);color:var(--ink,#12161c);border-radius:999px;padding:5px 11px;font:inherit;cursor:pointer;touch-action:manipulation;}' +

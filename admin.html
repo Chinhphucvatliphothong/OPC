@@ -2,6 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
+<script>/* THÊM 17/10/2026 — áp giao diện sáng/tối đã chọn TRƯỚC khi vẽ trang (xem theme-toggle.js) */(function(){try{var t=localStorage.getItem("opc-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FaradayAI Quản Lý Học Sinh &amp; Ngân Hàng Đề</title>
 <!-- THÊM 13/10/2026 — trang quản trị: không cho Google lập chỉ mục -->
@@ -491,6 +492,7 @@
     </div>
     <div style="display:flex; align-items:center; gap:12px;">
       <a href="/#luyen-thi-prepscholar" target="_blank" class="btn btn-secondary" style="padding:6px 13px; font-size:0.8rem; text-decoration:none;">⚡ Mở phòng luyện thi học sinh ↗</a>
+      <button type="button" class="theme-btn on-navy" data-theme-toggle aria-label="Đổi giao diện sáng/tối">🌙</button> <!-- THÊM 17/10/2026 -->
       <div id="admin-header-right">
         <span class="admin-chip"><span class="dot"></span>Công cụ nội bộ · chỉ admin</span>
       </div>
@@ -1131,6 +1133,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <!-- THÊM 04/10/2026 — lớp viết tay Apple Pencil (InkBoard): phải nạp SAU React -->
 <script src="/ink-overlay.js"></script>
+<script src="/theme-toggle.js"></script> <!-- THÊM 17/10/2026 — nút sáng/tối -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
 (function(){
