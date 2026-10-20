@@ -1620,7 +1620,7 @@
       var full = Number(t.fullPrice) > 0 ? Number(t.fullPrice) : (Number(opt.fullOff) > 0 ? Math.round(price * m * (1 - Number(opt.fullOff) / 100) / 1000) * 1000 : 0);
       if(!full) return '';
       var save = price * m - full;
-      return '<div class="price-full">hoặc <b>' + fmtVNDPrice(full) + '</b> trọn khóa đến kỳ thi (' + m + ' tháng)' + (save > 0 ? '<span class="price-save">Tiết kiệm ' + fmtVNDPrice(save) + '</span>' : '') + '</div>';
+      return '<div class="price-full">hoặc <b>' + fmtVNDPrice(full) + '</b> trọn khóa đến kỳ thi' + (save > 0 ? '<span class="price-save">Tiết kiệm ' + fmtVNDPrice(save) + '</span>' : '') + '</div>';
     }
     function renderPricingTiers(tiers, opt){
       var grid = document.getElementById('pricingGrid');
@@ -1629,7 +1629,8 @@
       if(!visible.length) return; // không có gói nào để hiện -> giữ nguyên giá mặc định đã in sẵn
       grid.innerHTML = visible.map(function(t){
         var badge = t.badge ? '<div class="price-badge">' + escHtml(t.badge) + '</div>' : '';
-        var features = (t.features || []).map(function(f){ return '<li>' + escHtml(f) + '</li>'; }).join('');
+        // SỬA 20/10/2026: bỏ "(8 tháng)" sau trọn khóa; bỏ dấu •/-/✓ thầy gõ đầu dòng (trang đã có ✓ sẵn)
+        var features = (t.features || []).map(function(f){ return String(f).replace(/^\s*[•·\-–—*✓✔]+\s*/, ''); }).filter(Boolean).map(function(f){ return '<li>' + escHtml(f) + '</li>'; }).join('');
         return '<div class="price-card' + (t.featured ? ' featured' : '') + '">' + badge +
           '<h3>' + escHtml(t.name) + '</h3>' +
           '<div class="price-value">' + fmtVNDPrice(t.price) + '<span class="price-unit">' + escHtml(t.unit || '/tháng') + '</span></div>' +
