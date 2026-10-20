@@ -24,6 +24,9 @@
   function monthsUntil(examYmd){ var e = parseYmd(examYmd), t = parseYmd(ymd()); if(!e || e <= t) return 1; return Math.max(1, Math.ceil((e - t) / (30.44 * 86400000))); }
   function vnd(n){ n = Math.round(Number(n) || 0); return n.toLocaleString('vi-VN') + 'đ'; }
   function zalo(phone){ var n = String(phone || '').replace(/[\s.\-()]/g, ''); if(n.indexOf('+84') === 0) n = '84' + n.slice(3); else if(n.indexOf('0') === 0) n = '84' + n.slice(1); return n ? 'https://zalo.me/' + n : ''; }
+  // SỬA 20/10/2026: hiển thị SĐT dễ đọc 0912 345 678 + link gọi
+  function phoneDigits(p){ return String(p || '').replace(/[^\d+]/g, ''); }
+  function fmtPhone(p){ var d = String(p || '').replace(/\D/g, ''); if(d.indexOf('84') === 0 && d.length >= 11) d = '0' + d.slice(2); return d.length === 10 ? d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7) : (d || String(p || '')); }
   function copy(text){ try{ if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text); }catch(e){} var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(e){} ta.remove(); return Promise.resolve(); }
   function token(){ var a = new Uint8Array(24); (window.crypto || window.msCrypto).getRandomValues(a); return Array.prototype.map.call(a, function(x){ return 'abcdefghijkmnpqrstuvwxyz23456789'[x % 32]; }).join('').slice(0, 24); }
   function origin(){ var o = location.origin; return (o && o !== 'null') ? o : 'https://faradayai.vn'; }
@@ -143,16 +146,33 @@
   }
 
   // ------------------------------------------------------------------ 2) học phí
-  var DEFAULT_BILLING = {
-    plans: [{ key: 'p1', name: 'Tự học trên hệ thống', monthly: 0 }, { key: 'p2', name: 'Tự học + thầy kèm 1 giờ/tuần', monthly: 0 }, { key: 'p3', name: 'Kèm 1-1 (2 giờ/tuần)', monthly: 0 }],
-    quarterOff: 10, fullOff: 20, examDate: '2027-06-11', bankInfo: '', remindDays: 5
-  };
-  var CYCLES = { month: 'Theo tháng', quarter: 'Theo quý (3 tháng)', full: 'Trọn lộ trình đến kỳ thi', trial: 'Học thử', free: 'Miễn phí' };
+  // SỬA 20/10/2026 — GỘP BẢNG GIÁ: gói & giá (tháng / trọn khóa), ngày thi, % giảm lấy từ settings/pricing (tab 💰 Gói dịch vụ
+  // — cùng bảng giá trang chủ). settings/billing chỉ còn: thông tin chuyển khoản + số ngày nhắc trước hạn.
+  var DEFAULT_BILLING = { plans: [], quarterOff: 10, fullOff: 20, examDate: '2027-06-11', bankInfo: '', remindDays: 5 };
+  var CYCLES = { month: 'Theo tháng', full: 'Trọn khóa (đến kỳ thi)', quarter: 'Theo quý (3 tháng)', trial: 'Học thử', free: 'Miễn phí' };
+  function tiersToPlans(tiers){
+    var idf = window.OPC_pricingTierId || function(t, i){ return (t && t.id) || ('g' + (i + 1)); };
+    return (tiers || []).map(function(t, i){ return { key: idf(t, i), name: t.name || ('Gói ' + (i + 1)), monthly: Number(t.price) || 0, full: Number(t.fullPrice) || 0, visible: t.visible !== false }; });
+  }
+  function mergeBilling(bill, pricing){
+    var pr = pricing || {}, tiers = (Array.isArray(pr.tiers) && pr.tiers.length) ? pr.tiers : (window.OPC_defaultPricingTiers ? window.OPC_defaultPricingTiers() : []);
+    return Object.assign({}, DEFAULT_BILLING, bill || {}, {
+      plans: tiersToPlans(tiers),
+      examDate: pr.examDate || (bill && bill.examDate) || DEFAULT_BILLING.examDate,
+      fullOff: pr.fullOff != null ? Number(pr.fullOff) : ((bill && bill.fullOff != null) ? bill.fullOff : DEFAULT_BILLING.fullOff),
+      quarterOff: pr.quarterOff != null ? Number(pr.quarterOff) : ((bill && bill.quarterOff != null) ? bill.quarterOff : DEFAULT_BILLING.quarterOff)
+    });
+  }
   function useBilling(){
     var st = React.useState(null); var cfg = st[0], setCfg = st[1];
     React.useEffect(function(){
-      var OPC = window.OPC; if(!OPC || !OPC.billingSettings) { setCfg(DEFAULT_BILLING); return; }
-      return OPC.billingSettings.subscribe(function(d){ setCfg(Object.assign({}, DEFAULT_BILLING, d || {})); }, function(){ setCfg(DEFAULT_BILLING); });
+      var OPC = window.OPC; if(!OPC || !OPC.billingSettings) { setCfg(mergeBilling(null, null)); return; }
+      var bill = null, pricing = null, got = { b: 0, p: 0 };
+      function emit(){ if(got.b && got.p) setCfg(mergeBilling(bill, pricing)); }
+      var u1 = OPC.billingSettings.subscribe(function(d){ bill = d || null; got.b = 1; emit(); }, function(){ got.b = 1; emit(); });
+      var u2 = OPC.pricing ? OPC.pricing.subscribe(function(d){ pricing = d || null; got.p = 1; emit(); }, function(){ got.p = 1; emit(); }) : (got.p = 1, function(){});
+      emit();
+      return function(){ try{ u1(); }catch(e){} try{ u2(); }catch(e){} };
     }, []);
     return cfg;
   }
@@ -163,6 +183,7 @@
     if(b.customFee) return Number(b.customFee) || 0;
     var p = planOf(cfg, b.plan); var base = p ? Number(p.monthly) || 0 : 0;
     var m = cycleMonths(cfg, b.cycle);
+    if(b.cycle === 'full' && p && Number(p.full) > 0) return Number(p.full);   // giá trọn khóa cố định của gói
     var off = b.cycle === 'quarter' ? cfg.quarterOff : (b.cycle === 'full' ? cfg.fullOff : 0);
     return Math.round(base * m * (1 - (Number(off) || 0) / 100) / 1000) * 1000;
   }
@@ -201,12 +222,12 @@
   function PlanModal(props){
     var cfg = props.cfg, stu = props.student, b0 = stu.billing || {};
     var st = React.useState(function(){ var d14 = new Date(); d14.setDate(d14.getDate() + 14);
-      return { plan: b0.plan || 'p2', cycle: b0.cycle || 'trial', startDate: b0.startDate || ymd(), trialEnd: b0.trialEnd || ymd(d14), customFee: b0.customFee || '', paidUntil: b0.paidUntil || '' }; });
+      return { plan: b0.plan || ((cfg.plans || [])[0] || {}).key || '', cycle: b0.cycle || 'trial', startDate: b0.startDate || ymd(), trialEnd: b0.trialEnd || ymd(d14), customFee: b0.customFee || '', paidUntil: b0.paidUntil || '' }; });
     var f = st[0], setF = st[1];
     function set(k, v){ setF(function(p){ var n = Object.assign({}, p); n[k] = v; return n; }); }
     var fee = cycleFee(cfg, f);
     return h(Modal, { title: 'Gói học của ' + stu.name, onClose: props.onClose },
-      Field('Gói', h('select', { value: f.plan, onChange: function(e){ set('plan', e.target.value); } }, (cfg.plans || []).map(function(p){ return h('option', { key: p.key, value: p.key }, p.name + (p.monthly ? ' — ' + vnd(p.monthly) + '/tháng' : '')); }))),
+      Field('Gói', h('select', { value: f.plan, onChange: function(e){ set('plan', e.target.value); } }, (cfg.plans || []).map(function(p){ return h('option', { key: p.key, value: p.key }, p.name + (p.visible ? '' : ' (ẩn khỏi trang chủ)') + (p.monthly ? ' — ' + vnd(p.monthly) + '/tháng' : '') + (cycleFee(cfg, { plan: p.key, cycle: 'full' }) ? ' · trọn khóa ' + vnd(cycleFee(cfg, { plan: p.key, cycle: 'full' })) : '')); }))),
       Field('Cách đóng', h('select', { value: f.cycle, onChange: function(e){ set('cycle', e.target.value); } }, Object.keys(CYCLES).map(function(k){ return h('option', { key: k, value: k }, CYCLES[k]); }))),
       Field('Ngày bắt đầu học', h('input', { type: 'date', value: f.startDate, onChange: function(e){ set('startDate', e.target.value); } })),
       f.cycle === 'trial' ? Field('Học thử đến ngày', h('input', { type: 'date', value: f.trialEnd, onChange: function(e){ set('trialEnd', e.target.value); } })) : null,
@@ -244,7 +265,7 @@
           var amt = Number(f.amount) || 0;
           if(amt <= 0 && !window.confirm('Số tiền bằng 0 — vẫn ghi nhận?')) return;
           var pays = (b.payments || []).concat([{ date: f.date, amount: amt, months: f.cycle === 'full' ? monthsUntil(cfg.examDate) : Number(f.months) || 1, cycle: f.cycle, note: String(f.note || '').slice(0, 120) }]).slice(-60);
-          var nb = Object.assign({}, b, { plan: b.plan || 'p2', cycle: f.cycle, paidUntil: until, payments: pays, startDate: b.startDate || f.date });
+          var nb = Object.assign({}, b, { plan: b.plan || ((cfg.plans || [])[0] || {}).key || '', cycle: f.cycle, paidUntil: until, payments: pays, startDate: b.startDate || f.date });
           window.OPC.students.update(stu.id, { billing: nb }).then(function(){ props.fireToast('Đã ghi nhận ' + vnd(amt) + ' của ' + stu.name + ' — đóng tới ' + vnDate(until) + '.'); props.onClose(); })
             .catch(function(e){ props.fireToast('Không lưu được: ' + (e && e.message), true); });
         } }, 'Ghi nhận')));
@@ -269,7 +290,7 @@
     var draftState = React.useState(null); var draft = draftState[0], setDraft = draftState[1];
     var filterState = React.useState('all'); var filter = filterState[0], setFilter = filterState[1];
     var showSetState = React.useState(false); var showSet = showSetState[0], setShowSet = showSetState[1];
-    React.useEffect(function(){ if(cfg && !draft) setDraft(JSON.parse(JSON.stringify(cfg))); }, [cfg]);
+    React.useEffect(function(){ if(cfg && !draft) setDraft({ bankInfo: cfg.bankInfo || '', remindDays: cfg.remindDays || 5 }); }, [cfg]);
     if(!cfg || !S.list) return h('div', { className: 'card' }, h('p', { style: { color: 'var(--ink-2)' } }, 'Đang tải…'));
     var rows = S.list.filter(function(s){ return s.status !== 'inactive'; }).map(function(s){ return { s: s, st: billingStatus(cfg, s.billing) }; });
     var order = { overdue: 0, trialEnd: 1, unpaid: 2, due: 3, trial: 4, ok: 5, none: 6, free: 7 };
@@ -283,32 +304,37 @@
     var cnt = function(k){ return rows.filter(function(r){ return r.st.k === k; }).length; };
     function stat(label, val, sub){ return h('div', { style: { flex: '1 1 140px', background: 'var(--surface-2)', borderRadius: '10px', padding: '10px 12px' } },
       h('div', { style: { fontSize: '0.75rem', color: 'var(--ink-2)', fontWeight: 700 } }, label), h('div', { style: { fontSize: '1.35rem', fontWeight: 800 } }, val), sub ? h('div', { style: { fontSize: '0.74rem', color: 'var(--ink-2)' } }, sub) : null); }
-    function setPlan(i, k, v){ setDraft(function(d){ var n = JSON.parse(JSON.stringify(d)); n.plans[i][k] = v; return n; }); }
     function setD(k, v){ setDraft(function(d){ var n = Object.assign({}, d); n[k] = v; return n; }); }
     var noPrices = !(cfg.plans || []).some(function(p){ return Number(p.monthly) > 0; });
     return h('div', null,
       h('div', { className: 'card' },
         h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'center' } },
           h('div', null, h('h3', { style: { margin: 0 } }, '💳 Học phí'), h('p', { className: 'sm-sub', style: { margin: '4px 0 0' } }, 'Gói học, cách đóng, đã đóng tới ngày nào — tự nhắc em sắp đến hạn. Ghi nhận bằng tay khi phụ huynh chuyển khoản.')),
-          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setShowSet(!showSet); } }, showSet ? 'Đóng bảng giá' : '⚙️ Bảng giá & cài đặt')),
-        noPrices ? h('div', { className: 'banner warn', style: { marginTop: '10px' } }, h('span', null, '⚠️'), h('div', null, 'Chưa nhập giá các gói — bấm "⚙️ Bảng giá & cài đặt" để nhập học phí tháng của 3 gói.')) : null,
-        (showSet || noPrices) && draft ? h('div', { style: { marginTop: '12px', borderTop: '1px solid var(--line)', paddingTop: '12px' } },
-          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '10px' } },
-            draft.plans.map(function(p, i){ return h('div', { key: p.key, className: 'sm-field' },
-              h('label', null, 'Gói ' + (i + 1)), h('input', { value: p.name, onChange: function(e){ setPlan(i, 'name', e.target.value); } }),
-              h('input', { type: 'number', min: 0, step: 50000, value: p.monthly || '', placeholder: 'Học phí/tháng (đ)', style: { marginTop: '6px' }, onChange: function(e){ setPlan(i, 'monthly', Number(e.target.value) || 0); } })); })),
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setShowSet(!showSet); } }, showSet ? 'Đóng bảng giá' : '⚙️ Bảng giá & cài đặt nhắc phí')),
+        noPrices ? h('div', { className: 'banner warn', style: { marginTop: '10px' } }, h('span', null, '⚠️'), h('div', null, 'Chưa có giá gói nào — nhập ở tab 💰 Gói dịch vụ.')) : null,
+        showSet && draft ? h('div', { style: { marginTop: '12px', borderTop: '1px solid var(--line)', paddingTop: '12px' } },
+          // SỬA 20/10/2026 — gói & giá chỉ xem ở đây; sửa ở tab 💰 Gói dịch vụ (bảng giá chung với trang chủ)
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' } },
+            h('b', null, 'Bảng giá (chung với trang chủ) · trọn khóa đến ' + vnDate(cfg.examDate) + ', còn ' + monthsUntil(cfg.examDate) + ' tháng'),
+            props.onGoPricing ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: props.onGoPricing }, '✏️ Sửa gói & giá ở 💰 Gói dịch vụ') : null),
+          h('div', { className: 'sm-table-wrap', style: { marginTop: 0 } }, h('table', { className: 'sm-table' },
+            h('thead', null, h('tr', null, ['Gói', 'Theo tháng', 'Theo quý', 'Trọn khóa', 'Tiết kiệm trọn khóa', 'Trang chủ'].map(function(t){ return h('th', { key: t }, t); }))),
+            h('tbody', null, (cfg.plans || []).map(function(p){
+              var m = monthsUntil(cfg.examDate), ff = cycleFee(cfg, { plan: p.key, cycle: 'full' }), save = p.monthly * m - ff;
+              return h('tr', { key: p.key }, h('td', null, h('b', null, p.name)), h('td', null, vnd(p.monthly)), h('td', null, vnd(cycleFee(cfg, { plan: p.key, cycle: 'quarter' }))),
+                h('td', null, vnd(ff), p.full ? null : h('span', { style: { fontSize: '0.72rem', color: 'var(--muted)' } }, ' (tự tính −' + cfg.fullOff + '%)')),
+                h('td', null, save > 0 ? vnd(save) + ' (' + Math.round(save / (p.monthly * m) * 100) + '%)' : '—'),
+                h('td', null, p.visible ? '✓ hiện' : h('span', { style: { color: 'var(--muted)' } }, 'ẩn')));
+            })))),
           h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '10px', marginTop: '10px' } },
-            Field('Giảm khi đóng quý (%)', h('input', { type: 'number', min: 0, max: 50, value: draft.quarterOff, onChange: function(e){ setD('quarterOff', Number(e.target.value) || 0); } })),
-            Field('Giảm khi đóng trọn lộ trình (%)', h('input', { type: 'number', min: 0, max: 60, value: draft.fullOff, onChange: function(e){ setD('fullOff', Number(e.target.value) || 0); } })),
-            Field('Ngày thi tốt nghiệp', h('input', { type: 'date', value: draft.examDate, onChange: function(e){ setD('examDate', e.target.value); } })),
             Field('Nhắc trước hạn (ngày)', h('input', { type: 'number', min: 1, max: 15, value: draft.remindDays, onChange: function(e){ setD('remindDays', Number(e.target.value) || 5); } }))),
           Field('Thông tin chuyển khoản (đưa vào tin nhắn nhắc học phí)', h('input', { value: draft.bankInfo, placeholder: 'Vd: Vietcombank 0123456789 — NGUYEN VAN A', onChange: function(e){ setD('bankInfo', e.target.value); } })),
-          h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } }, 'Trọn lộ trình hôm nay = ' + monthsUntil(draft.examDate) + ' tháng đến kỳ thi. Ví dụ gói 2: tháng ' + vnd(draft.plans[1].monthly) + ' · quý ' + vnd(cycleFee(draft, { plan: 'p2', cycle: 'quarter' })) + ' · trọn lộ trình ' + vnd(cycleFee(draft, { plan: 'p2', cycle: 'full' })) + '.'),
-          h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ window.OPC.billingSettings.save(draft).then(function(){ fire('Đã lưu bảng giá.'); setShowSet(false); }).catch(function(e){ fire('Không lưu được: ' + (e && e.message), true); }); } }, '💾 Lưu bảng giá')) : null,
+          h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } }, 'Em vào học giữa năm hoặc được giá riêng: bấm nút "Gói" của em đó và sửa "Học phí mỗi kỳ".'),
+          h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ window.OPC.billingSettings.save({ bankInfo: draft.bankInfo || '', remindDays: Number(draft.remindDays) || 5 }).then(function(){ fire('Đã lưu bảng giá.'); setShowSet(false); }).catch(function(e){ fire('Không lưu được: ' + (e && e.message), true); }); } }, '💾 Lưu bảng giá')) : null,
         h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' } },
           stat('Đang đóng phí', payingCount + ' em', cnt('trial') + ' em học thử'),
           stat('Đã thu tháng ' + month.slice(5) + '/' + month.slice(0, 4), vnd(collected)),
-          stat('Doanh thu ước tính / tháng', vnd(monthlyRevenue), 'quy đổi gói quý/trọn lộ trình ra tháng'),
+          stat('Doanh thu ước tính / tháng', vnd(monthlyRevenue), 'quy đổi gói quý/trọn khóa ra tháng'),
           stat('Cần xử lý', (cnt('overdue') + cnt('trialEnd') + cnt('unpaid') + cnt('due')) + ' em', cnt('overdue') + ' quá hạn · ' + cnt('due') + ' sắp đến hạn'))),
       h('div', { className: 'card' },
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' } },
@@ -413,15 +439,19 @@
       }
     });
     leads.filter(function(l){ return (l.status || 'new') === 'new'; }).forEach(function(l){
-      items.push({ id: 'lead-' + l.id, group: 'sales', prio: 0, icon: '🌱', who: { name: l.name, lop: l.grade },
+      items.push({ id: 'lead-' + l.id, group: 'sales', prio: 0, icon: '🌱', who: { name: l.name, lop: l.grade }, phone: l.phone,
         why: 'Khách Chẩn đoán 5 phút: ' + l.correct + '/' + l.total + ' câu' + (l.weak ? ' · yếu: ' + l.weak : '') + ' — gọi tư vấn trong 24 giờ',
-        actions: [h('a', { key: 't', className: 'btn btn-secondary', href: 'tel:' + String(l.phone || '').replace(/\D/g, ''), style: { textDecoration: 'none' } }, '📞 Gọi'),
+        actions: [h('a', { key: 't', className: 'btn btn-primary', href: 'tel:' + phoneDigits(l.phone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(l.phone)),
+          h('button', { key: 'cp', type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(String(l.phone || '').replace(/\D/g, '')).then(function(){ fire('Đã chép số ' + fmtPhone(l.phone) + '.'); }); } }, '📋 Chép số'),
           h('a', { key: 'z', className: 'btn btn-secondary', href: zalo(l.phone), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo'),
           h('button', { key: 'c', type: 'button', className: 'btn btn-secondary', onClick: function(){ window.OPC.diag5.updateLead(l.id, { status: 'contacted' }).then(function(){ fire('Đã chuyển sang "Đã liên hệ".'); }); } }, '✓ Đã liên hệ')] });
     });
     regs.filter(function(r){ return r.status === 'pending'; }).forEach(function(r){
-      items.push({ id: 'reg-' + r.id, group: 'sales', prio: 0, icon: '📝', who: { name: r.name }, why: 'Đăng ký học trên trang chủ — duyệt ở tab "Học sinh"' + (r.parentZalo ? ' · Zalo PH ' + r.parentZalo : ''),
-        actions: r.parentZalo ? [h('a', { key: 'z', className: 'btn btn-secondary', href: zalo(r.parentZalo), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo phụ huynh')] : [] });
+      var rp = r.phone || r.parentZalo;
+      items.push({ id: 'reg-' + r.id, group: 'sales', prio: 0, icon: '📝', who: { name: r.name }, phone: r.phone, phone2: r.parentZalo && r.parentZalo !== r.phone ? r.parentZalo : null,
+        why: 'Đăng ký học trên trang chủ — duyệt ở tab "Học sinh"',
+        actions: [rp ? h('a', { key: 't', className: 'btn btn-primary', href: 'tel:' + phoneDigits(rp), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(rp)) : null,
+          r.parentZalo ? h('a', { key: 'z', className: 'btn btn-secondary', href: zalo(r.parentZalo), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo phụ huynh') : null] });
     });
     var GROUPS = [['sales', '🌱 Khách mới & đăng ký'], ['fee', '💳 Học phí'], ['help', '🆘 Cần thầy hỗ trợ'], ['learn', '⏰ Nhắc học'], ['parent', '👪 Gửi tiến độ cho phụ huynh']];
     var total = items.length, doneN = items.filter(function(it){ return done[it.id]; }).length;
@@ -448,6 +478,8 @@
               h('span', { style: { fontSize: '1.1rem', flex: 'none' } }, it.icon),
               h('div', { style: { flex: '1 1 260px', minWidth: 0 } },
                 h('b', null, it.who.name || '—'), it.who.lop ? h('span', { style: { color: 'var(--muted)', fontSize: '0.8rem' } }, ' · ' + it.who.lop) : null,
+                it.phone ? h('a', { href: 'tel:' + phoneDigits(it.phone), style: { marginLeft: '8px', fontWeight: 800, fontSize: '1rem', color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap' } }, '☎ ' + fmtPhone(it.phone)) : null,
+                it.phone2 ? h('a', { href: 'tel:' + phoneDigits(it.phone2), style: { marginLeft: '8px', fontWeight: 700, fontSize: '0.9rem', color: 'var(--ink-2)', textDecoration: 'none', whiteSpace: 'nowrap' } }, 'PH ' + fmtPhone(it.phone2)) : null,
                 h('div', { style: { fontSize: '0.84rem', color: 'var(--ink-2)', textDecoration: isDone ? 'line-through' : 'none' } }, it.why)),
               h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, (it.actions || []).filter(Boolean)));
           }));

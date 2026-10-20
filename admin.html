@@ -3562,7 +3562,12 @@
             return h('tr', { key: l.id },
               h('td', null, l.createdAt ? new Date(l.createdAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''),
               h('td', null, h('b', null, l.name), h('div', { style: { fontSize: '0.76rem', color: 'var(--ink-2)' } }, 'Lớp ' + (l.grade || '?') + (l.school ? ' · ' + l.school : '') + (l.target ? ' · mục tiêu ' + l.target : ''))),
-              h('td', null, h('a', { href: 'tel:' + ph }, l.phone), ' · ', h('a', { href: 'https://zalo.me/' + ph, target: '_blank', rel: 'noopener' }, 'Zalo')),
+              // SỬA 20/10/2026: SĐT hiện to, rõ + nút Gọi / Chép số (Zalo chưa kết bạn thì không gọi được → gọi số thường)
+              h('td', { style: { whiteSpace: 'nowrap' } }, h('a', { href: 'tel:' + ph, style: { fontWeight: 800, fontSize: '0.98rem', textDecoration: 'none' } }, '☎ ' + (ph.length === 10 ? ph.slice(0, 4) + ' ' + ph.slice(4, 7) + ' ' + ph.slice(7) : l.phone)),
+                h('div', { style: { display: 'flex', gap: '6px', marginTop: '4px' } },
+                  h('a', { className: 'btn btn-primary', href: 'tel:' + ph, style: { fontSize: '0.74rem', padding: '3px 8px', textDecoration: 'none' } }, '📞 Gọi'),
+                  h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.74rem', padding: '3px 8px' }, onClick: function(){ try{ navigator.clipboard.writeText(ph).then(function(){ props.fireToast('Đã chép số ' + ph + '.'); }); }catch(e){ window.prompt('Chép số:', ph); } } }, '📋 Chép'),
+                  h('a', { className: 'btn btn-secondary', href: 'https://zalo.me/' + ph, target: '_blank', rel: 'noopener', style: { fontSize: '0.74rem', padding: '3px 8px', textDecoration: 'none' } }, 'Zalo'))),
               h('td', null, h('b', null, l.correct + '/' + l.total), ' (' + String(l.score10).replace('.', ',') + 'đ)', h('div', { style: { fontSize: '0.74rem', color: 'var(--ink-2)' } }, Math.round((l.seconds || 0) / 60 * 10) / 10 + ' phút')),
               h('td', { style: { maxWidth: '240px' } }, l.weak || '—'),
               h('td', null, l.src || ''),
@@ -6986,23 +6991,34 @@
   // sửa code/deploy lại. 3 gói mặc định dưới đây khớp ĐÚNG nội dung đang in
   // cứng sẵn trong index.html — dùng để "mồi" panel lần đầu mở (khi
   // "settings/pricing" chưa từng được lưu) và cho nút "Khôi phục mặc định".
+  // SỬA 20/10/2026 — GỘP BẢNG GIÁ: đây là bảng giá DUY NHẤT. Trang chủ hiện các gói "Hiển thị trên trang chủ";
+  // tab 💳 Học phí (admin-ops.js) dùng TẤT CẢ gói (kể cả gói ẩn, vd. kèm trực tiếp tại nhà). Mỗi gói có id cố định
+  // (học sinh lưu billing.plan = id), giá tháng (price) và giá trọn khóa (fullPrice, 0 = tự tính theo % giảm).
+  function pricingTierId(t, idx){ return (t && t.id) || ('g' + (idx + 1)); }
+  window.OPC_defaultPricingTiers = function(){ return defaultPricingTiers(); };
+  window.OPC_pricingTierId = pricingTierId;
   function defaultPricingTiers(){
     return [
       {
-        name: 'Luyện đề', price: 300000, unit: '/tháng', badge: '', featured: false, visible: true,
+        id: 'g1', name: 'Luyện đề', price: 300000, unit: '/tháng', badge: '', featured: false, visible: true,
         features: ['Đề chẩn đoán đầu vào theo 4 chuyên đề', 'Bản đồ năng lực cập nhật hàng tuần', 'Lộ trình luyện tập tự động theo kết quả', 'Báo cáo phụ huynh qua Zalo mỗi tuần']
       },
       {
-        name: 'Luyện đề + Giảng dạy', price: 450000, unit: '/tháng', badge: 'Phổ biến nhất', featured: true, visible: true,
+        id: 'g2', name: 'Luyện đề + Giảng dạy', price: 450000, unit: '/tháng', badge: 'Phổ biến nhất', featured: true, visible: true,
         features: ['Toàn bộ tính năng gói Luyện đề', 'Module giảng dạy: bài giảng ngắn đúng lỗ hổng', 'Tự động luyện lại sau mỗi bài giảng', 'Ưu tiên chuyên đề yếu nhất mỗi tuần']
       },
       {
-        name: 'Kèm sát 1-1', price: 900000, unit: '/tháng', badge: '', featured: false, visible: true,
+        id: 'g3', name: 'Kèm sát 1-1', price: 900000, unit: '/tháng', badge: '', featured: false, visible: true,
         features: ['Toàn bộ tính năng gói Luyện đề + Giảng dạy', '15 phút trao đổi trực tiếp với giáo viên mỗi tuần', 'Điều chỉnh lộ trình thủ công theo tình hình thực tế']
+      },
+      {
+        id: 'g4', name: 'Kèm 1-1 trực tiếp tại nhà thầy', price: 4000000, unit: '/tháng', badge: '', featured: false, visible: false,
+        features: ['Học trực tiếp 1 kèm 1 tại nhà thầy, 3 giờ/tuần']
       }
     ];
   }
   function pricingFmtVND(n){ return (Number(n) || 0).toLocaleString('vi-VN') + 'đ'; }
+  function pricingMonthsLeft(examYmd){ var p = String(examYmd || '').split('-'); var e = new Date(+p[0], +p[1] - 1, +p[2]), t = new Date(); t.setHours(0, 0, 0, 0); if(isNaN(e) || e <= t) return 1; return Math.max(1, Math.ceil((e - t) / (30.44 * 86400000))); }
 
   // THÊM 2/10/2026 — panel chỉnh ƯU ĐÃI GIỚI THIỆU (settings/referral). Lưu xong là trang đăng ký
   // (index.html) hiện đúng mức giảm mới ngay, không cần deploy; lượt duyệt đăng ký kế tiếp dùng mức mới.
@@ -7892,7 +7908,14 @@
     var sectionEnabledState = React.useState(true); var sectionEnabled = sectionEnabledState[0], setSectionEnabled = sectionEnabledState[1];
     var tiersState = React.useState(defaultPricingTiers()); var tiers = tiersState[0], setTiers = tiersState[1];
     var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
+    var courseState = React.useState({ examDate: '2027-06-11', fullOff: 20, quarterOff: 10, showFull: true }); var course = courseState[0], setCourse = courseState[1];
+    function setC(k, v){ setCourse(function(p){ var n = Object.assign({}, p); n[k] = v; return n; }); }
     var initedRef = React.useRef(false);
+    var usingState = React.useState({}); var studentsUsing = usingState[0], setStudentsUsing = usingState[1];
+    React.useEffect(function(){
+      if(!OPCref.students) return;
+      return OPCref.students.subscribe(function(snap){ var m = {}; snap.docs.forEach(function(d){ var b = (d.data() || {}).billing; if(b && b.plan) m[b.plan] = (m[b.plan] || 0) + 1; }); setStudentsUsing(m); }, function(){});
+    }, []);
 
     React.useEffect(function(){
       if(!OPCref.pricing) return;
@@ -7905,8 +7928,9 @@
         if(data){
           setHasSavedDoc(true);
           setSectionEnabled(data.sectionEnabled !== false);
-          setTiers(Array.isArray(data.tiers) && data.tiers.length ? data.tiers.map(function(t){
-            return Object.assign({ name:'', price:0, unit:'/tháng', badge:'', featured:false, visible:true, features:[] }, t);
+          setCourse({ examDate: data.examDate || '2027-06-11', fullOff: data.fullOff != null ? data.fullOff : 20, quarterOff: data.quarterOff != null ? data.quarterOff : 10, showFull: data.showFull !== false });
+          setTiers(Array.isArray(data.tiers) && data.tiers.length ? data.tiers.map(function(t, i){
+            return Object.assign({ name:'', price:0, fullPrice:0, unit:'/tháng', badge:'', featured:false, visible:true, features:[] }, t, { id: pricingTierId(t, i) });
           }) : defaultPricingTiers());
         } else {
           setHasSavedDoc(false);
@@ -7929,11 +7953,13 @@
       });
     }
     function removeTier(idx){
+      var used = (studentsUsing[tiers[idx].id] || 0);
+      if(used){ props.fireToast('Đang có ' + used + ' học sinh dùng gói này (tab 💳 Học phí) — đổi gói cho các em trước, hoặc bỏ tick "Hiển thị trên trang chủ" để ẩn gói.', true); return; }
       if(!window.confirm('Xoá gói "' + (tiers[idx].name || '(chưa đặt tên)') + '"? Thao tác chỉ có hiệu lực sau khi bấm Lưu.')) return;
       setTiers(function(prev){ return prev.filter(function(_, i){ return i !== idx; }); });
     }
     function addTier(){
-      setTiers(function(prev){ return prev.concat([{ name:'Gói mới', price:0, unit:'/tháng', badge:'', featured:false, visible:true, features:[] }]); });
+      setTiers(function(prev){ return prev.concat([{ id: 'g' + Date.now().toString(36), name:'Gói mới', price:0, fullPrice:0, unit:'/tháng', badge:'', featured:false, visible:true, features:[] }]); });
     }
     function resetToDefault(){
       if(!window.confirm('Khôi phục về 3 gói mặc định? Thao tác chỉ có hiệu lực sau khi bấm Lưu.')) return;
@@ -7948,7 +7974,8 @@
         if(t.price == null || isNaN(Number(t.price)) || Number(t.price) < 0){ props.fireToast('Giá của gói "' + t.name + '" không hợp lệ.', true); return; }
       }
       setSaving(true);
-      OPCref.pricing.save({ sectionEnabled: sectionEnabled, tiers: tiers })
+      OPCref.pricing.save({ sectionEnabled: sectionEnabled, tiers: tiers.map(function(t, i){ return Object.assign({}, t, { id: pricingTierId(t, i), fullPrice: Number(t.fullPrice) || 0 }); }),
+        examDate: course.examDate, fullOff: Number(course.fullOff) || 0, quarterOff: Number(course.quarterOff) || 0, showFull: course.showFull })
         .then(function(){ setHasSavedDoc(true); props.fireToast('Đã lưu Gói dịch vụ — trang chủ sẽ cập nhật ngay.'); })
         .catch(function(err){ console.error('Lỗi lưu Gói dịch vụ:', err); props.fireToast('Không lưu được — thử lại.', true); })
         .finally(function(){ setSaving(false); });
@@ -7959,7 +7986,7 @@
     return h('div', { className: 'card' },
       h('div', { className: 'sm-toolbar' },
         h('div', null, h('h3', null, '💰 Gói dịch vụ'),
-          h('p', { className: 'sm-sub' }, 'Giá/tính năng hiển thị ở mục "Gói dịch vụ" trên trang chủ — sửa xong bấm Lưu là trang chủ cập nhật ngay, không cần deploy lại.')),
+          h('p', { className: 'sm-sub' }, 'BẢNG GIÁ DUY NHẤT — dùng cho cả trang chủ (gói được tick "Hiển thị trên trang chủ") lẫn tab 💳 Học phí (tất cả gói, kể cả gói ẩn). Sửa xong bấm Lưu là cập nhật ngay.')),
         h('div', { className: 'sm-actions' },
           h('button', { type: 'button', className: 'btn btn-secondary', onClick: resetToDefault }, '↩️ Khôi phục mặc định'),
           h('button', { type: 'button', className: 'btn btn-primary', disabled: saving, onClick: handleSave }, saving ? 'Đang lưu…' : '💾 Lưu thay đổi')
@@ -7974,6 +8001,13 @@
         'Hiện mục "Gói dịch vụ" trên trang chủ'
       ),
       !sectionEnabled ? h('p', { style: { fontSize: '0.8rem', color: 'var(--warning)', marginTop: '4px' } }, '⚠️ Cả mục Gói dịch vụ sẽ bị ẩn khỏi trang chủ (dùng khi chưa sẵn sàng mở bán).') : null,
+      // THÊM 20/10/2026 — thông số TRỌN KHÓA dùng chung cho mọi gói
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '10px', marginTop: '12px', background: 'var(--surface-2)', borderRadius: '10px', padding: '10px 12px' } },
+        h('div', { className: 'sm-field' }, h('label', null, 'Ngày thi tốt nghiệp (hết khóa)'), h('input', { type: 'date', value: course.examDate, onChange: function(e){ setC('examDate', e.target.value); } })),
+        h('div', { className: 'sm-field' }, h('label', null, 'Giảm khi đóng trọn khóa (%)'), h('input', { type: 'number', min: 0, max: 60, value: course.fullOff, onChange: function(e){ setC('fullOff', e.target.value); } })),
+        h('div', { className: 'sm-field' }, h('label', null, 'Giảm khi đóng theo quý (%)'), h('input', { type: 'number', min: 0, max: 50, value: course.quarterOff, onChange: function(e){ setC('quarterOff', e.target.value); } })),
+        h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' } }, h('input', { type: 'checkbox', checked: course.showFull, onChange: function(e){ setC('showFull', e.target.checked); } }), 'Hiện giá trọn khóa trên trang chủ')),
+      h('p', { style: { fontSize: '0.78rem', color: 'var(--ink-2)', margin: '6px 0 0' } }, 'Trọn khóa = học đến ' + (course.examDate ? course.examDate.split('-').reverse().join('/') : '—') + ' (hôm nay còn ' + pricingMonthsLeft(course.examDate) + ' tháng). Gói nào không nhập giá trọn khóa thì tự tính: giá tháng × số tháng còn lại − ' + (Number(course.fullOff) || 0) + '%.'),
 
       tiers.map(function(t, idx){
         return h('div', { key: idx, className: cx('pp-tier-card', (!t.visible || !sectionEnabled) && 'disabled') },
@@ -7994,7 +8028,12 @@
               h('input', { type: 'number', min: 0, step: 10000, value: t.price, onChange: function(e){ updateTier(idx, { price: Number(e.target.value) }); } }),
               h('div', { className: 'pp-preview-price' }, pricingFmtVND(t.price) + (t.unit || ''))),
             h('div', { className: 'sm-field' }, h('label', null, 'Đơn vị'),
-              h('input', { type: 'text', value: t.unit || '', placeholder: '/tháng', onChange: function(e){ updateTier(idx, { unit: e.target.value }); } }))
+              h('input', { type: 'text', value: t.unit || '', placeholder: '/tháng', onChange: function(e){ updateTier(idx, { unit: e.target.value }); } })),
+            (function(){ var m = pricingMonthsLeft(course.examDate), auto = Math.round((Number(t.price) || 0) * m * (1 - (Number(course.fullOff) || 0) / 100) / 1000) * 1000;
+              var full = Number(t.fullPrice) > 0 ? Number(t.fullPrice) : auto, save = (Number(t.price) || 0) * m - full;
+              return h('div', { className: 'sm-field' }, h('label', null, 'Giá trọn khóa (VNĐ)'),
+                h('input', { type: 'number', min: 0, step: 100000, value: t.fullPrice || '', placeholder: 'tự tính: ' + pricingFmtVND(auto), onChange: function(e){ updateTier(idx, { fullPrice: Number(e.target.value) || 0 }); } }),
+                h('div', { className: 'pp-preview-price' }, pricingFmtVND(full) + ' / ' + m + ' tháng' + (save > 0 ? ' · tiết kiệm ' + pricingFmtVND(save) : ''))); })()
           ),
           h('div', { className: 'sm-field', style: { marginTop: '12px' } }, h('label', null, 'Nhãn nổi bật (để trống nếu không có, vd. "Phổ biến nhất")'),
             h('input', { type: 'text', value: t.badge || '', onChange: function(e){ updateTier(idx, { badge: e.target.value }); } })),
@@ -8007,7 +8046,8 @@
             })),
           h('div', { className: 'pp-tier-toggles' },
             h('label', null, h('input', { type: 'checkbox', checked: !!t.featured, onChange: function(e){ updateTier(idx, { featured: e.target.checked }); } }), 'Làm nổi bật (khung viền vàng)'),
-            h('label', null, h('input', { type: 'checkbox', checked: t.visible !== false, onChange: function(e){ updateTier(idx, { visible: e.target.checked }); } }), 'Hiển thị gói này trên trang chủ')
+            h('label', null, h('input', { type: 'checkbox', checked: t.visible !== false, onChange: function(e){ updateTier(idx, { visible: e.target.checked }); } }), 'Hiển thị gói này trên trang chủ'),
+            studentsUsing[t.id] ? h('span', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } }, '👥 ' + studentsUsing[t.id] + ' học sinh đang dùng') : (t.visible === false ? h('span', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } }, 'Gói ẩn — chỉ dùng trong 💳 Học phí') : null)
           )
         );
       }),
@@ -11806,7 +11846,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
         h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG & Olympic')
       ),
-      (tab === 'today' && window.OPC_OPS) ? h(window.OPC_OPS.TodayPanel, {fireToast:fireToast}) : (tab === 'billing' && window.OPC_OPS) ? h(window.OPC_OPS.BillingPanel, {fireToast:fireToast}) :
+      (tab === 'today' && window.OPC_OPS) ? h(window.OPC_OPS.TodayPanel, {fireToast:fireToast}) : (tab === 'billing' && window.OPC_OPS) ? h(window.OPC_OPS.BillingPanel, {fireToast:fireToast, onGoPricing:function(){ setTab('pricing'); }}) :
       tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
         tab === 'prepscholar' ? h(PrepScholarMonitoringPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
