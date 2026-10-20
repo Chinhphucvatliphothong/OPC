@@ -4,5 +4,6 @@ Allow: /
 Disallow: /admin
 Disallow: /admin.html
 Disallow: /api/
+Disallow: /phuhuynh
 
 Sitemap: https://faradayai.vn/sitemap.xml

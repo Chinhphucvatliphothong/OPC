@@ -126,6 +126,14 @@ service cloud.firestore {
       allow read, update, delete: if isOpcAdmin();
     }
 
+    // THÊM 20/10/2026 — TRANG TIẾN ĐỘ PHỤ HUYNH (/phuhuynh?t=<mã>): ảnh chụp số liệu 1 em do admin ghi.
+    // Chỉ cho "get" đúng 1 mã (24 ký tự ngẫu nhiên) — KHÔNG cho "list" nên không ai dò được danh sách học sinh.
+    match /parent_views/{viewId} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isOpcAdmin();
+    }
+
     // THÊM 15/10/2026 — "Chẩn đoán 5 phút" trên trang chủ (khách chưa đăng nhập).
     // diag_leads: khách để lại liên hệ + kết quả — CHỈ được tạo (đúng các trường, giới hạn độ dài); admin đọc/sửa/xoá.
     match /diag_leads/{leadId} {

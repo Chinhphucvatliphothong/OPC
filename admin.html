@@ -974,6 +974,19 @@
       }
     };
 
+    // ================= THÊM 20/10/2026 — TRANG TIẾN ĐỘ PHỤ HUYNH + HỌC PHÍ (xem admin-ops.js, phuhuynh.html) =================
+    // parent_views/{token}: ẢNH CHỤP số liệu của 1 em (tên, điểm dự đoán, bản đồ lỗ hổng, biểu đồ điểm…) do admin tạo/cập nhật.
+    // Ai có link /phuhuynh?t=<token> (24 ký tự ngẫu nhiên) mới đọc được — không liệt kê được (rules: chỉ "get").
+    OPC.parentViews = {
+      save: function(token, data){ return setDoc(doc(db, 'parent_views', token), data); },
+      remove: function(token){ return deleteDoc(doc(db, 'parent_views', token)); }
+    };
+    // settings/billing: bảng giá 3 gói + % giảm khi đóng quý / trọn lộ trình + ngày thi (đọc công khai như các settings khác)
+    OPC.billingSettings = {
+      subscribe: function(onNext, onErr){ return onSnapshot(doc(db, 'settings', 'billing'), function(snap){ onNext(snap.exists() ? snap.data() : null); }, onErr); },
+      save: function(data){ return setDoc(doc(db, 'settings', 'billing'), Object.assign({}, data, { updatedAt: new Date().toISOString() })); }
+    };
+
     // ================= THÊM 15/10/2026 — "CHẨN ĐOÁN 5 PHÚT" (phễu khách mới, xem diagnostic5.js) =================
     // settings/diagnostic5: bộ câu + cấu hình (đọc công khai) · diag_leads: khách để lại liên hệ · diag_events: đếm lượt.
     OPC.diag5 = {
@@ -1146,6 +1159,7 @@
 <!-- THÊM 04/10/2026 — lớp viết tay Apple Pencil (InkBoard): phải nạp SAU React -->
 <script src="/ink-overlay.js"></script>
 <script src="/theme-toggle.js"></script> <!-- THÊM 17/10/2026 — nút sáng/tối -->
+<script src="/admin-ops.js"></script> <!-- THÊM 20/10/2026 — Việc hôm nay · Học phí · Link phụ huynh -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
 (function(){
@@ -6233,6 +6247,9 @@
           h('p',null, h('b',null,'Tiến độ đạt mục tiêu điểm: '), h('span',{className:'sm-mono-pill'}, selKpi.targetProgressPct)),
           h('p',null, h('b',null,'Chuyên đề trọng tâm cần ôn: '), h('span',{style:{color:'var(--warning)', fontWeight:600}}, selKpi.weakTopic)),
           h('p',null, h('b',null,'Số câu sai trong sổ tay: '), h('span',{className:'sm-mono-pill'}, selKpi.mistakes + ' câu'))),
+        // THÊM 20/10/2026 — link trang tiến độ riêng cho phụ huynh (admin-ops.js)
+        window.OPC_OPS ? h(window.OPC_OPS.ParentLinkBox, { key: 'plb-' + selected.id, student: selected, fireToast: props.fireToast,
+          onUpdated: function(r){ setSelected(function(p){ return p && p.id === selected.id ? Object.assign({}, p, { parentViewToken: r.token, parentViewUpdatedAt: r.snap.updatedAt }) : p; }); } }) : null,
 
         // ============= Biểu đồ điểm số =============
         // THÊM 24/9/2026 — vẽ từ selectedAttempts (subscribe khi mở hồ sơ,
@@ -11711,7 +11728,7 @@
     var opcLoadedState = React.useState(!!window.OPC); var opcLoaded = opcLoadedState[0], setOpcLoaded = opcLoadedState[1];
     var authStatusState = React.useState('checking'); var authStatus = authStatusState[0], setAuthStatus = authStatusState[1]; // checking | signed-out | not-admin | admin
     var userState = React.useState(null); var user = userState[0], setUser = userState[1];
-    var tabState = React.useState('students'); var tab = tabState[0], setTab = tabState[1]; // students | exambank | generator
+    var tabState = React.useState(window.OPC_OPS ? 'today' : 'students'); var tab = tabState[0], setTab = tabState[1]; // SỬA 20/10/2026 — mở vào "📌 Việc hôm nay" // students | exambank | generator
     var toastState = React.useState(null); var toast = toastState[0], setToast = toastState[1];
 
     function fireToast(msg, isErr){ setToast({msg:msg, err:!!isErr}); setTimeout(function(){ setToast(null); }, 3400); }
@@ -11772,7 +11789,10 @@
 
     return h('div',null,
       h('div',{className:'tab-row'},
+        // THÊM 20/10/2026 — Việc hôm nay · Học phí (admin-ops.js)
+        window.OPC_OPS ? h('button',{type:'button', className:cx('tab-btn', tab==='today' && 'active'), onClick:function(){ setTab('today'); }}, '📌 Việc hôm nay') : null,
         h('button',{type:'button', className:cx('tab-btn', tab==='students' && 'active'), onClick:function(){ setTab('students'); }}, 'Học sinh'),
+        window.OPC_OPS ? h('button',{type:'button', className:cx('tab-btn', tab==='billing' && 'active'), onClick:function(){ setTab('billing'); }}, '💳 Học phí') : null,
         h('button',{type:'button', className:cx('tab-btn', tab==='prepscholar' && 'active'), onClick:function(){ setTab('prepscholar'); }}, '⚡ Giám sát thích ứng PrepScholar'),
         h('button',{type:'button', className:cx('tab-btn', tab==='exambank' && 'active'), onClick:function(){ setTab('exambank'); }}, 'Ngân hàng đề & câu hỏi'),
         h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa'),
@@ -11786,6 +11806,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
         h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG & Olympic')
       ),
+      (tab === 'today' && window.OPC_OPS) ? h(window.OPC_OPS.TodayPanel, {fireToast:fireToast}) : (tab === 'billing' && window.OPC_OPS) ? h(window.OPC_OPS.BillingPanel, {fireToast:fireToast}) :
       tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
         tab === 'prepscholar' ? h(PrepScholarMonitoringPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
           tab === 'exambank' ? h(ExamBankPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
