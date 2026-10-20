@@ -379,13 +379,23 @@
     });
     var res = { I: [], II: [], III: [] }, unsure = { I: {}, II: {}, III: {} };
     // Số báo danh / mã đề: mỗi cột 1 chữ số
+    // SỬA 20/10/2026 — SBD/mã đề hay tô MỜ (bút chì nhạt, tô nhỏ): mỗi cột chắc chắn có đúng 1 ô tô → so ô đậm nhất
+    // với CÁC Ô CÒN LẠI TRONG CỘT (không dùng ngưỡng chung của cả phiếu). Ô mờ 0,15–0,25 vẫn đọc được nếu nổi rõ hơn cột.
+    function decideDigit(idxs) {
+      var arr = idxs.map(function (i) { return { i: i, v: vals[i] }; }).sort(function (a, b) { return b.v - a.v; });
+      var top = arr[0], second = arr[1] || { v: 0 }, med = arr[Math.floor(arr.length / 2)].v;
+      if (top.v >= T) { var d0 = decide(idxs); if (d0.pick != null) return d0; }
+      if (top.v >= Math.max(0.12, med + 0.08) && top.v - second.v >= 0.06)
+        return { pick: top.i, sure: top.v - second.v >= 0.1 && top.v >= med + 0.13 };
+      return { pick: null, sure: false };
+    }
     function readDigits(kind) {
       var str = '', ok = true, ncol = 0;
       for (var c = 0; c < 6; c++) {
         var g = []; L.bubbles.forEach(function (b, i) { if (b.part === kind && b.col === c) g.push(i); });
         if (!g.length) break;
         ncol++;
-        var dd = decide(g);
+        var dd = decideDigit(g);
         if (dd.pick != null) str += L.bubbles[dd.pick].ch;
         if (!dd.sure) ok = false;
       }
@@ -418,6 +428,29 @@
       if (bad) unsure.III[q3] = 'Cần xem lại';
     }
     return { ok: true, answers: res, unsure: unsure, threshold: T, baseline: base, id: idInfo, values: vals };
+  }
+
+  // THÊM 20/10/2026 — ĐỐI CHIẾU với danh sách có sẵn (SBD trong lớp / mã đề của bài): chấm điểm từng ứng viên =
+  // tổng (độ tối ô của chữ số ứng viên − trung vị cột). Dùng khi đọc thẳng không ra (tô mờ, thiếu cột, lệch 1 số).
+  // Trả về [{ cand, score, agree, ncol }] xếp giảm dần; agree = số cột mà chữ số ứng viên là ô đậm nhất cột.
+  function matchDigits(L, vals, kind, cands) {
+    var cols = [];
+    for (var c = 0; c < 6; c++) {
+      var g = {}, list = [];
+      L.bubbles.forEach(function (b, i) { if (b.part === kind && b.col === c) { g[b.ch] = vals[i]; list.push(vals[i]); } });
+      if (!list.length) break;
+      list.sort(function (a, b) { return a - b; });
+      var mx = list[list.length - 1];
+      cols.push({ v: g, med: list[Math.floor(list.length / 2)], max: mx });
+    }
+    var n = cols.length;
+    return (cands || []).map(function (cand) {
+      var str = String(cand); while (str.length < n) str = '0' + str;
+      if (str.length > n) return null;
+      var score = 0, agree = 0;
+      for (var k = 0; k < n; k++) { var v = cols[k].v[str[k]]; if (v == null) return null; score += v - cols[k].med; if (v >= cols[k].max - 1e-9) agree++; }
+      return { cand: cand, score: score, agree: agree, ncol: n };
+    }).filter(Boolean).sort(function (a, b) { return b.score - a.score; });
   }
 
   function ratioOk(L, dst) {
@@ -521,6 +554,7 @@
     orderForSheet: orderForSheet,
     readSheet: readSheet,
     decideValues: decideValues,
+    matchDigits: matchDigits,
     guideRect: guideRect,
     liveFrame: liveFrame,
     sheetCode: sheetCode,

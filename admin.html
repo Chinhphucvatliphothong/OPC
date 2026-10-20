@@ -2880,13 +2880,60 @@
     var countState = React.useState(Object.keys(test.results || {}).length); var count = countState[0], setCount = countState[1];
     var bySbd = {}; roster.forEach(function(s){ bySbd[Number(s.sbd)] = s; });
 
-    function pushLog(item){ setLog(function(prev){ return [item].concat(prev).slice(0, 40); }); }
+    var logSeq = React.useRef(0);
+    function pushLog(item){ item.id = ++logSeq.current; setLog(function(prev){ return [item].concat(prev).slice(0, 60); }); }
 
     // Xử lý 1 kết quả đọc phiếu đã "chốt"
-    async function accept(res, stKnown){
+    // SỬA 20/10/2026 — chấm "khó tính" ít hơn, tiện cho thầy hơn:
+    //  • SBD đọc không ra / không có trong lớp → ĐỐI CHIẾU với SBD các em trong lớp (OMR.matchDigits), nhận em khớp rõ nhất.
+    //  • Mã đề tô mờ / bỏ trống → đối chiếu với các mã đề của bài; vẫn không ra → ĐOÁN THEO ĐÁP ÁN (mã đề cho điểm cao
+    //    vượt trội các mã khác — em làm đúng nhiều thì đáp án khớp đúng mã của em). Mọi trường hợp đoán đều ghi "cần xem lại".
+    //  • Vẫn không chắc → thẻ lỗi có nút CHỌN EM / CHỌN MÃ ĐỀ ngay tại chỗ (dùng lại kết quả đã đọc, không cần quét lại).
+    function pad(v, n){ var t = String(v == null ? '' : v).replace(/\D/g, ''); while(t.length < n) t = '0' + t; return t; }
+    function guessStudent(res, L0){
+      // SBD đọc RÕ cả 6 số mà không có trong lớp → không đoán (tránh gán nhầm cho em có SBD gần giống)
+      if(!res.values || !OMR.matchDigits || (res.id && res.id.sbd && res.id.sbd.sure)) return null;
+      var withSbd = roster.filter(function(s){ return s.sbd != null && String(s.sbd).trim() !== ''; });
+      var m = OMR.matchDigits(L0, res.values, 'sbd', withSbd.map(function(s){ return pad(s.sbd, 6); }));
+      if(!m.length) return null;
+      var a = m[0], b = m[1] || { score: -9 };
+      if(a.agree >= a.ncol - 1 && a.score >= 0.1 * a.ncol && a.score - b.score >= 0.12) return bySbd[Number(a.cand)] || null;
+      return null;
+    }
+    function ansFor(res, version, baseQs){
+      var vq = ctVersionQuestions(baseQs || test.questions, version), vo = OMR.orderForSheet(vq);
+      var ans = {}, unsureN = 0;
+      vo.I.forEach(function(q, i){ if(res.answers.I[i]) ans[q.id] = res.answers.I[i]; if(res.unsure.I[i]) unsureN++; });
+      vo.II.forEach(function(q, i){ var o = {}; (q.statements || []).forEach(function(stt, si){ if(si < 4 && res.answers.II[i] && res.answers.II[i][si] != null) o[stt.key || 'abcd'[si]] = res.answers.II[i][si]; }); if(Object.keys(o).length) ans[q.id] = o; if(res.unsure.II[i]) unsureN++; });
+      vo.III.forEach(function(q, i){ if(res.answers.III[i]) ans[q.id] = res.answers.III[i]; if(res.unsure.III[i]) unsureN++; });
+      return { ans: ans, unsureN: unsureN };
+    }
+    function guessVersion(res, L0){
+      var vs = test.versions || [];
+      if(vs.length <= 1) return vs[0] ? { v: vs[0], how: '' } : null;
+      if(res.values && OMR.matchDigits){
+        var m = OMR.matchDigits(L0, res.values, 'code', vs.map(function(v){ return pad(v.code, 3); }));
+        var a = m[0], b = m[1] || { score: -9 };
+        if(a && ((a.agree === a.ncol && a.score >= 0.15 && a.score - b.score >= 0.06) || (a.agree >= a.ncol - 1 && a.score - b.score >= 0.1)))
+          return { v: vs.filter(function(v){ return pad(v.code, 3) === a.cand; })[0], how: 'đối chiếu ô tô mờ' };
+      }
+      // đoán theo đáp án: chấm thử với từng mã đề
+      var NE = window.PrepScholarEngine; if(!NE) return null;
+      var sc = vs.map(function(v){ var o = ctToOriginal(v, ansFor(res, v).ans); var r = NE.scoreExam(test.questions, o); return { v: v, c: r.correctCount || 0, s: r.scaledScore10 || 0 }; })
+        .sort(function(x, y){ return y.s - x.s; });
+      // 2 mã đề in giống hệt nhau (không đảo câu/phương án) → chấm mã nào cũng như nhau
+      function sig(v){ return JSON.stringify([v.order, (v.order || []).map(function(id){ return (v.perm && v.perm[id]) || 'ABCD'; })]); }
+      var top = sc.filter(function(x){ return sc[0] && x.s === sc[0].s; }), same = top.every(function(x){ return sig(x.v) === sig(top[0].v); });
+      var rival = sc.filter(function(x){ return !(x.s === sc[0].s && same); })[0];
+      if(sc[0] && same && sc[0].s - (rival ? rival.s : 0) >= 1.5 && sc[0].c >= 6) return { v: sc[0].v, how: 'đoán theo đáp án' };
+      return null;
+    }
+    async function accept(res, stKnown, versionKnown){
+      var L0 = res._L || L;
       var sbd = res.id && res.id.sbd ? res.id.sbd.value : null;
-      var st = stKnown || (sbd != null ? bySbd[sbd] : null);
-      if(!st){ ctBeep(false); pushLog({ bad: true, text: sbd == null ? 'Không đọc được Số báo danh — kiểm tra em đã tô SBD chưa.' : ('SBD ' + sbd + ' không có trong danh sách ' + (test.studentIds ? 'nhóm này' : 'lớp ' + test.lop) + '.') }); return; }
+      var st = stKnown || (sbd != null ? bySbd[sbd] : null), notes = [];
+      if(!st){ st = guessStudent(res, L0); if(st) notes.push('SBD đọc ra "' + ((res.id && res.id.sbd && res.id.sbd.text) || '?') + '" → nhận là ' + st.sbd); }
+      if(!st){ ctBeep(false); pushLog({ bad: true, fix: { res: res, need: 'student' }, text: (sbd == null ? 'Không đọc được Số báo danh' : ('SBD ' + ((res.id.sbd && res.id.sbd.text) || sbd) + ' không có trong danh sách ' + (test.studentIds ? 'nhóm này' : 'lớp ' + test.lop))) + ' — chọn em bên dưới (không cần quét lại).' }); return; }
       var version, baseQs;
       if(isReview){
         baseQs = reviewQs[st.id] || [];
@@ -2894,23 +2941,43 @@
         version = { code: 'ON', order: baseQs.map(function(q){ return q.id; }), perm: {} };
       } else {
         var codeV = res.id && res.id.code ? res.id.code.value : null;
-        version = test.versions.filter(function(v){ return Number(v.code) === codeV; })[0] || (test.versions.length === 1 ? test.versions[0] : null);
-        if(!version){ ctBeep(false); pushLog({ bad: true, text: st.name + ': không đọc được mã đề (' + (res.id.code.text || 'trống') + ').' }); return; }
+        version = versionKnown || test.versions.filter(function(v){ return Number(v.code) === codeV; })[0] || (test.versions.length === 1 ? test.versions[0] : null);
+        if(!version){ var gv = guessVersion(res, L0); if(gv && gv.v){ version = gv.v; notes.push('mã đề ' + (res.id.code.text ? 'đọc ra "' + res.id.code.text + '"' : 'tô mờ/trống') + ' → ' + gv.how + ': ' + version.code); } }
+        if(!version){ ctBeep(false); pushLog({ bad: true, fix: { res: res, need: 'version', st: st }, text: st.name + ': không đọc được mã đề (' + (res.id.code.text || 'trống') + ') — chọn mã đề bên dưới.' }); return; }
       }
-      var vq = ctVersionQuestions(baseQs || test.questions, version), vo = OMR.orderForSheet(vq);
-      var ans = {}, unsureN = 0;
-      vo.I.forEach(function(q, i){ if(res.answers.I[i]) ans[q.id] = res.answers.I[i]; if(res.unsure.I[i]) unsureN++; });
-      vo.II.forEach(function(q, i){ var o = {}; (q.statements || []).forEach(function(stt, si){ if(si < 4 && res.answers.II[i][si] != null) o[stt.key || 'abcd'[si]] = res.answers.II[i][si]; }); if(Object.keys(o).length) ans[q.id] = o; if(res.unsure.II[i]) unsureN++; });
-      vo.III.forEach(function(q, i){ if(res.answers.III[i]) ans[q.id] = res.answers.III[i]; if(res.unsure.III[i]) unsureN++; });
-      if(!res.id.sbd.sure || (!isReview && !res.id.code.sure)) unsureN++;
+      var af = ansFor(res, version, baseQs), ans = af.ans, unsureN = af.unsureN;
+      if(!versionKnown && !stKnown && (!res.id.sbd.sure || (!isReview && !res.id.code.sure))) unsureN++;
+      if(notes.length) unsureN = Math.max(unsureN, 1);   // có đoán → luôn đánh dấu để thầy xem lại
       var again = !!resultsRef.current[st.id];
       try{
         var r = await ctSaveResult(test, st, version, ans, 'scan', unsureN, baseQs);
         resultsRef.current[st.id] = r; setCount(Object.keys(resultsRef.current).length);
         ctBeep(true);
-        pushLog({ ok: !unsureN, warn: !!unsureN, text: 'SBD ' + st.sbd + ' · ' + st.name + (isReview ? ' · phiếu ôn' : ' · mã ' + version.code) + ' → ' + r.score.toFixed(2) + ' điểm (' + r.correct + '/' + r.total + ')' + (unsureN ? ' · ⚠ ' + unsureN + ' chỗ cần xem lại' : '') + (again ? ' · (quét lại)' : '') });
+        pushLog({ ok: !unsureN, warn: !!unsureN, text: 'SBD ' + st.sbd + ' · ' + st.name + (isReview ? ' · phiếu ôn' : ' · mã ' + version.code) + ' → ' + r.score.toFixed(2) + ' điểm (' + r.correct + '/' + r.total + ')' + (unsureN ? ' · ⚠ ' + unsureN + ' chỗ cần xem lại' : '') + (again ? ' · (quét lại)' : '') + (notes.length ? ' · ' + notes.join('; ') : '') });
+        return true;
       }catch(err){ console.error(err); ctBeep(false); pushLog({ bad: true, text: 'Lưu thất bại (' + st.name + '): ' + (err && err.message) }); }
     }
+    // Thầy chọn tay trên thẻ lỗi → chấm lại từ kết quả đã đọc
+    var fixState = React.useState({}); var fixSel = fixState[0], setFixSel = fixState[1];
+    function resolveFix(item, st, version){
+      setLog(function(prev){ return prev.filter(function(x){ return x !== item; }); });
+      accept(item.fix.res, st || item.fix.st, version);
+    }
+    function FixBox(it){
+      var f = it.fix, key = it.id;
+      var btn = { padding: '6px 10px', borderRadius: '8px', border: '1px solid #3b4250', background: '#1f2937', color: '#f3f0e8', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' };
+      if(f.need === 'version') return h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } },
+        (test.versions || []).map(function(v){ return h('button', { key: v.code, type: 'button', style: btn, onClick: function(){ resolveFix(it, null, v); } }, 'Mã ' + v.code); }));
+      var left = roster.filter(function(s){ return !resultsRef.current[s.id]; }), rest = roster.filter(function(s){ return resultsRef.current[s.id]; });
+      var sel = fixSel[key] || '';
+      return h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } },
+        h('select', { value: sel, onChange: function(e){ var v = e.target.value; setFixSel(function(p){ var n = Object.assign({}, p); n[key] = v; return n; }); }, style: { flex: '1 1 180px', padding: '6px', borderRadius: '8px', background: '#111827', color: '#f3f0e8', border: '1px solid #3b4250' } },
+          h('option', { value: '' }, '— Chọn em (' + left.length + ' em chưa chấm) —'),
+          left.map(function(s){ return h('option', { key: s.id, value: s.id }, (s.sbd ? s.sbd + ' · ' : '') + s.name); }),
+          rest.length ? h('optgroup', { label: 'Đã chấm (chấm lại)' }, rest.map(function(s){ return h('option', { key: s.id, value: s.id }, (s.sbd ? s.sbd + ' · ' : '') + s.name); })) : null),
+        h('button', { type: 'button', disabled: !sel, style: Object.assign({}, btn, { background: sel ? '#22c55e' : '#1f2937', color: sel ? '#04120a' : '#9ca3af' }), onClick: function(){ var st = roster.filter(function(s){ return s.id === sel; })[0]; if(st) resolveFix(it, st, null); } }, 'Chấm cho em này'));
+    }
+    var leftState = React.useState(false); var showLeft = leftState[0], setShowLeft = leftState[1];
     // SỬA 13/10/2026 — QUÉT TRỰC TIẾP kiểu ZipGrade: khung ngắm có 4 ô góc, chỉ tìm mốc trong 4 ô góc (không nhiễu nền),
     // báo góc nào đã bắt được; phiếu đứng yên ≥3 khung hình → cộng dồn độ tối các ô qua nhiều khung rồi mới chấm.
     function drawOverlay(r, sc, vw, vh){
@@ -3063,10 +3130,16 @@
             h('p', { style: { color: '#9ca3af', marginTop: '12px', maxWidth: '460px', fontSize: '0.9rem' } }, 'Cầm máy song song mặt phiếu, cách khoảng 25–35 cm. Đưa phiếu sao cho 4 ô vuông đen nằm trong 4 ô góc của khung (ô góc chuyển xanh). Giữ yên ~1 giây — kêu "tít" là xong, lật phiếu kế.')) : null,
           cam === 'on' ? h('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: '10px 14px', background: 'linear-gradient(transparent, rgba(0,0,0,.75))', fontWeight: 700, fontSize: '1.05rem' } }, hint) : null),
         h('div', { style: { flex: narrow ? '1 1 0' : '1 1 0', minWidth: narrow ? 0 : '280px', minHeight: 0, overflowY: 'auto', padding: '10px 12px', borderLeft: narrow ? 0 : '1px solid #262b33', borderTop: narrow ? '1px solid #262b33' : 0 } },
+          // THÊM 20/10/2026 — danh sách em CHƯA CHẤM (để biết còn thiếu phiếu nào)
+          h('button', { type: 'button', onClick: function(){ setShowLeft(!showLeft); }, style: { width: '100%', textAlign: 'left', padding: '8px 10px', marginBottom: '8px', borderRadius: '8px', border: '1px solid #3b4250', background: '#111827', color: '#f3f0e8', fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem' } },
+            (showLeft ? '▾ ' : '▸ ') + 'Còn ' + (roster.length - done) + ' em chưa chấm'),
+          showLeft ? h('div', { style: { fontSize: '0.84rem', color: '#cbd5e1', marginBottom: '10px', lineHeight: 1.6 } },
+            roster.filter(function(s){ return !resultsRef.current[s.id]; }).map(function(s){ return (s.sbd ? s.sbd + ' · ' : '') + s.name; }).join(' — ') || 'Đã chấm đủ cả lớp 🎉') : null,
           !log.length ? h('p', { style: { color: '#9ca3af', fontSize: '0.88rem' } }, 'Kết quả từng phiếu sẽ hiện ở đây.') :
-            log.map(function(it, i){
-              return h('div', { key: log.length - i, style: { padding: '8px 10px', marginBottom: '6px', borderRadius: '8px', fontSize: '0.88rem', lineHeight: 1.45,
-                background: it.bad ? '#3b1212' : (it.warn ? '#3a2d0a' : '#0f2a19'), border: '1px solid ' + (it.bad ? '#7f1d1d' : (it.warn ? '#854d0e' : '#14532d')) } }, (it.bad ? '❌ ' : (it.warn ? '⚠️ ' : '✅ ')) + it.text);
+            log.map(function(it){
+              return h('div', { key: it.id, style: { padding: '8px 10px', marginBottom: '6px', borderRadius: '8px', fontSize: '0.88rem', lineHeight: 1.45,
+                background: it.bad ? '#3b1212' : (it.warn ? '#3a2d0a' : '#0f2a19'), border: '1px solid ' + (it.bad ? '#7f1d1d' : (it.warn ? '#854d0e' : '#14532d')) } }, (it.bad ? '❌ ' : (it.warn ? '⚠️ ' : '✅ ')) + it.text,
+                it.fix ? FixBox(it) : null);
             })))
     );
   }
