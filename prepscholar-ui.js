@@ -668,7 +668,7 @@
       // — trước đây 2 đằng "trộn chung" trên cùng 1 trang dài, cuộn lên/xuống
       // đều vẫn thấy trang chủ marketing lẫn với phần luyện tập thật.
       if(typeof window.dispatchEvent === 'function'){
-        window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: true } }));
+        window.OPC_CURRENT_STUDENT = { id: real.id, name: real.name || '', lop: real.lop || '' }; window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: true, student: { id: real.id, name: real.name || '', lop: real.lop || '' } } })); // SỬA 23/10/2026 — kèm em nào (student-extras.js)
       }
       setMistakeLog([]); // học sinh thật bắt đầu từ sổ tay trống, không dùng seed minh hoạ
       setAssignedExams([]);
@@ -841,7 +841,7 @@
       // Thoát "chế độ luyện thi" trên index.html — hiện lại trang giới thiệu
       // công khai bình thường (xem ghi chú ở hydrateAndEnter).
       if(typeof window.dispatchEvent === 'function'){
-        window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: false } }));
+        window.OPC_CURRENT_STUDENT = null; window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: false } }));
       }
     }
 
@@ -1150,7 +1150,9 @@
     function renderWalkthroughButton(q, wrong){
       var WT = window.OPC_WALKTHROUGH;
       var info = WT ? WT.forQuestion(q) : null;
-      if(!info) return null;
+      // THÊM 23/10/2026 — kèm nút "📺 Ôn lý thuyết" (bài giảng FaradayAI / video ứng dụng thực tế, faraday-extras.js)
+      var lessonBtn = (window.OPC_FX && q) ? window.OPC_FX.lessonButton(h, q, wrong) : null;
+      if(!info) return lessonBtn;
       // SỬA 16/10/2026 — gắn onProgress để ghi em đã xem bao nhiêu; nút ghi rõ đã xem chưa
       var qIdV = info.examId + '_q' + info.index;
       var vv = videoViews[qIdV];
@@ -1161,7 +1163,8 @@
           className: 'btn ' + (wrong && !isVideoSeen(qIdV) ? 'btn-primary' : 'btn-secondary'),
           style: { fontSize: '0.86rem', textAlign: 'left', lineHeight: 1.45, whiteSpace: 'normal' },
           onClick: function(){ setWtModal(Object.assign({}, info, { onProgress: liveStudentId ? onVideoProgress : null })); }
-        }, info.buttonText + seenTxt)
+        }, info.buttonText + seenTxt),
+        lessonBtn
       );
     }
 
@@ -1616,7 +1619,7 @@
         title: ae.title || 'Đề cá nhân hóa được giao',
         questions: questions,
         isSubmitted: false,
-        initialTimeSec: questions.length * 120,
+        initialTimeSec: ae.durationMin ? Number(ae.durationMin) * 60 : questions.length * 120, // SỬA 23/10/2026 — thi thử tháng có giờ làm bài riêng
         assignedExamId: ae.id,
         // THÊM 9/10/2026 — id bản ghi của phiên: lưu tiến độ "làm dở" (Phòng dạy của thầy xem trực tiếp) + nộp bài dùng chung 1 doc
         clientId: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
@@ -1626,10 +1629,26 @@
       setUserAnswers({});
       setFlagged({});
       setCurQIdx(0);
-      setTimeLeft(questions.length * 120);
+      setTimeLeft(ae.durationMin ? Number(ae.durationMin) * 60 : questions.length * 120);
       setScoreResult(null);
       setMasteryImpact(null);
     }
+    // THÊM 23/10/2026 — cầu nối cho student-extras.js (banner "Thi thử tháng"): mở đúng đề được giao theo id
+    React.useEffect(function(){
+      window.OPC_APP_BRIDGE = {
+        startAssigned: function(aeId){
+          var ae = (assignedExams || []).filter(function(x){ return x.id === aeId; })[0];
+          if(ae){ startAssignedExam(ae); return Promise.resolve(true); }
+          if(!liveStudentId || !window.OPC_LIVE) return Promise.resolve(false);
+          return window.OPC_LIVE.loadAssignedExams(liveStudentId, 40).then(function(list){
+            setAssignedExams(list || []);
+            var ae2 = (list || []).filter(function(x){ return x.id === aeId; })[0];
+            if(ae2){ startAssignedExam(ae2); return true; } return false;
+          });
+        },
+        inExam: function(){ return !!(examSession && !examSession.isSubmitted); }
+      };
+    });
 
     // "Xem lại bài làm" của MỘT đề được giao đã hoàn thành — KHÔNG tạo lượt
     // làm bài mới, chỉ dựng lại đúng màn hình KẾT QUẢ (đã dùng chung với lúc

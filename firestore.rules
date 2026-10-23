@@ -103,6 +103,11 @@ service cloud.firestore {
       match /videoViews/{qId} {
         allow read, write: if isOpcAdmin() || isSelf(studentId);
       }
+
+      // THÊM 23/10/2026 — em đã mở/xem hết bài giảng lý thuyết nào (student-extras.js · faraday-extras.js)
+      match /lessonViews/{lessonId} {
+        allow read, write: if isOpcAdmin() || isSelf(studentId);
+      }
     }
 
     // Đăng ký lớp thử nghiệm từ trang giới thiệu công khai (index.html) —
@@ -132,6 +137,31 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
       allow write: if isOpcAdmin();
+    }
+
+    // THÊM 23/10/2026 — THƯ VIỆN VIDEO BÀI GIẢNG (bài giảng FaradayAI + video YouTube ứng dụng thực tế):
+    // học sinh đã đăng nhập đọc được; chỉ thầy thêm/sửa/xoá.
+    match /video_lessons/{lessonId} {
+      allow read: if isSignedIn();
+      allow write: if isOpcAdmin();
+    }
+    // THÊM 23/10/2026 — THI THỬ THÁNG: thông tin kỳ thi + bảng xếp hạng (tên rút gọn) thầy công bố.
+    match /mock_exams/{mockId} {
+      allow read: if isSignedIn();
+      allow write: if isOpcAdmin();
+    }
+    // THÊM 23/10/2026 — KHẢO SÁT HÀI LÒNG: em chỉ được GỬI phiếu của chính mình (đúng các trường, giới hạn độ dài);
+    // đọc/xoá chỉ thầy. survey_state: lần hỏi/hoãn gần nhất của từng em (để không hỏi dồn dập).
+    match /surveys/{surveyId} {
+      allow create: if isSignedIn() && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['studentId','name','lop','rating','helpful','likes','improve','recommend','extra','trigger','attempts','createdAt'])
+        && request.resource.data.rating is int && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+        && (!('improve' in request.resource.data) || (request.resource.data.improve is string && request.resource.data.improve.size() <= 1500))
+        && (!('likes' in request.resource.data) || (request.resource.data.likes is list && request.resource.data.likes.size() <= 12));
+      allow read, delete: if isOpcAdmin();
+    }
+    match /survey_state/{studentId} {
+      allow read, write: if isOpcAdmin() || isSelf(studentId);
     }
 
     // THÊM 15/10/2026 — "Chẩn đoán 5 phút" trên trang chủ (khách chưa đăng nhập).

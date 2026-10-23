@@ -761,7 +761,57 @@ async function submitDiagLead(data){
   }
 }
 
+// ================= THÊM 23/10/2026 — THI THỬ THÁNG · VIDEO BÀI GIẢNG · KHẢO SÁT (student-extras.js) =================
+// video_lessons: thư viện bài giảng lý thuyết (FaradayAI) + video YouTube ứng dụng thực tế — đọc khi đã đăng nhập.
+async function loadLessons(){
+  try{
+    var snap = await getDocs(collection(db, 'video_lessons'));
+    var out = []; snap.forEach(function(d){ out.push(Object.assign({ id: d.id }, d.data())); });
+    return out.filter(function(l){ return l.published !== false; });
+  }catch(e){ console.warn('Không tải được thư viện video bài giảng:', e && e.code); return []; }
+}
+// mock_exams: kỳ thi thử định kỳ (đề giao online qua assignedExams) + bảng xếp hạng thầy đã công bố.
+async function loadMocks(){
+  try{
+    var snap = await getDocs(collection(db, 'mock_exams'));
+    var out = []; snap.forEach(function(d){ out.push(Object.assign({ id: d.id }, d.data())); });
+    return out;
+  }catch(e){ console.warn('Không tải được kỳ thi thử:', e && e.code); return []; }
+}
+async function loadSettingsDoc(name){
+  try{ var s = await getDoc(doc(db, 'settings', name)); return s.exists() ? s.data() : null; }catch(e){ return null; }
+}
+// survey_state/{studentId}: lần khảo sát / hoãn gần nhất của em (để không hỏi dồn dập)
+async function getSurveyState(studentId){
+  try{ var s = await getDoc(doc(db, 'survey_state', String(studentId))); return s.exists() ? s.data() : {}; }catch(e){ return {}; }
+}
+async function saveSurveyState(studentId, data){
+  try{ await setDoc(doc(db, 'survey_state', String(studentId)), stripUndefined(data)); return true; }catch(e){ console.warn('Không lưu được trạng thái khảo sát:', e && e.code); return false; }
+}
+async function submitSurvey(studentId, data){
+  var ref = doc(collection(db, 'surveys'));
+  await setDoc(ref, stripUndefined(Object.assign({}, data, { studentId: String(studentId), createdAt: new Date().toISOString() })));
+  return ref.id;
+}
+async function loadLessonViews(studentId){
+  try{ var snap = await getDocs(collection(db, 'students', String(studentId), 'lessonViews')); var out = {}; snap.forEach(function(d){ out[d.id] = d.data(); }); return out; }catch(e){ return {}; }
+}
+// students/{id}/lessonViews/{lessonId}: em đã mở bài giảng nào, mấy lần (thầy xem trong hồ sơ / thống kê thư viện)
+function recordLessonView(studentId, lesson, done){
+  if(!studentId || !lesson || !lesson.id) return Promise.resolve(null);
+  return (async function(){
+    try{
+      var ref = doc(db, 'students', String(studentId), 'lessonViews', String(lesson.id));
+      var snap = await getDoc(ref), old = snap.exists() ? (snap.data() || {}) : {}, now = new Date().toISOString();
+      await setDoc(ref, { lessonId: String(lesson.id), title: String(lesson.title || '').slice(0, 160), baiKey: lesson.baiKey || '', kind: lesson.kind || 'faraday',
+        opens: (Number(old.opens) || 0) + (done ? 0 : 1), completed: !!(old.completed || done), firstAt: old.firstAt || now, lastAt: now });
+    }catch(e){ console.warn('Không ghi được lượt xem bài giảng:', e && e.code); }
+  })();
+}
+
 window.OPC_LIVE = {
+  loadLessons: loadLessons, loadMocks: loadMocks, loadSettingsDoc: loadSettingsDoc, // THÊM 23/10/2026
+  getSurveyState: getSurveyState, saveSurveyState: saveSurveyState, submitSurvey: submitSurvey, recordLessonView: recordLessonView, loadLessonViews: loadLessonViews,
   loadCurriculum: loadCurriculum,
   loginStudent: loginStudent,
   logoutStudent: logoutStudent,

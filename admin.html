@@ -990,6 +990,30 @@
       save: function(data){ return setDoc(doc(db, 'settings', 'billing'), Object.assign({}, data, { updatedAt: new Date().toISOString() })); }
     };
 
+    // ================= THÊM 23/10/2026 — THI THỬ THÁNG · VIDEO BÀI GIẢNG · KHẢO SÁT (xem admin-growth.js) =================
+    OPC.lessons = {
+      subscribe: function(onNext, onErr){ return onSnapshot(collection(db, 'video_lessons'), onNext, onErr); },
+      save: async function(id, data){ var r = id ? doc(db, 'video_lessons', id) : doc(collection(db, 'video_lessons')); await setDoc(r, Object.assign({}, data, { updatedAt: new Date().toISOString() })); return r.id; },
+      remove: function(id){ return deleteDoc(doc(db, 'video_lessons', id)); }
+    };
+    OPC.mockExams = {
+      subscribe: function(onNext, onErr){ return onSnapshot(collection(db, 'mock_exams'), onNext, onErr); },
+      newId: function(){ return doc(collection(db, 'mock_exams')).id; },
+      set: function(id, data){ return setDoc(doc(db, 'mock_exams', id), data); },
+      update: function(id, patch){ return updateDoc(doc(db, 'mock_exams', id), patch); },
+      remove: function(id){ return deleteDoc(doc(db, 'mock_exams', id)); }
+    };
+    OPC.surveys = {
+      subscribe: function(onNext, onErr){ return onSnapshot(query(collection(db, 'surveys'), orderBy('createdAt', 'desc'), limit(2000)), onNext, onErr); },
+      remove: function(id){ return deleteDoc(doc(db, 'surveys', id)); }
+    };
+    OPC.settingsDoc = function(name){
+      return {
+        subscribe: function(onNext, onErr){ return onSnapshot(doc(db, 'settings', name), function(snap){ onNext(snap.exists() ? snap.data() : null); }, onErr); },
+        save: function(data){ return setDoc(doc(db, 'settings', name), Object.assign({}, data, { updatedAt: new Date().toISOString() })); }
+      };
+    };
+
     // ================= THÊM 15/10/2026 — "CHẨN ĐOÁN 5 PHÚT" (phễu khách mới, xem diagnostic5.js) =================
     // settings/diagnostic5: bộ câu + cấu hình (đọc công khai) · diag_leads: khách để lại liên hệ · diag_events: đếm lượt.
     OPC.diag5 = {
@@ -1163,6 +1187,8 @@
 <script src="/ink-overlay.js"></script>
 <script src="/theme-toggle.js"></script> <!-- THÊM 17/10/2026 — nút sáng/tối -->
 <script src="/admin-ops.js"></script> <!-- THÊM 20/10/2026 — Việc hôm nay · Học phí · Link phụ huynh -->
+<script src="/faraday-extras.js"></script> <!-- THÊM 23/10/2026 — trình phát bài giảng FaradayAI + giấy khen (dùng chung với trang học sinh) -->
+<script src="/admin-growth.js"></script> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
 (function(){
@@ -10355,6 +10381,8 @@
     });
     return out;
   }
+  // THÊM 23/10/2026 — cho admin-growth.js (giao đề Thi thử tháng) dùng chung cách đổi câu hỏi + ảnh như Giao đề
+  window.OPC_ADMIN_HELP = { toStudentQuestionShape: function(){ return toStudentQuestionShape.apply(null, arguments); }, loadExamCached: function(id){ return loadExamCached(id); } };
   function toStudentQuestionShape(q, examId, examTitle, resolvedImages){
     var NANO = window.OPC_NANO;
     var chuDe = NANO ? NANO.findChuDeByText(q.chuDeLon) : null;
@@ -11943,11 +11971,18 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='room' && 'active'), onClick:function(){ setTab('room'); }}, '🎓 Phòng dạy'),
         h('button',{type:'button', className:cx('tab-btn', tab==='classtest' && 'active'), onClick:function(){ setTab('classtest'); }}, '📋 Kiểm tra lớp'),
         h('button',{type:'button', className:cx('tab-btn', tab==='diag5' && 'active'), onClick:function(){ setTab('diag5'); }}, '⚡ Chẩn đoán 5 phút'),
+        // THÊM 23/10/2026 — admin-growth.js
+        window.OPC_GROWTH ? h('button',{type:'button', className:cx('tab-btn', tab==='mock' && 'active'), onClick:function(){ setTab('mock'); }}, '🏆 Thi thử tháng') : null,
+        window.OPC_GROWTH ? h('button',{type:'button', className:cx('tab-btn', tab==='lessons' && 'active'), onClick:function(){ setTab('lessons'); }}, '📺 Video bài giảng') : null,
+        window.OPC_GROWTH ? h('button',{type:'button', className:cx('tab-btn', tab==='survey' && 'active'), onClick:function(){ setTab('survey'); }}, '💬 Khảo sát') : null,
         h('button',{type:'button', className:cx('tab-btn', tab==='nano' && 'active'), onClick:function(){ setTab('nano'); }}, '🗺️ Nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='nanotag' && 'active'), onClick:function(){ setTab('nanotag'); }}, '🏷️ Gắn nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
         h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG & Olympic')
       ),
+      (window.OPC_GROWTH && tab === 'mock') ? h(window.OPC_GROWTH.MockPanel, {fireToast:fireToast}) :
+      (window.OPC_GROWTH && tab === 'lessons') ? h(window.OPC_GROWTH.LessonsPanel, {fireToast:fireToast}) :
+      (window.OPC_GROWTH && tab === 'survey') ? h(window.OPC_GROWTH.SurveyPanel, {fireToast:fireToast}) :
       (tab === 'today' && window.OPC_OPS) ? h(window.OPC_OPS.TodayPanel, {fireToast:fireToast}) : (tab === 'billing' && window.OPC_OPS) ? h(window.OPC_OPS.BillingPanel, {fireToast:fireToast, onGoPricing:function(){ setTab('pricing'); }}) :
       tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
         tab === 'prepscholar' ? h(PrepScholarMonitoringPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (
