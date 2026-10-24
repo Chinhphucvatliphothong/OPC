@@ -95,6 +95,18 @@
     });
     return { scenes: scenes, steps: steps };
   }
+  // SỬA 24/10/2026 — danh sách lời đọc theo thứ tự phát: [0] = thẻ mở đầu, [1..n] = từng bước (dùng chung khi TẠO giọng
+  // AI / thu giọng thầy và khi PHÁT — khớp theo chỉ số + nội dung, sửa kịch bản thì câu đó tự quay về giọng máy)
+  function titleSay(L){ return (L.title || '') + '. Bài giảng của FaradayAI.'; }
+  function stepSays(L){ var p = parseScript(L.script); return [titleSay(L)].concat(p.steps.map(function(x){ return x.say || ''; })); }
+  function normSay(t){ return String(t || '').replace(/\s+/g, ' ').trim(); }
+  var audioLoader = null, audioCache = {};
+  function loadAudio(L){
+    if(!L || !L.id || !L.audio || !audioLoader) return Promise.resolve({});
+    var key = L.id + '|' + (L.audio.at || '');
+    if(!audioCache[key]) audioCache[key] = Promise.resolve(audioLoader(L.id)).catch(function(){ delete audioCache[key]; return {}; });
+    return audioCache[key];
+  }
   function estimateSec(script){
     var p = parseScript(script), ms = 0;
     p.steps.forEach(function(s){ ms += durMs(s, 1); });
@@ -176,6 +188,19 @@
     var boxRef = React.useRef(null), stageRef = React.useRef(null);
     var fz = React.useState(16); var fontPx = fz[0], setFontPx = fz[1];
     var seen = React.useRef({ max: 0, done: false });
+    // THÊM 24/10/2026 — giọng đã lưu (AI / thầy thu): { '<chỉ số>': { b64, mime, dur, text } }
+    var au = React.useState(null); var audioMap = au[0], setAudioMap = au[1];
+    var audioRef = React.useRef(null);
+    React.useEffect(function(){
+      if(isYt) return;
+      if(props.audioMap){ setAudioMap(props.audioMap); return; }
+      if(!L.audio){ setAudioMap({}); return; }
+      var done = false, t = setTimeout(function(){ if(!done){ done = true; setAudioMap({}); } }, 8000);
+      loadAudio(L).then(function(m){ if(!done){ done = true; clearTimeout(t); setAudioMap(m || {}); } });
+      return function(){ done = true; clearTimeout(t); };
+    }, [L.id]);
+    var says = React.useMemo(function(){ return isYt ? [] : stepSays(L); }, [L.id, L.script, L.title]);
+    function clipFor(i){ var c = audioMap && audioMap[i]; return (c && c.b64 && normSay(c.text) === normSay(says[i])) ? c : null; }
     // cỡ chữ theo bề rộng khung (giống video co giãn)
     React.useEffect(function(){
       if(isYt) return;
@@ -186,7 +211,7 @@
     }, [fs]);
     // phát: đọc lời của bước hiện tại rồi tự sang bước sau
     React.useEffect(function(){
-      if(isYt || !playing) return;
+      if(isYt || !playing || audioMap === null) return;
       var cancelled = false, timer = 0;
       var synth = window.speechSynthesis;
       function next(){ if(cancelled) return; setIdx(function(i){ return i + 1 < total ? i + 1 : i; }); if(idx + 1 >= total - 1) {} }
@@ -194,7 +219,21 @@
       var step = idx === 0 ? { say: (L.title || '') + '. Bài giảng của FaradayAI.', pause: 600 } : steps[idx - 1];
       seen.current.max = Math.max(seen.current.max, idx);
       var say = step && step.say;
+      var clip = clipFor(idx);
       var canSpeak = !muted && synth && say && (viVoice || pickVoice());
+      if(clip && !muted){
+        // giọng đã lưu: phát MP3 (giọng AI tự nhiên / giọng thầy)
+        try{
+          var a = audioRef.current || (audioRef.current = new Audio());
+          a.pause(); a.src = 'data:' + (clip.mime || 'audio/mpeg') + ';base64,' + clip.b64; a.playbackRate = rate;
+          var fin = false;
+          a.onended = function(){ if(fin) return; fin = true; timer = setTimeout(next, 300 + (step.pause ? Math.min(step.pause, 1500) : 0)); };
+          a.onerror = function(){ if(fin) return; fin = true; timer = setTimeout(next, durMs(step, rate)); };
+          var pr = a.play(); if(pr && pr.catch) pr.catch(function(){ if(!fin){ fin = true; setPlaying(false); } });
+          timer = setTimeout(function(){ if(!fin){ fin = true; next(); } }, ((clip.dur || 8) / rate) * 1000 + 6000);
+        }catch(e){ timer = setTimeout(next, durMs(step, rate)); }
+        return function(){ cancelled = true; clearTimeout(timer); try{ audioRef.current && audioRef.current.pause(); }catch(e){} };
+      }
       if(canSpeak){
         try{
           synth.cancel();
@@ -208,8 +247,8 @@
         }catch(e){ timer = setTimeout(next, durMs(step, rate)); }
       } else timer = setTimeout(next, durMs(step || {}, rate));
       return function(){ cancelled = true; clearTimeout(timer); try{ if(synth) synth.cancel(); }catch(e){} };
-    }, [idx, playing, muted, rate]);
-    React.useEffect(function(){ return function(){ try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){} }; }, []);
+    }, [idx, playing, muted, rate, audioMap]);
+    React.useEffect(function(){ return function(){ try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){} try{ audioRef.current && audioRef.current.pause(); }catch(e){} }; }, []);
     React.useEffect(function(){
       if(!isYt && idx >= total - 1 && !seen.current.done){ seen.current.done = true; if(props.onDone) props.onDone(L); }
     }, [idx]);
@@ -269,7 +308,9 @@
     }
     var bar = isYt ? null : (function(){
       var tSec = 0, curSec = 0;
-      steps.forEach(function(s, i){ var d = durMs(s, rate) / 1000; tSec += d; if(i < idx - 1) curSec += d; });
+      steps.forEach(function(s, i){ var c = clipFor(i + 1); var d = c ? (c.dur / rate + 0.3 + (s.pause ? Math.min(s.pause, 1500) / 1000 : 0)) : durMs(s, rate) / 1000; tSec += d; if(i < idx - 1) curSec += d; });
+      var nClip = 0; for(var ci = 0; ci < says.length; ci++) if(clipFor(ci)) nClip++;
+      var hasVoice = nClip > 0;
       return h('div', { className: 'fx-bar' },
         h('button', { type: 'button', onClick: function(){ setIdx(Math.max(0, idx - 1)); }, title: 'Bước trước (←)' }, '⏮'),
         h('button', { type: 'button', className: 'on', onClick: function(){ if(idx >= total - 1){ setIdx(0); setPlaying(true); } else setPlaying(!playing); }, title: 'Phát / dừng (Space)' }, idx >= total - 1 ? '↻ Xem lại' : (playing ? '⏸ Dừng' : '▶ Phát')),
@@ -279,7 +320,9 @@
         h('button', { type: 'button', onClick: function(){ var r = rate >= 1.25 ? 0.85 : (rate >= 1 ? 1.25 : 1); setRate(r); try{ localStorage.setItem('fx-rate', r); }catch(e){} }, title: 'Tốc độ đọc' }, rate + '×'),
         h('button', { type: 'button', className: caps ? 'on' : '', onClick: function(){ setCaps(!caps); }, title: 'Phụ đề' }, 'CC'),
         h('button', { type: 'button', onClick: function(){ setMuted(!muted); }, title: muted ? 'Bật tiếng' : 'Tắt tiếng' }, muted ? '🔇' : '🔊'),
-        (!viVoice && !muted) ? h('span', { style: { fontSize: '.74rem', color: '#9ca3af', flexBasis: '100%' } }, 'Máy này chưa có giọng đọc tiếng Việt — bài giảng chạy kèm phụ đề. (Điện thoại/iPad và Chrome thường có sẵn giọng Việt.)') : null);
+        audioMap === null ? h('span', { style: { fontSize: '.74rem', color: '#9ca3af' } }, 'Đang tải giọng đọc…') : null,
+        hasVoice ? h('span', { style: { fontSize: '.72rem', color: '#c9a25f', fontWeight: 700 } }, L.audio && L.audio.source === 'teacher' ? '🎤 Giọng thầy' : (L.audio && L.audio.source === 'mixed' ? '🎙 Giọng FaradayAI + 🎤 thầy' : '🎙 Giọng FaradayAI')) : null,
+        (!hasVoice && !viVoice && !muted) ? h('span', { style: { fontSize: '.74rem', color: '#9ca3af', flexBasis: '100%' } }, 'Máy này chưa có giọng đọc tiếng Việt — bài giảng chạy kèm phụ đề. (Điện thoại/iPad và Chrome thường có sẵn giọng Việt.)') : null);
     })();
     var note = L.note ? h('div', { className: 'fx-notebar' }, '📝 ', L.note) : null;
     return h('div', { className: 'fx-ov', onClick: function(e){ if(e.target === e.currentTarget && !fs) props.onClose(); } },
@@ -293,7 +336,7 @@
     if(!hostEl){ hostEl = document.createElement('div'); hostEl.id = 'fx-host'; document.body.appendChild(hostEl); }
     opts = opts || {};
     function close(){ try{ ReactDOM.unmountComponentAtNode(hostEl); }catch(e){} if(opts.onClose) opts.onClose(); }
-    ReactDOM.render(React.createElement(LessonPlayer, { lesson: lesson, onClose: close, onDone: opts.onDone }), hostEl);
+    ReactDOM.render(React.createElement(LessonPlayer, { lesson: lesson, onClose: close, onDone: opts.onDone, audioMap: opts.audioMap || null }), hostEl);
     if(opts.onOpen) opts.onOpen(lesson);
   }
 
@@ -580,6 +623,7 @@
     LessonPlayer: LessonPlayer, openLesson: openLesson,
     setLessons: setLessons, onLessons: onLessons, getLessons: function(){ return registry; }, lessonsFor: lessonsFor, lessonButton: lessonButton,
     setTracker: function(f){ trackFn = f; },
+    setAudioLoader: function(f){ audioLoader = f; audioCache = {}; }, stepSays: stepSays, normSay: normSay, clearAudioCache: function(){ audioCache = {}; },
     makeCertificate: makeCertificate, downloadCertificate: downloadCertificate,
     SEED_LESSONS: SEED_LESSONS, richHtml: richHtml
   };

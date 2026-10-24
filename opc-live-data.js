@@ -770,6 +770,11 @@ async function loadLessons(){
     return out.filter(function(l){ return l.published !== false; });
   }catch(e){ console.warn('Không tải được thư viện video bài giảng:', e && e.code); return []; }
 }
+// THÊM 24/10/2026 — giọng đọc đã lưu của 1 bài giảng (giọng AI / giọng thầy, MP3 base64)
+async function loadLessonAudio(lessonId){
+  try{ var snap = await getDocs(collection(db, 'video_lessons', String(lessonId), 'audio')); var m = {}; snap.forEach(function(d){ m[d.id.replace(/^s/, '')] = d.data(); }); return m; }
+  catch(e){ console.warn('Không tải được giọng đọc bài giảng:', e && e.code); return {}; }
+}
 // mock_exams: kỳ thi thử định kỳ (đề giao online qua assignedExams) + bảng xếp hạng thầy đã công bố.
 async function loadMocks(){
   try{
@@ -811,7 +816,7 @@ function recordLessonView(studentId, lesson, done){
 
 window.OPC_LIVE = {
   loadLessons: loadLessons, loadMocks: loadMocks, loadSettingsDoc: loadSettingsDoc, // THÊM 23/10/2026
-  getSurveyState: getSurveyState, saveSurveyState: saveSurveyState, submitSurvey: submitSurvey, recordLessonView: recordLessonView, loadLessonViews: loadLessonViews,
+  getSurveyState: getSurveyState, saveSurveyState: saveSurveyState, submitSurvey: submitSurvey, recordLessonView: recordLessonView, loadLessonViews: loadLessonViews, loadLessonAudio: loadLessonAudio,
   loadCurriculum: loadCurriculum,
   loginStudent: loginStudent,
   logoutStudent: logoutStudent,

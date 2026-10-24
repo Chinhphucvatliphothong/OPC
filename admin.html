@@ -994,7 +994,12 @@
     OPC.lessons = {
       subscribe: function(onNext, onErr){ return onSnapshot(collection(db, 'video_lessons'), onNext, onErr); },
       save: async function(id, data){ var r = id ? doc(db, 'video_lessons', id) : doc(collection(db, 'video_lessons')); await setDoc(r, Object.assign({}, data, { updatedAt: new Date().toISOString() })); return r.id; },
-      remove: function(id){ return deleteDoc(doc(db, 'video_lessons', id)); }
+      remove: function(id){ return deleteDoc(doc(db, 'video_lessons', id)); },
+      // THÊM 24/10/2026 — giọng đọc đã lưu của bài giảng: video_lessons/{id}/audio/s<chỉ số> = { b64 (MP3), mime, dur, text, source }
+      saveAudio: function(id, i, data){ return setDoc(doc(db, 'video_lessons', id, 'audio', 's' + i), data); },
+      loadAudio: async function(id){ var snap = await getDocs(collection(db, 'video_lessons', id, 'audio')); var m = {}; snap.docs.forEach(function(d){ m[d.id.replace(/^s/, '')] = d.data(); }); return m; },
+      removeAudio: function(id, i){ return deleteDoc(doc(db, 'video_lessons', id, 'audio', 's' + i)); },
+      patch: function(id, data){ return updateDoc(doc(db, 'video_lessons', id), data); }
     };
     OPC.mockExams = {
       subscribe: function(onNext, onErr){ return onSnapshot(collection(db, 'mock_exams'), onNext, onErr); },

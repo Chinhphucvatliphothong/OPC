@@ -195,6 +195,7 @@
         if(c && c.enabled !== false && c.askAllAfter && (!s.lastAt || s.lastAt < c.askAllAfter) && (!s.snoozeUntil || s.snoozeUntil < Date.now()))
           setTimeout(function(){ if(!cancelled) setSurvey({ trigger: 'teacher' }); }, 4000);
       });
+      if(window.OPC_FX && L.loadLessonAudio) window.OPC_FX.setAudioLoader(L.loadLessonAudio); // THÊM 24/10/2026 — giọng AI / giọng thầy đã lưu
       if(window.OPC_FX) window.OPC_FX.setTracker(function(l){ if(L.recordLessonView) L.recordLessonView(stu.id, l, false); setViews(function(p){ var n = Object.assign({}, p); n[l.id] = Object.assign({}, n[l.id], { opened: true }); return n; }); });
       // bọc saveAttempt: em vừa NỘP BÀI (không phải lưu làm dở) → cập nhật thi thử + có thể hỏi khảo sát
       if(L.saveAttempt && !L.__sxWrapped){

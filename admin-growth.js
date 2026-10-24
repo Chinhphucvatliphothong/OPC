@@ -280,6 +280,8 @@
       var data = { kind: f.kind, title: f.title.trim(), chuDeKey: f.chuDeKey || (f.baiKey && NANO && NANO.getBai(f.baiKey) ? NANO.getBai(f.baiKey).chuDeKey : ''), baiKey: f.baiKey || '', nanoIds: f.nanoIds || [],
         note: (f.note || '').trim(), level: f.level || 'co-ban', published: f.published !== false, order: Number(f.order) || 0, createdAt: l0.createdAt || new Date().toISOString() };
       if(f.seedKey) data.seedKey = f.seedKey;
+      if(l0.audio) data.audio = l0.audio; // giữ giọng đã tạo (câu nào sửa lời thì tự quay về giọng máy cho câu đó)
+      if(l0.author) data.author = l0.author;
       if(f.kind === 'youtube'){
         var vid = window.OPC_FX.youtubeId(f.url); if(!vid) return props.fireToast('Link YouTube chưa đúng.', true);
         Object.assign(data, { url: f.url.trim(), youtubeId: vid, start: f.start || '', end: f.end || '' });
@@ -326,6 +328,182 @@
         h('button', { type: 'button', className: 'btn btn-primary', disabled: !!busy, onClick: save }, 'Lưu')));
   }
 
+
+  // =================================================================== 🎙 GIỌNG ĐỌC (THÊM 24/10/2026)
+  // Giọng AI tự nhiên (Gemini TTS qua /api/ai-voice) hoặc GIỌNG THẦY thu bằng micro — tạo 1 lần, nén MP3, lưu kèm bài
+  // (video_lessons/{id}/audio/s<i>); học sinh nghe bản đã lưu. Câu nào chưa có / đã sửa lời → trình phát dùng giọng máy.
+  var VOICE_LIST = [
+    ['Charon', 'Nam · trầm ấm, rõ ràng (khuyên dùng)'], ['Orus', 'Nam · chững chạc'], ['Iapetus', 'Nam · rõ, trong'], ['Algieba', 'Nam · êm'],
+    ['Achird', 'Nam · thân thiện'], ['Puck', 'Nam · vui, năng động'], ['Fenrir', 'Nam · hào hứng'], ['Sadaltager', 'Nam · am hiểu'],
+    ['Kore', 'Nữ · chắc chắn, rõ ràng'], ['Sulafat', 'Nữ · ấm áp'], ['Aoede', 'Nữ · nhẹ nhàng'], ['Leda', 'Nữ · trẻ trung'],
+    ['Despina', 'Nữ · mượt'], ['Vindemiatrix', 'Nữ · dịu dàng'], ['Achernar', 'Nữ · mềm mại'], ['Zephyr', 'Nữ · tươi sáng']
+  ];
+  function voicePref(){ try{ return Object.assign({ voice: 'Charon', accent: 'nam', style: '' }, JSON.parse(localStorage.getItem('fx-voice-pref') || '{}')); }catch(e){ return { voice: 'Charon', accent: 'nam', style: '' }; } }
+  function saveVoicePref(p){ try{ localStorage.setItem('fx-voice-pref', JSON.stringify(p)); }catch(e){} }
+  var lameP = null;
+  function loadLame(){
+    if(window.lamejs) return Promise.resolve(window.lamejs);
+    if(!lameP) lameP = new Promise(function(ok, no){ var sc = document.createElement('script'); sc.src = '/lame.min.js'; sc.onload = function(){ window.lamejs ? ok(window.lamejs) : no(new Error('Không nạp được bộ nén MP3')); }; sc.onerror = function(){ lameP = null; no(new Error('Không tải được /lame.min.js (đã upload file này chưa?)')); }; document.head.appendChild(sc); });
+    return lameP;
+  }
+  function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for(var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  function bytesToB64(u8){ var s2 = '', CH = 0x8000; for(var i = 0; i < u8.length; i += CH) s2 += String.fromCharCode.apply(null, u8.subarray(i, i + CH)); return btoa(s2); }
+  // Int16 (mono) → MP3 base64 · cắt bớt im lặng 2 đầu (giọng AI hay có khoảng lặng dài)
+  function trimSilence(pcm, rate){
+    var thr = 450, a = 0, b = pcm.length - 1, keep = Math.round(rate * 0.12);
+    while(a < pcm.length && Math.abs(pcm[a]) < thr) a++;
+    while(b > a && Math.abs(pcm[b]) < thr) b--;
+    return pcm.subarray(Math.max(0, a - keep), Math.min(pcm.length, b + keep));
+  }
+  async function encodeMp3(pcm, rate){
+    var lame = await loadLame();
+    var enc = new lame.Mp3Encoder(1, rate, rate >= 32000 ? 64 : 48), out = [], BL = 1152;
+    for(var i = 0; i < pcm.length; i += BL){ var buf = enc.encodeBuffer(pcm.subarray(i, i + BL)); if(buf.length) out.push(new Uint8Array(buf)); }
+    var end = enc.flush(); if(end.length) out.push(new Uint8Array(end));
+    var n = out.reduce(function(s2, x){ return s2 + x.length; }, 0), all = new Uint8Array(n), o = 0;
+    out.forEach(function(x){ all.set(x, o); o += x.length; });
+    return { b64: bytesToB64(all), dur: Math.round(pcm.length / rate * 100) / 100, bytes: n };
+  }
+  function pcmFromB64(b64){ var u = b64ToBytes(b64); return new Int16Array(u.buffer, u.byteOffset, Math.floor(u.byteLength / 2)); }
+  function floatToInt16(f32){ var o = new Int16Array(f32.length); for(var i = 0; i < f32.length; i++){ var v = Math.max(-1, Math.min(1, f32[i])); o[i] = v < 0 ? v * 0x8000 : v * 0x7fff; } return o; }
+  async function ttsClip(text, pref){
+    var r = await fetch('/api/ai-voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, voice: pref.voice, accent: pref.accent, style: pref.style }) });
+    var j = await r.json().catch(function(){ return {}; });
+    if(!r.ok) throw new Error(j.error || ('Lỗi ' + r.status));
+    var pcm = trimSilence(pcmFromB64(j.audio), j.rate || 24000);
+    var mp3 = await encodeMp3(pcm, j.rate || 24000);
+    return { b64: mp3.b64, mime: 'audio/mpeg', dur: mp3.dur, text: text, source: 'ai', voice: j.voice, model: j.model || '' };
+  }
+  // tạo giọng AI cho các câu còn thiếu (hoặc tất cả) của 1 bài
+  async function generateLessonVoice(lesson, pref, opts){
+    var O = OPC(), says = window.OPC_FX.stepSays(lesson), have = opts && opts.existing ? opts.existing : await O.lessons.loadAudio(lesson.id);
+    var todo = [];
+    says.forEach(function(t, i){
+      if(!window.OPC_FX.normSay(t)) return;
+      var c = have[i];
+      if(opts && opts.all && !(c && c.source === 'teacher' && window.OPC_FX.normSay(c.text) === window.OPC_FX.normSay(t))) { todo.push(i); return; }
+      if(!c || window.OPC_FX.normSay(c.text) !== window.OPC_FX.normSay(t)) todo.push(i);
+    });
+    for(var k = 0; k < todo.length; k++){
+      if(opts && opts.cancelled && opts.cancelled()) break;
+      var i = todo[k];
+      if(opts && opts.onProgress) opts.onProgress(k, todo.length, says[i]);
+      var clip = null, tries = 0;
+      while(!clip){
+        try{ clip = await ttsClip(says[i], pref); }
+        catch(e){ tries++; var lim = /giới hạn/.test(e.message); if((lim ? tries >= 10 : tries >= 3) || /GEMINI_API_KEY|không hỗ trợ|404/.test(e.message)) throw e; if(lim && opts && opts.onProgress) opts.onProgress(k, todo.length, '(chờ giới hạn của Google… lần ' + tries + ')'); await new Promise(function(ok){ setTimeout(ok, lim ? 30000 : 2500); }); }
+      }
+      await O.lessons.saveAudio(lesson.id, i, clip);
+      have[i] = clip;
+    }
+    var nAi = 0, nT = 0; Object.keys(have).forEach(function(k2){ if(have[k2].source === 'teacher') nT++; else nAi++; });
+    var audio = { source: nT && nAi ? 'mixed' : (nT ? 'teacher' : 'ai'), voice: pref.voice, accent: pref.accent, n: nAi + nT, at: new Date().toISOString() };
+    await O.lessons.patch(lesson.id, { audio: audio });
+    if(window.OPC_FX.clearAudioCache) window.OPC_FX.clearAudioCache();
+    return { done: todo.length, audio: audio, map: have };
+  }
+
+  function VoiceStudio(props){
+    var O = OPC(), L = props.lesson, fire = props.fireToast;
+    var says = React.useMemo(function(){ return window.OPC_FX.stepSays(L); }, [L.id, L.script]);
+    var ms = React.useState(null); var map = ms[0], setMap = ms[1];
+    var ps = React.useState(voicePref); var pref = ps[0], setPref = ps[1];
+    var ts = React.useState('ai'); var tab = ts[0], setTab = ts[1];
+    var bs = React.useState(''); var busy = bs[0], setBusy = bs[1];
+    var rs = React.useState(null); var rec = rs[0], setRec = rs[1];   // { i, mr, chunks, t0 }
+    var cancelRef = React.useRef(false), playRef = React.useRef(null);
+    React.useEffect(function(){ O.lessons.loadAudio(L.id).then(setMap).catch(function(){ setMap({}); }); return function(){ cancelRef.current = true; try{ playRef.current && playRef.current.pause(); }catch(e){} }; }, [L.id]);
+    function setP(k, v){ var n = Object.assign({}, pref); n[k] = v; setPref(n); saveVoicePref(n); }
+    if(!map) return h(Modal, { title: '🎙 Giọng đọc — ' + L.title, onClose: props.onClose }, h('p', null, 'Đang tải…'));
+    var norm = window.OPC_FX.normSay;
+    var idxs = says.map(function(t, i){ return i; }).filter(function(i){ return norm(says[i]); });
+    function st(i){ var c = map[i]; if(!c) return 'none'; return norm(c.text) === norm(says[i]) ? c.source : 'stale'; }
+    var cnt = { ai: 0, teacher: 0, stale: 0, none: 0 }; idxs.forEach(function(i){ cnt[st(i)]++; });
+    var totalDur = idxs.reduce(function(s2, i){ var c = map[i]; return s2 + (c && st(i) !== 'stale' ? c.dur || 0 : 0); }, 0);
+    function play(b64, mime){ try{ var a = playRef.current || (playRef.current = new Audio()); a.pause(); a.src = 'data:' + (mime || 'audio/mpeg') + ';base64,' + b64; a.play(); }catch(e){} }
+    async function sample(){
+      setBusy('Đang tạo câu nghe thử…');
+      try{ var c = await ttsClip(says[idxs[1] != null ? idxs[1] : idxs[0]], pref); play(c.b64, c.mime); setBusy(''); }
+      catch(e){ setBusy(''); fire('Chưa tạo được giọng: ' + e.message, true); }
+    }
+    async function genAll(all){
+      cancelRef.current = false;
+      setBusy('Bắt đầu…');
+      try{
+        var r = await generateLessonVoice(L, pref, { all: all, existing: Object.assign({}, map), cancelled: function(){ return cancelRef.current; },
+          onProgress: function(k, n, t){ setBusy('Đang tạo giọng câu ' + (k + 1) + '/' + n + ': “' + String(t).slice(0, 60) + '…”'); } });
+        setMap(Object.assign({}, r.map)); setBusy('');
+        fire(r.done ? 'Đã tạo giọng AI cho ' + r.done + ' câu — bấm "▶ Xem bài giảng" để nghe.' : 'Tất cả câu đã có giọng.');
+      }catch(e){ setBusy(''); fire('Dừng lại: ' + e.message, true); O.lessons.loadAudio(L.id).then(setMap); }
+    }
+    async function startRec(i){
+      if(rec) return;
+      try{
+        var stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        var mr = new MediaRecorder(stream), chunks = [];
+        mr.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
+        mr.onstop = async function(){
+          stream.getTracks().forEach(function(t){ t.stop(); });
+          setBusy('Đang nén MP3…');
+          try{
+            var blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
+            var ac = new (window.AudioContext || window.webkitAudioContext)();
+            var buf = await ac.decodeAudioData(await blob.arrayBuffer());
+            var rate = buf.sampleRate, ch = buf.getChannelData(0);
+            var pcm = trimSilence(floatToInt16(ch), rate);
+            var mp3 = await encodeMp3(pcm, rate);
+            try{ ac.close(); }catch(e){}
+            var clip = { b64: mp3.b64, mime: 'audio/mpeg', dur: mp3.dur, text: says[i], source: 'teacher' };
+            await O.lessons.saveAudio(L.id, i, clip);
+            var nm = Object.assign({}, map); nm[i] = clip; setMap(nm);
+            var nAi = 0, nT = 0; Object.keys(nm).forEach(function(k){ if(nm[k].source === 'teacher') nT++; else nAi++; });
+            await O.lessons.patch(L.id, { audio: { source: nT && nAi ? 'mixed' : (nT ? 'teacher' : 'ai'), voice: pref.voice, accent: pref.accent, n: nAi + nT, at: new Date().toISOString() } });
+            if(window.OPC_FX.clearAudioCache) window.OPC_FX.clearAudioCache();
+            setBusy(''); play(clip.b64);
+          }catch(e){ setBusy(''); fire('Không lưu được bản thu: ' + e.message, true); }
+        };
+        mr.start(); setRec({ i: i, mr: mr, t0: Date.now() });
+      }catch(e){ fire('Không mở được micro: ' + (e && e.message) + ' (cho phép trình duyệt dùng micro).', true); }
+    }
+    function stopRec(){ if(rec){ try{ rec.mr.stop(); }catch(e){} setRec(null); } }
+    async function removeClip(i){ await O.lessons.removeAudio(L.id, i); var nm = Object.assign({}, map); delete nm[i]; setMap(nm); if(window.OPC_FX.clearAudioCache) window.OPC_FX.clearAudioCache(); }
+    var BADGE = { ai: ['🎙 AI', 'var(--good)'], teacher: ['🎤 Thầy', 'var(--accent)'], stale: ['⚠ lời đã sửa', 'var(--warning)'], none: ['— giọng máy', 'var(--muted)'] };
+    function preview(){ window.OPC_FX.openLesson(Object.assign({}, L, { audio: L.audio || { at: 'x' } }), { audioMap: map }); }
+    return h(Modal, { title: '🎙 Giọng đọc — ' + L.title, onClose: function(){ if(!busy && !rec) props.onClose(); }, width: '860px' },
+      h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' } },
+        Stat('Câu có lời đọc', idxs.length), Stat('Giọng AI', cnt.ai), Stat('Giọng thầy', cnt.teacher), Stat('Còn giọng máy', cnt.none + cnt.stale, cnt.stale ? cnt.stale + ' câu đã sửa lời' : ''), Stat('Thời lượng', window.OPC_FX.fmtTime(totalDur))),
+      h('div', { style: { display: 'flex', gap: '6px', marginBottom: '10px' } },
+        [['ai', '🎙 Giọng AI tự nhiên'], ['teacher', '🎤 Thầy tự thu giọng']].map(function(x){ return h('button', { key: x[0], type: 'button', className: 'eb-nano-chip' + (tab === x[0] ? ' active' : ''), onClick: function(){ setTab(x[0]); } }, x[1]); })),
+      tab === 'ai' ? h('div', null,
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '10px' } },
+          Field('Giọng', h('select', { value: pref.voice, onChange: function(e){ setP('voice', e.target.value); } }, VOICE_LIST.map(function(v){ return h('option', { key: v[0], value: v[0] }, v[0] + ' — ' + v[1]); }))),
+          Field('Vùng miền', h('select', { value: pref.accent, onChange: function(e){ setP('accent', e.target.value); } }, h('option', { value: 'nam' }, 'Miền Nam'), h('option', { value: 'bac' }, 'Miền Bắc'), h('option', { value: 'trung' }, 'Miền Trung'))),
+          Field('Phong cách (không bắt buộc)', h('input', { value: pref.style, placeholder: 'ấm áp, rõ ràng, như thầy đang giảng…', onChange: function(e){ setP('style', e.target.value); } }))),
+        h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', margin: '0 0 10px' } }, 'Giọng AI của Google Gemini (dùng chung GEMINI_API_KEY trên Vercel). Tạo 1 lần rồi lưu — học sinh nghe bản đã lưu, không tốn thêm. Chi phí ước tính dưới 1.000đ cho mỗi phút giọng đọc (gói miễn phí của Google có giới hạn số lần/phút: nếu báo giới hạn, hệ thống tự chờ rồi chạy tiếp).'),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!busy, onClick: sample }, '🔊 Nghe thử 1 câu'),
+          h('button', { type: 'button', className: 'btn btn-primary', disabled: !!busy || !(cnt.none + cnt.stale), onClick: function(){ genAll(false); } }, '🎙 Tạo giọng cho ' + (cnt.none + cnt.stale) + ' câu còn thiếu'),
+          h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!busy, onClick: function(){ if(window.confirm('Tạo lại giọng AI cho TẤT CẢ câu (giữ nguyên các câu thầy tự thu)?')) genAll(true); } }, '↻ Tạo lại tất cả bằng giọng này'),
+          busy && /Đang tạo giọng câu/.test(busy) ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ cancelRef.current = true; } }, '⏹ Dừng') : null)) :
+        h('p', { style: { fontSize: '0.84rem', color: 'var(--ink-2)', margin: '0 0 6px' } }, 'Bấm ● Thu, đọc câu đó, bấm ■ Dừng — tự nén MP3 và lưu. Nên thu ở nơi yên tĩnh, cách micro 20–30 cm. Câu thầy thu được ưu tiên hơn giọng AI; "✕" để bỏ và quay về giọng AI/máy.'),
+      busy ? h('div', { className: 'banner info', style: { margin: '10px 0' } }, h('span', null, '⏳'), h('div', null, busy)) : null,
+      h('div', { style: { maxHeight: '340px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '10px', marginTop: '10px' } },
+        idxs.map(function(i){
+          var s0 = st(i), c = map[i], isRec = rec && rec.i === i;
+          return h('div', { key: i, style: { display: 'flex', gap: '10px', alignItems: 'center', padding: '7px 10px', borderTop: '1px solid var(--line)', background: isRec ? 'rgba(220,38,38,.08)' : 'transparent' } },
+            h('span', { style: { fontSize: '0.72rem', color: 'var(--muted)', width: '24px' } }, i === 0 ? 'Mở' : i),
+            h('div', { style: { flex: 1, fontSize: '0.86rem', lineHeight: 1.45 } }, says[i]),
+            h('span', { style: { fontSize: '0.72rem', fontWeight: 700, color: BADGE[s0][1], whiteSpace: 'nowrap' } }, BADGE[s0][0] + (c && s0 !== 'stale' ? ' · ' + c.dur.toFixed(1) + 's' : '')),
+            c ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.72rem', padding: '3px 8px' }, onClick: function(){ play(c.b64, c.mime); } }, '▶') : null,
+            tab === 'teacher' ? (isRec ? h('button', { type: 'button', className: 'btn btn-primary', style: { fontSize: '0.72rem', padding: '3px 8px', background: '#dc2626', borderColor: '#dc2626' }, onClick: stopRec }, '■ Dừng')
+              : h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!rec || !!busy, style: { fontSize: '0.72rem', padding: '3px 8px' }, onClick: function(){ startRec(i); } }, '● Thu')) : null,
+            c ? h('button', { type: 'button', className: 'sm-link-btn', style: { color: 'var(--muted)' }, title: 'Xoá giọng câu này', onClick: function(){ removeClip(i); } }, '✕') : null);
+        })),
+      h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' } },
+        h('button', { type: 'button', className: 'btn btn-secondary', onClick: preview }, '▶ Xem bài giảng'),
+        h('button', { type: 'button', className: 'btn btn-primary', disabled: !!busy || !!rec, onClick: props.onClose }, 'Xong')));
+  }
+
   function baiIdx(k){ var B = window.OPC_NANO ? window.OPC_NANO.BAI : []; for(var i = 0; i < B.length; i++) if(B[i].key === k) return i; return 999; }
   function LessonsPanel(props){
     var O = OPC(), NANO = window.OPC_NANO, fire = props.fireToast;
@@ -333,6 +511,9 @@
     var es = React.useState(null); var edit = es[0], setEdit = es[1];
     var fs = React.useState('all'); var filt = fs[0], setFilt = fs[1];
     var bs = React.useState(false); var busy = bs[0], setBusy = bs[1];
+    var vs = React.useState(null); var voiceOf = vs[0], setVoiceOf = vs[1];
+    var gs = React.useState(''); var batch = gs[0], setBatch = gs[1];
+    var stopRef = React.useRef(false);
     if(!snap) return h('div', { className: 'card' }, h('p', { style: { color: 'var(--ink-2)' } }, 'Đang tải…'));
     var lessons = docs(snap);
     var seedKeys = {}; lessons.forEach(function(l){ if(l.seedKey) seedKeys[l.seedKey] = 1; });
@@ -342,6 +523,19 @@
       try{ for(var i = 0; i < seedLeft.length; i++){ var s = seedLeft[i]; await O.lessons.save(null, Object.assign({}, s, { published: true, order: i, createdAt: new Date().toISOString(), author: 'Claude (FaradayAI)' })); } fire('Đã nạp ' + seedLeft.length + ' bài giảng mẫu — thầy xem thử, sửa nếu cần.'); }
       catch(e){ fire('Không nạp được: ' + (e && e.message), true); }
       setBusy(false);
+    }
+    var noVoice = lessons.filter(function(l){ return l.kind !== 'youtube' && !l.audio; });
+    async function batchVoice(){
+      var pref = voicePref();
+      if(!window.confirm('Tạo giọng AI (' + pref.voice + ', miền ' + ({ nam: 'Nam', bac: 'Bắc', trung: 'Trung' })[pref.accent] + ') cho ' + noVoice.length + ' bài giảng chưa có giọng? (đổi giọng: mở "🎙 Giọng" của 1 bài, chọn giọng rồi quay lại)')) return;
+      stopRef.current = false;
+      for(var k = 0; k < noVoice.length; k++){
+        if(stopRef.current) break;
+        var l = noVoice[k];
+        try{ await generateLessonVoice(l, pref, { cancelled: function(){ return stopRef.current; }, onProgress: function(i, n){ setBatch('Bài ' + (k + 1) + '/' + noVoice.length + ' “' + l.title + '” — câu ' + (i + 1) + '/' + n); } }); }
+        catch(e){ fire('Dừng ở bài "' + l.title + '": ' + e.message, true); break; }
+      }
+      setBatch(''); fire('Đã xong phần tạo giọng.');
     }
     var shown = lessons.filter(function(l){ return filt === 'all' || l.chuDeKey === filt; })
       .sort(function(a, b){ return baiIdx(a.baiKey) - baiIdx(b.baiKey) || (Number(a.order) || 0) - (Number(b.order) || 0); });
@@ -353,13 +547,16 @@
           h('div', null, h('h3', { style: { margin: 0 } }, '📺 Video bài giảng & ứng dụng thực tế'),
             h('p', { className: 'sm-sub', style: { margin: '4px 0 0' } }, 'Bài giảng FaradayAI: viết kịch bản (hoặc nhờ AI soạn nháp) → học sinh xem như video có logo FaradayAI, lời giảng tiếng Việt + phụ đề. Video YouTube: dán link, cắt đúng đoạn. Gắn theo bài/nano-point — em làm sai câu nào sẽ thấy nút "📺 Ôn lý thuyết" ngay dưới câu đó.')),
           h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            noVoice.length ? h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!batch, onClick: batchVoice, title: 'Giọng AI tự nhiên thay cho giọng máy' }, '🎙 Tạo giọng AI cho ' + noVoice.length + ' bài') : null,
             seedLeft.length ? h('button', { type: 'button', className: 'btn btn-secondary', disabled: busy, onClick: loadSeeds }, busy ? 'Đang nạp…' : '✨ Nạp ' + seedLeft.length + ' bài giảng mẫu (Claude soạn)') : null,
             h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setEdit({ kind: 'youtube' }); } }, '＋ Video YouTube'),
             h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ setEdit({ kind: 'faraday' }); } }, '＋ Bài giảng FaradayAI'))),
         h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' } },
           Stat('Bài giảng FaradayAI', lessons.filter(function(l){ return l.kind !== 'youtube'; }).length),
           Stat('Video thực tế', lessons.filter(function(l){ return l.kind === 'youtube'; }).length),
-          Stat('Bài SGK đã có video', Object.keys(baiWith).length, missing.length ? 'còn ' + missing.length + ' bài chưa có' : 'đủ cả 4 chương'))),
+          Stat('Bài SGK đã có video', Object.keys(baiWith).length, missing.length ? 'còn ' + missing.length + ' bài chưa có' : 'đủ cả 4 chương'),
+          Stat('Có giọng AI / giọng thầy', lessons.filter(function(l){ return l.kind !== 'youtube' && l.audio; }).length + '/' + lessons.filter(function(l){ return l.kind !== 'youtube'; }).length, 'còn lại dùng giọng máy')),
+        batch ? h('div', { className: 'banner info', style: { marginTop: '10px' } }, h('span', null, '🎙'), h('div', { style: { flex: 1 } }, batch), h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ stopRef.current = true; } }, '⏹ Dừng')) : null),
       h('div', { className: 'card' },
         h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' } },
           h('button', { type: 'button', className: 'eb-nano-chip' + (filt === 'all' ? ' active' : ''), onClick: function(){ setFilt('all'); } }, 'Tất cả (' + lessons.length + ')'),
@@ -367,7 +564,7 @@
             return h('button', { key: c.key, type: 'button', className: 'eb-nano-chip' + (filt === c.key ? ' active' : ''), onClick: function(){ setFilt(c.key); } }, c.icon + ' ' + c.name + ' (' + lessons.filter(function(l){ return l.chuDeKey === c.key; }).length + ')'); })),
         !shown.length ? h('p', { style: { color: 'var(--ink-2)' } }, 'Chưa có video nào. Bấm "✨ Nạp bài giảng mẫu" để có ngay ' + (window.OPC_FX.SEED_LESSONS || []).length + ' bài giảng Claude soạn sẵn cho 4 chương.') :
         h('div', { className: 'sm-table-wrap', style: { marginTop: 0 } }, h('table', { className: 'sm-table' },
-          h('thead', null, h('tr', null, ['Loại', 'Tên', 'Bài', 'Thời lượng', 'Hiện', ''].map(function(t){ return h('th', { key: t }, t); }))),
+          h('thead', null, h('tr', null, ['Loại', 'Tên', 'Bài', 'Thời lượng', 'Giọng', 'Hiện', ''].map(function(t){ return h('th', { key: t }, t); }))),
           h('tbody', null, shown.map(function(l){
             var bai = NANO && l.baiKey ? NANO.getBai(l.baiKey) : null;
             var dur = l.kind === 'youtube' ? (l.end ? window.OPC_FX.fmtTime((window.OPC_FX.parseTime(l.end) || 0) - (window.OPC_FX.parseTime(l.start) || 0)) : '—') : window.OPC_FX.fmtTime(window.OPC_FX.estimateSec(l.script));
@@ -376,14 +573,17 @@
               h('td', null, h('b', null, l.title), (l.nanoIds || []).length ? h('div', { style: { fontSize: '0.72rem', color: 'var(--muted)' } }, (l.nanoIds || []).join(', ')) : null),
               h('td', { style: { fontSize: '0.82rem' } }, bai ? bai.name : '—'),
               h('td', null, dur),
+              h('td', { style: { fontSize: '0.78rem', whiteSpace: 'nowrap' } }, l.kind === 'youtube' ? '—' : (l.audio ? (l.audio.source === 'teacher' ? '🎤 Thầy' : (l.audio.source === 'mixed' ? '🎙🎤 AI + thầy' : '🎙 AI · ' + (l.audio.voice || ''))) : h('span', { style: { color: 'var(--muted)' } }, 'máy'))),
               h('td', null, h('input', { type: 'checkbox', checked: l.published !== false, onChange: function(e){ O.lessons.save(l.id, Object.assign({}, l, { published: e.target.checked })); } })),
               h('td', { style: { whiteSpace: 'nowrap' } },
                 h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ window.OPC_FX.openLesson(l); } }, '▶ Xem'), ' ',
+                l.kind !== 'youtube' ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ setVoiceOf(l); } }, '🎙 Giọng') : null, ' ',
                 h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ setEdit(l); } }, 'Sửa'), ' ',
                 h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ if(window.confirm('Xoá "' + l.title + '"?')) O.lessons.remove(l.id); } }, 'Xoá')));
           })))),
         missing.length ? h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', marginTop: '10px' } }, 'Bài SGK chưa có video: ' + missing.map(function(b){ return b.name.replace(/:.*/, ''); }).join(', ') + '.') : null),
-      edit ? h(LessonEdit, { lesson: edit.id ? edit : edit, fireToast: fire, onClose: function(){ setEdit(null); } }) : null);
+      edit ? h(LessonEdit, { lesson: edit.id ? edit : edit, fireToast: fire, onClose: function(){ setEdit(null); } }) : null,
+      voiceOf ? h(VoiceStudio, { lesson: lessons.filter(function(x){ return x.id === voiceOf.id; })[0] || voiceOf, fireToast: fire, onClose: function(){ setVoiceOf(null); } }) : null);
   }
 
   // =================================================================== 💬 KHẢO SÁT
@@ -459,5 +659,6 @@
         })));
   }
 
+  if(window.OPC_FX) window.OPC_FX.setAudioLoader(function(id){ return OPC().lessons.loadAudio(id); });
   window.OPC_GROWTH = { MockPanel: MockPanel, LessonsPanel: LessonsPanel, SurveyPanel: SurveyPanel, _computeBoard: computeBoard };
 })(window);

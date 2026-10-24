@@ -144,6 +144,11 @@ service cloud.firestore {
     match /video_lessons/{lessonId} {
       allow read: if isSignedIn();
       allow write: if isOpcAdmin();
+      // THÊM 24/10/2026 — giọng đọc đã lưu (giọng AI / giọng thầy thu) của từng câu lời giảng
+      match /audio/{clipId} {
+        allow read: if isSignedIn();
+        allow write: if isOpcAdmin();
+      }
     }
     // THÊM 23/10/2026 — THI THỬ THÁNG: thông tin kỳ thi + bảng xếp hạng (tên rút gọn) thầy công bố.
     match /mock_exams/{mockId} {
