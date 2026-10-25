@@ -104,6 +104,11 @@ service cloud.firestore {
         allow read, write: if isOpcAdmin() || isSelf(studentId);
       }
 
+      // THÊM 25/10/2026 — THÙNG RÁC bài làm: thầy xoá bài em làm thử/làm ẩu (khôi phục được). Chỉ thầy.
+      match /attemptsTrash/{attemptId} {
+        allow read, write: if isOpcAdmin();
+      }
+
       // THÊM 23/10/2026 — em đã mở/xem hết bài giảng lý thuyết nào (student-extras.js · faraday-extras.js)
       match /lessonViews/{lessonId} {
         allow read, write: if isOpcAdmin() || isSelf(studentId);

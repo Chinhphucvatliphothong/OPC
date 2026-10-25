@@ -893,7 +893,22 @@
       // THÊM 12/10/2026 — thầy nhập bài làm GIẤY: ghi 1 lượt làm bài (id cố định theo đề → nhập lại thì ghi đè, không trùng)
       save: function(studentId, rec){
         return setDoc(doc(db, 'students', studentId, 'attempts', String(rec.clientId)), rec);
-      }
+      },
+      // THÊM 25/10/2026 — XOÁ BÀI LÀM ẨU: chuyển vào thùng rác (attemptsTrash) → khôi phục được (xem admin-cleanup.js)
+      trash: async function(studentId, a, reason){
+        var data = Object.assign({}, a); delete data.id;
+        await setDoc(doc(db, 'students', studentId, 'attemptsTrash', String(a.id)), { data: JSON.parse(JSON.stringify(data)), deletedAt: new Date().toISOString(), reason: reason || 'manual' });
+        await deleteDoc(doc(db, 'students', studentId, 'attempts', String(a.id)));
+      },
+      loadTrash: async function(studentId){
+        var snap = await getDocs(collection(db, 'students', studentId, 'attemptsTrash'));
+        return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); }).sort(function(x, y){ return String(y.deletedAt || '').localeCompare(String(x.deletedAt || '')); });
+      },
+      restore: async function(studentId, t){
+        await setDoc(doc(db, 'students', studentId, 'attempts', String(t.id)), t.data || {});
+        await deleteDoc(doc(db, 'students', studentId, 'attemptsTrash', String(t.id)));
+      },
+      purge: function(studentId, id){ return deleteDoc(doc(db, 'students', studentId, 'attemptsTrash', String(id))); }
     };
 
     // THÊM 17/10/2026 — SỬA CÂU HỎI Ở NGÂN HÀNG → SỬA LAN + CHẤM LẠI (xem rescoreAfterQuestionFix).
@@ -1204,7 +1219,8 @@
 <script src="/admin-ops.js"></script> <!-- THÊM 20/10/2026 — Việc hôm nay · Học phí · Link phụ huynh -->
 <script src="/faraday-extras.js"></script> <!-- THÊM 23/10/2026 — trình phát bài giảng FaradayAI + giấy khen (dùng chung với trang học sinh) -->
 <script src="/admin-growth.js"></script>
-<script src="/admin-sales.js"></script> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
+<script src="/admin-sales.js"></script>
+<script src="/admin-cleanup.js"></script> <!-- THÊM 25/10/2026 — xoá bài làm ẩu + thùng rác --> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
 (function(){
@@ -5613,6 +5629,11 @@
     var reviewState = React.useState(null); var reviewAttempt = reviewState[0], setReviewAttempt = reviewState[1];
     var paperEntryState = React.useState(null); var paperEntry = paperEntryState[0], setPaperEntry = paperEntryState[1]; // THÊM 12/10/2026
     var histAllState = React.useState(false); var histAll = histAllState[0], setHistAll = histAllState[1];
+    // THÊM 25/10/2026 — chọn & xoá bài làm ẩu, thùng rác (admin-cleanup.js)
+    var histPickState = React.useState({}); var histPick = histPickState[0], setHistPick = histPickState[1];
+    var histBusyState = React.useState(''); var histBusy = histBusyState[0], setHistBusy = histBusyState[1];
+    var trashOpenState = React.useState(false); var trashOpen = trashOpenState[0], setTrashOpen = trashOpenState[1];
+    var cleanOpenState = React.useState(false); var cleanOpen = cleanOpenState[0], setCleanOpen = cleanOpenState[1];
     // THÊM 17/10/2026 — Hồ sơ học sinh: nút ⛶ Toàn màn hình + A−/A+ (dùng chung useTeachFullscreen của Phòng dạy)
     var profModalElState = React.useState(null); var profModalEl = profModalElState[0], setProfModalEl = profModalElState[1];
     var profFs = useTeachFullscreen(profModalEl, null, null, { zoomKey: 'opc-prof-zoom', zoomDefault: 1.15, cssOnly: true }); // cssOnly: hồ sơ còn mở các cửa sổ con (xem lại bài, nhập bài giấy…) — toàn màn hình thật sẽ che mất chúng
@@ -6144,6 +6165,7 @@
         h('p',{className:'sm-sub'}, 'Theo dõi tiến độ luyện đề, chỉ số KPI học tập và thông tin của từng học sinh.')),
       h('div',{className:'sm-actions'},
         h('button',{type:'button', className:'btn btn-secondary', onClick:handleSyncLogins, title:'Ghi/cập nhật lại ánh xạ tên đăng nhập → hồ sơ học sinh, để trang luyện tập (index.html) nhận ra tài khoản. Bấm lại nếu vừa thêm/sửa học sinh mà đăng nhập chưa được.'}, '🔄 Đồng bộ đăng nhập'),
+        window.OPC_CLEAN ? h('button',{type:'button', className:'btn btn-secondary', onClick:function(){ setCleanOpen(true); }, title:'Tìm & xoá các bài em bấm thử / làm lung tung (điểm không phản ánh đúng)'}, '🧹 Dọn bài làm ẩu') : null,
         h('button',{type:'button', className:'btn btn-secondary', onClick:handleExport, title:'Xuất toàn bộ danh sách học sinh kèm đầy đủ chỉ số KPI ra file CSV'}, '📊 Xuất CSV & KPI'),
         h('button',{type:'button', className:'btn btn-secondary', onClick:function(){ setImportOpen(true); }}, '📥 Nhập từ CSV'),
         h('button',{type:'button', className:'btn btn-primary', onClick:function(){ setAddOpen(true); }}, '+ Thêm học sinh')
@@ -6448,12 +6470,32 @@
           h('div',{className:'sm-info-title'}, '🕓 Lịch sử làm bài' + (selectedAttempts.length ? ' (' + selectedAttempts.length + ' lượt gần nhất)' : '')),
           !selectedAttempts.length ? h('p',{style:{color:'var(--muted)', fontSize:'0.8rem'}}, 'Chưa có lượt luyện tập nào.') :
             h('div', null,
-              h('p',{style:{color:'var(--muted)', fontSize:'0.76rem', margin:'0 0 4px'}}, 'Bấm vào một lượt để xem từng câu: đáp án em đã chọn, đáp án đúng, lời giải.'),
+              h('p',{style:{color:'var(--muted)', fontSize:'0.76rem', margin:'0 0 4px'}}, 'Bấm vào một lượt để xem từng câu: đáp án em đã chọn, đáp án đúng, lời giải. Tick ô đầu dòng để xoá bài em làm thử / làm lung tung (điểm được tính lại).'),
+              // THÊM 25/10/2026 — thanh xoá bài làm ẩu
+              (function(){
+                var CL = window.OPC_CLEAN;
+                if(!CL) return null;
+                var sus = selectedAttempts.filter(function(a){ return CL.suspicious(a).length; });
+                var picked = selectedAttempts.filter(function(a){ return histPick[a.id]; });
+                return h('div',{style:{display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center', margin:'4px 0 8px'}},
+                  sus.length ? h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.76rem', padding:'4px 9px'}, onClick:function(){ var p = {}; sus.forEach(function(a){ p[a.id] = true; }); setHistPick(p); if(!histAll && sus.some(function(a){ return selectedAttempts.indexOf(a) >= 15; })) setHistAll(true); }}, '⚠ Chọn ' + sus.length + ' bài nghi làm ẩu') : null,
+                  picked.length ? h('button',{type:'button', className:'btn btn-primary', disabled:!!histBusy, style:{fontSize:'0.76rem', padding:'4px 9px', background:'var(--critical)', borderColor:'var(--critical)'}, onClick:function(){
+                    if(!window.confirm('Xoá ' + picked.length + ' bài làm của ' + selected.name + '? Bài chuyển vào thùng rác (khôi phục được); điểm TB, điểm dự đoán và bản đồ lỗ hổng được tính lại.')) return;
+                    setHistBusy('Đang xoá & tính lại điểm…');
+                    CL.removeAttempts(selected.id, picked, 'manual').then(function(){ setHistPick({}); setHistBusy(''); props.fireToast('Đã xoá ' + picked.length + ' bài và tính lại điểm của ' + selected.name + '.'); })
+                      .catch(function(e){ setHistBusy(''); props.fireToast('Không xoá được: ' + (e && (e.code || e.message)), true); });
+                  }}, histBusy || ('🗑 Xoá ' + picked.length + ' bài đã chọn')) : null,
+                  picked.length ? h('button',{type:'button', className:'sm-link-btn', onClick:function(){ setHistPick({}); }}, 'Bỏ chọn') : null,
+                  h('span',{style:{flex:1}}),
+                  h('button',{type:'button', className:'sm-link-btn', onClick:function(){ setTrashOpen(true); }}, '🗑 Thùng rác'));
+              })(),
               h('table',{className:'sm-history-table'},
-                h('thead',null, h('tr',null, h('th',null,'Ngày'), h('th',null,'Loại'), h('th',null,'Điểm'), h('th',null,'Đúng/Tổng'), h('th',null,''))),
+                h('thead',null, h('tr',null, window.OPC_CLEAN ? h('th',{style:{width:'26px'}},'') : null, h('th',null,'Ngày'), h('th',null,'Loại'), h('th',null,'Điểm'), h('th',null,'Đúng/Tổng'), h('th',null,''))),
                 h('tbody',null, selectedAttempts.slice(0, histAll ? 100 : 15).map(function(a){
-                  return h('tr',{key:a.id, className:'hv-row', onClick:function(){ setReviewAttempt(a); }},
-                    h('td',null, fmtDate(a.createdAt)),
+                  var sus = window.OPC_CLEAN ? window.OPC_CLEAN.suspicious(a) : [];
+                  return h('tr',{key:a.id, className:'hv-row', onClick:function(){ setReviewAttempt(a); }, style: histPick[a.id] ? { background:'rgba(220,38,38,.08)' } : null},
+                    window.OPC_CLEAN ? h('td',{onClick:function(e){ e.stopPropagation(); }}, h('input',{type:'checkbox', checked:!!histPick[a.id], onChange:function(e){ var p = Object.assign({}, histPick); if(e.target.checked) p[a.id] = true; else delete p[a.id]; setHistPick(p); }})) : null,
+                    h('td',null, fmtDate(a.createdAt), sus.length ? h('span',{title:'Nghi làm ẩu: ' + sus.join(' · '), style:{marginLeft:'6px', fontSize:'0.7rem', fontWeight:700, color:'var(--warning)'}}, '⚠') : null),
                     h('td',null, (HV_TYPE_LABEL[a.type] || a.type || '—'), a.partial ? h('span',{title:'Em chưa nộp bài — chỉ gồm các câu đã chấm', style:{marginLeft:'6px', fontSize:'0.7rem', fontWeight:700, color:'var(--accent-strong, #8a5410)'}}, 'LÀM DỞ') : null),
                     h('td',null, a.partial ? '—' : (typeof a.scaledScore10 === 'number' ? a.scaledScore10.toFixed(2) : '—')),
                     h('td',null, (a.correctCount != null ? a.correctCount : '—') + '/' + (a.totalQuestions != null ? a.totalQuestions : '—')),
@@ -6738,7 +6780,9 @@
       )
     ) : null;
 
-    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, reminderBanner, summaryCard, searchRow, tableOrEmpty), detailModal, reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt, student: selected, onClose: function(){ setReviewAttempt(null); } }) : null, addModal, importModal, justApprovedModal,
+    return h('div',null, h('div',{className:'card'}, toolbar, pendingRegBanner, alertBanner, reminderBanner, summaryCard, searchRow, tableOrEmpty), detailModal, reviewAttempt ? h(AttemptReviewModal, { attempt: reviewAttempt, student: selected, onClose: function(){ setReviewAttempt(null); } }) : null,
+      (trashOpen && selected && window.OPC_CLEAN) ? h(window.OPC_CLEAN.TrashModal, { student: selected, fireToast: props.fireToast, onClose: function(){ setTrashOpen(false); } }) : null,
+      (cleanOpen && window.OPC_CLEAN) ? h(window.OPC_CLEAN.CleanupModal, { students: students, fireToast: props.fireToast, onClose: function(){ setCleanOpen(false); } }) : null, addModal, importModal, justApprovedModal,
       paperEntry ? h(PaperEntryModal, { student: paperEntry.student, assignedExam: paperEntry.ae, questions: paperEntry.ae.questions || [], title: paperEntry.ae.title || 'Đề được giao', examCode: paperEntry.ae.examCode || '',
         sheetKey: 'ae_' + (paperEntry.student.id || '') + '_' + (paperEntry.ae.id || paperEntry.ae.examCode || paperEntry.ae.seq || ''), fireToast: props.fireToast, onClose: function(){ setPaperEntry(null); } }) : null);
   }
@@ -10398,7 +10442,8 @@
     return out;
   }
   // THÊM 23/10/2026 — cho admin-growth.js (giao đề Thi thử tháng) dùng chung cách đổi câu hỏi + ảnh như Giao đề
-  window.OPC_ADMIN_HELP = { toStudentQuestionShape: function(){ return toStudentQuestionShape.apply(null, arguments); }, loadExamCached: function(id){ return loadExamCached(id); } };
+  window.OPC_ADMIN_HELP = { toStudentQuestionShape: function(){ return toStudentQuestionShape.apply(null, arguments); }, loadExamCached: function(id){ return loadExamCached(id); },
+    refreshStats: function(id){ return paperRefreshStats(id); } }; // SỬA 25/10/2026 — admin-cleanup.js tính lại số liệu sau khi xoá bài
   function toStudentQuestionShape(q, examId, examTitle, resolvedImages){
     var NANO = window.OPC_NANO;
     var chuDe = NANO ? NANO.findChuDeByText(q.chuDeLon) : null;
