@@ -1008,6 +1008,16 @@
       update: function(id, patch){ return updateDoc(doc(db, 'mock_exams', id), patch); },
       remove: function(id){ return deleteDoc(doc(db, 'mock_exams', id)); }
     };
+    // THÊM 24/10/2026 — BÁN HÀNG (admin-sales.js · sales-home.js)
+    OPC.proofPhotos = {
+      subscribe: function(onNext, onErr){ return onSnapshot(collection(db, 'proof_photos'), onNext, onErr); },
+      save: async function(id, data){ var r = id ? doc(db, 'proof_photos', id) : doc(collection(db, 'proof_photos')); var d = Object.assign({}, data); delete d.id; await setDoc(r, d); return r.id; },
+      remove: function(id){ return deleteDoc(doc(db, 'proof_photos', id)); }
+    };
+    OPC.bookings = {
+      subscribe: function(onNext, onErr){ return onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(500)), onNext, onErr); },
+      update: function(id, patch){ return updateDoc(doc(db, 'bookings', id), patch); }
+    };
     OPC.surveys = {
       subscribe: function(onNext, onErr){ return onSnapshot(query(collection(db, 'surveys'), orderBy('createdAt', 'desc'), limit(2000)), onNext, onErr); },
       remove: function(id){ return deleteDoc(doc(db, 'surveys', id)); }
@@ -1193,7 +1203,8 @@
 <script src="/theme-toggle.js"></script> <!-- THÊM 17/10/2026 — nút sáng/tối -->
 <script src="/admin-ops.js"></script> <!-- THÊM 20/10/2026 — Việc hôm nay · Học phí · Link phụ huynh -->
 <script src="/faraday-extras.js"></script> <!-- THÊM 23/10/2026 — trình phát bài giảng FaradayAI + giấy khen (dùng chung với trang học sinh) -->
-<script src="/admin-growth.js"></script> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
+<script src="/admin-growth.js"></script>
+<script src="/admin-sales.js"></script> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
 (function(){
@@ -11977,6 +11988,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='classtest' && 'active'), onClick:function(){ setTab('classtest'); }}, '📋 Kiểm tra lớp'),
         h('button',{type:'button', className:cx('tab-btn', tab==='diag5' && 'active'), onClick:function(){ setTab('diag5'); }}, '⚡ Chẩn đoán 5 phút'),
         // THÊM 23/10/2026 — admin-growth.js
+        window.OPC_SALES_ADMIN ? h('button',{type:'button', className:cx('tab-btn', tab==='sales' && 'active'), onClick:function(){ setTab('sales'); }}, '📣 Bán hàng') : null,
         window.OPC_GROWTH ? h('button',{type:'button', className:cx('tab-btn', tab==='mock' && 'active'), onClick:function(){ setTab('mock'); }}, '🏆 Thi thử tháng') : null,
         window.OPC_GROWTH ? h('button',{type:'button', className:cx('tab-btn', tab==='lessons' && 'active'), onClick:function(){ setTab('lessons'); }}, '📺 Video bài giảng') : null,
         window.OPC_GROWTH ? h('button',{type:'button', className:cx('tab-btn', tab==='survey' && 'active'), onClick:function(){ setTab('survey'); }}, '💬 Khảo sát') : null,
@@ -11985,6 +11997,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
         h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG & Olympic')
       ),
+      (window.OPC_SALES_ADMIN && tab === 'sales') ? h(window.OPC_SALES_ADMIN.SalesPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'mock') ? h(window.OPC_GROWTH.MockPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'lessons') ? h(window.OPC_GROWTH.LessonsPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'survey') ? h(window.OPC_GROWTH.SurveyPanel, {fireToast:fireToast}) :

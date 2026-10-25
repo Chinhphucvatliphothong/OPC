@@ -139,6 +139,27 @@ service cloud.firestore {
       allow write: if isOpcAdmin();
     }
 
+    // THÊM 24/10/2026 — TRANG CHỦ BÁN HÀNG: ảnh lớp học thật (thầy đăng, đã có sự đồng ý) — ai cũng xem được.
+    match /proof_photos/{photoId} {
+      allow read: if true;
+      allow write: if isOpcAdmin();
+    }
+    // Đặt lịch tư vấn 15 phút từ trang chủ (khách chưa đăng nhập): CHỈ được tạo, đúng các trường, giới hạn độ dài.
+    match /bookings/{bookingId} {
+      allow create: if request.resource.data.keys().hasOnly(['role','name','student','phone','slot','when','note','source','src','status','createdAt'])
+        && request.resource.data.role in ['ph', 'hs']
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && request.resource.data.student is string && request.resource.data.student.size() <= 80
+        && request.resource.data.phone is string && request.resource.data.phone.size() >= 8 && request.resource.data.phone.size() <= 20
+        && request.resource.data.slot is string && request.resource.data.slot.size() <= 20
+        && request.resource.data.when is string && request.resource.data.when.size() <= 80
+        && request.resource.data.note is string && request.resource.data.note.size() <= 400
+        && request.resource.data.source is string && request.resource.data.source.size() <= 20
+        && request.resource.data.src is string && request.resource.data.src.size() <= 40
+        && request.resource.data.status == 'new';
+      allow read, update, delete: if isOpcAdmin();
+    }
+
     // THÊM 23/10/2026 — THƯ VIỆN VIDEO BÀI GIẢNG (bài giảng FaradayAI + video YouTube ứng dụng thực tế):
     // học sinh đã đăng nhập đọc được; chỉ thầy thêm/sửa/xoá.
     match /video_lessons/{lessonId} {
@@ -187,7 +208,7 @@ service cloud.firestore {
     // diag_events: đếm lượt bắt đầu / hoàn thành (không có thông tin cá nhân) để đo tỉ lệ chuyển đổi.
     match /diag_events/{evId} {
       allow create: if request.resource.data.keys().hasOnly(['type','createdAt','src','score'])
-        && request.resource.data.type in ['start', 'finish', 'lead']
+        && request.resource.data.type in ['start', 'finish', 'lead', 'book']
         && request.resource.data.src is string && request.resource.data.src.size() <= 40;
       allow read, delete: if isOpcAdmin();
     }

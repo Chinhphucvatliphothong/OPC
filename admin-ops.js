@@ -369,6 +369,7 @@
     var cfg = useBilling(), S = useStudents(), fire = props.fireToast, zl = useZaloLink();
     var leadsState = React.useState([]); var leads = leadsState[0], setLeads = leadsState[1];
     var regsState = React.useState([]); var regs = regsState[0], setRegs = regsState[1];
+    var bkState = React.useState([]); var bks = bkState[0], setBks = bkState[1]; // THÊM 24/10/2026 — khách đặt lịch tư vấn
     var doneState = React.useState(loadDone); var done = doneState[0], setDone = doneState[1];
     var showDoneState = React.useState(false); var showDone = showDoneState[0], setShowDone = showDoneState[1];
     var payState = React.useState(null); var pay = payState[0], setPay = payState[1];
@@ -376,6 +377,7 @@
     React.useEffect(function(){
       var OPC = window.OPC, us = [];
       if(OPC.diag5 && OPC.diag5.subscribeLeads) us.push(OPC.diag5.subscribeLeads(function(snap){ setLeads(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })); }, function(){}));
+      if(OPC.bookings) us.push(OPC.bookings.subscribe(function(snap){ setBks(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })); }, function(){}));
       if(OPC.registrations) us.push(OPC.registrations.subscribe(function(snap){ setRegs(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })); }, function(){}));
       return function(){ us.forEach(function(u){ try{ u(); }catch(e){} }); };
     }, []);
@@ -445,6 +447,16 @@
           h('button', { key: 'cp', type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(String(l.phone || '').replace(/\D/g, '')).then(function(){ fire('Đã chép số ' + fmtPhone(l.phone) + '.'); }); } }, '📋 Chép số'),
           h('a', { key: 'z', className: 'btn btn-secondary', href: zalo(l.phone), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo'),
           h('button', { key: 'c', type: 'button', className: 'btn btn-secondary', onClick: function(){ window.OPC.diag5.updateLead(l.id, { status: 'contacted' }).then(function(){ fire('Đã chuyển sang "Đã liên hệ".'); }); } }, '✓ Đã liên hệ')] });
+    });
+    bks.filter(function(b){ return b.status === 'new' || b.status === 'noans'; }).forEach(function(b){
+      var sl = b.slot ? b.slot.split(' ') : null, dd = sl ? new Date(sl[0] + 'T' + sl[1]) : null;
+      var when = dd ? (['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][dd.getDay()] + ' ' + pad(dd.getDate()) + '/' + pad(dd.getMonth() + 1) + ' lúc ' + sl[1]) : (b.when || 'giờ bất kỳ');
+      var isToday = sl && sl[0] === ymd();
+      items.push({ id: 'bk-' + b.id, group: 'sales', prio: isToday ? -1 : 0, icon: '📅', who: { name: b.name, lop: b.role === 'ph' ? 'phụ huynh' + (b.student ? ' của ' + b.student : '') : 'học sinh' }, phone: b.phone,
+        why: (isToday ? '⏰ HÔM NAY · ' : '') + 'Hẹn tư vấn ' + when + (b.status === 'noans' ? ' · lần trước chưa nghe máy' : '') + (b.note ? ' — ' + b.note : ''),
+        actions: [h('a', { key: 't', className: 'btn btn-primary', href: 'tel:' + phoneDigits(b.phone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(b.phone)),
+          h('button', { key: 'c', type: 'button', className: 'btn btn-secondary', onClick: function(){ window.OPC.bookings.update(b.id, { status: 'called' }).then(function(){ fire('Đã đánh dấu "Đã gọi".'); }); } }, '✓ Đã gọi'),
+          h('button', { key: 'n', type: 'button', className: 'btn btn-secondary', onClick: function(){ window.OPC.bookings.update(b.id, { status: 'noans' }); } }, '📵 Chưa nghe')] });
     });
     regs.filter(function(r){ return r.status === 'pending'; }).forEach(function(r){
       var rp = r.phone || r.parentZalo;

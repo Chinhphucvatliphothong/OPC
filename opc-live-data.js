@@ -814,7 +814,30 @@ function recordLessonView(studentId, lesson, done){
   })();
 }
 
+// ================= THÊM 24/10/2026 — TRANG CHỦ BÁN HÀNG (sales-home.js) =================
+// settings/proof: số liệu công khai + câu chuyện tiến bộ + cam kết + ưu đãi + lịch tư vấn (thầy soạn ở admin › 📣 Bán hàng)
+// proof_photos: ảnh lớp học thật (đã có sự đồng ý) — đọc công khai.
+async function loadProof(){
+  var out = { proof: null, photos: [] };
+  try{ var s = await getDoc(doc(db, 'settings', 'proof')); out.proof = s.exists() ? s.data() : null; }catch(e){}
+  try{ var snap = await getDocs(collection(db, 'proof_photos')); snap.forEach(function(d){ out.photos.push(Object.assign({ id: d.id }, d.data())); }); }catch(e){}
+  return out;
+}
+// bookings: khách đặt lịch tư vấn (chỉ được TẠO, đúng các trường — xem firestore.rules)
+async function submitBooking(d){
+  try{
+    var r = doc(collection(db, 'bookings'));
+    await setDoc(r, {
+      role: d.role === 'hs' ? 'hs' : 'ph', name: String(d.name || '').slice(0, 80), student: String(d.student || '').slice(0, 80),
+      phone: String(d.phone || '').slice(0, 20), slot: String(d.slot || '').slice(0, 20), when: String(d.when || '').slice(0, 80),
+      note: String(d.note || '').slice(0, 400), source: String(d.source || 'home').slice(0, 20), src: diagSrc(), status: 'new', createdAt: new Date().toISOString()
+    });
+    return { ok: true, id: r.id };
+  }catch(e){ console.error('Lỗi đặt lịch tư vấn:', e); return { ok: false, error: (e && e.code) || 'unknown' }; }
+}
+
 window.OPC_LIVE = {
+  loadProof: loadProof, submitBooking: submitBooking, // THÊM 24/10/2026
   loadLessons: loadLessons, loadMocks: loadMocks, loadSettingsDoc: loadSettingsDoc, // THÊM 23/10/2026
   getSurveyState: getSurveyState, saveSurveyState: saveSurveyState, submitSurvey: submitSurvey, recordLessonView: recordLessonView, loadLessonViews: loadLessonViews, loadLessonAudio: loadLessonAudio,
   loadCurriculum: loadCurriculum,

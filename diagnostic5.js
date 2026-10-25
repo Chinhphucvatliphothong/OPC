@@ -277,7 +277,7 @@
       (levelBars.length ? '<div class="dg-card"><h4>🎯 Theo mức độ câu hỏi</h4>' + topicBars(levelBars) + '</div>' : '') +
       '<div class="dg-card"><h4>🗺️ Lộ trình 4 tuần gợi ý cho ' + esc(r.leadName || 'em') + '</h4>' + plan.map(function(w){ return '<div class="dg-week"><b>' + w[0] + '</b><span>' + w[1] + '</span></div>'; }).join('') +
         '<p class="dg-note">Học cùng FaradayAI: hệ thống tự chọn đề đúng chuyên đề em đang yếu, cập nhật lộ trình mỗi tuần và gửi báo cáo cho phụ huynh.</p></div>' +
-      '<div class="dg-row" style="margin:6px 0 4px"><button class="dg-btn" data-act="toSignup">🚀 Đăng ký học thử</button>' + zalo + '<button class="dg-btn ghost" data-act="share">🔗 Rủ bạn cùng thử</button></div>' +
+      '<div class="dg-row" style="margin:6px 0 4px">' + (window.OPC_SALES ? '<button class="dg-btn" data-act="book">📅 Đặt lịch thầy tư vấn 15 phút</button>' : '') + '<button class="dg-btn' + (window.OPC_SALES ? ' ghost' : '') + '" data-act="toSignup">🚀 Đăng ký học thử</button>' + zalo + '<button class="dg-btn ghost" data-act="share">🔗 Rủ bạn cùng thử</button></div>' +
       '<p class="dg-note" id="dg-share-note"></p>' +
       '<div class="dg-card"><h4>📝 Xem lại bài làm</h4>' + review + '</div>');
   }
@@ -334,6 +334,13 @@
     if(act === 'toSignup') return toSignup();
     if(act === 'share') return share();
     if(act === 'lead') return submitLead();
+    // THÊM 24/10/2026 — đặt lịch tư vấn ngay sau khi xem báo cáo (sales-home.js), kèm sẵn kết quả để thầy đọc trước khi gọi
+    if(act === 'book' && window.OPC_SALES && state){
+      var wk = (state.topics || []).filter(function(t){ return t.pct < 0.6; }).map(function(t){ return t.name; }).join(', ');
+      var pre = { name: state.leadName || '', phone: state.leadPhone || '', role: 'ph', source: 'diag',
+        note: 'Chẩn đoán 5 phút: ' + state.correct + '/' + state.total + ' câu' + (wk ? ' · cần củng cố: ' + wk : '') };
+      close(); return window.OPC_SALES.openBooking(pre);
+    }
     if(!state || state.phase !== 'quiz') return;
     var n = cfg.questions.length;
     if(act === 'pick'){

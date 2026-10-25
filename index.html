@@ -864,6 +864,7 @@
     <div class="hero-ctas">
       <!-- THÊM 15/10/2026 — Chẩn đoán 5 phút (diagnostic5.js); tự ẩn nếu thầy chưa bật bộ câu hỏi ở admin -->
       <a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Chẩn đoán miễn phí 5 phút</a>
+      <a class="btn btn-ghost" href="#tu-van" data-book="hero">📅 Tư vấn miễn phí 15 phút</a>
       <a class="btn btn-ghost" href="#gioi-thieu">Tìm hiểu phương pháp ↓</a>
       <a class="btn btn-ghost" href="#lien-he">Đăng ký học</a>
     </div>
@@ -893,6 +894,9 @@
     </div>
   </div>
 </div>
+
+<!-- THÊM 24/10/2026 — KẾT QUẢ THẬT (sales-home.js): số liệu, ảnh lớp học, câu chuyện tiến bộ, cam kết — tự ẩn khi chưa có dữ liệu -->
+<section id="ket-qua" hidden></section>
 
 <!-- THÊM 9/10/2026 — Giới thiệu về chúng tôi (chỉ dùng số liệu có thật của FaradayAI; cập nhật khi có thêm số liệu) -->
 <section id="gioi-thieu">
@@ -3054,6 +3058,7 @@
      nó có sẵn ngay khi mount. -->
 <script type="module" src="/opc-live-data.js"></script>
 <!-- THÊM 15/10/2026 — phễu "Chẩn đoán 5 phút" cho khách mới (link chia sẻ: faradayai.vn/#chan-doan) -->
+<script src="/sales-home.js" defer></script> <!-- THÊM 24/10/2026 — Kết quả thật · Cam kết · Đặt lịch tư vấn -->
 <script src="/diagnostic5.js" defer></script>
 </body>
 </html>
