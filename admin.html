@@ -830,6 +830,8 @@
     OPC.examBank = makeExamBankApi('de_thi');
     OPC.hsgBank = makeExamBankApi('de_thi_hsg');
     OPC.olympicBank = makeExamBankApi('de_thi_olympic');
+    OPC.dgnlBank = makeExamBankApi('de_thi_dgnl'); // THÊM 26/10/2026 — Luyện thi ĐGNL ĐHQG-HCM (V-ACT)
+    OPC.specialAttempts = { loadForStudent: async function(id){ var snap = await getDocs(collection(db, 'students', id, 'specialAttempts')); return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); }); } };
 
     // ================= Đề cá nhân hóa ĐÃ GIAO cho học sinh =================
     // Lưu dưới subcollection students/{studentId}/assignedExams — khi thầy
@@ -1220,7 +1222,8 @@
 <script src="/faraday-extras.js"></script> <!-- THÊM 23/10/2026 — trình phát bài giảng FaradayAI + giấy khen (dùng chung với trang học sinh) -->
 <script src="/admin-growth.js"></script>
 <script src="/admin-sales.js"></script>
-<script src="/admin-cleanup.js"></script> <!-- THÊM 25/10/2026 — xoá bài làm ẩu + thùng rác --> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
+<script src="/admin-cleanup.js"></script>
+<script src="/admin-aiimport.js"></script> <!-- THÊM 26/10/2026 — nhập đề từ PDF/ảnh bằng AI --> <!-- THÊM 25/10/2026 — xoá bài làm ẩu + thùng rác --> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
 (function(){
@@ -8970,6 +8973,7 @@
     var detailTabState = React.useState('overview'); var detailTab = detailTabState[0], setDetailTab = detailTabState[1]; // overview | questions
     var modalLevelFilterState = React.useState('ALL'); var modalLevelFilter = modalLevelFilterState[0], setModalLevelFilter = modalLevelFilterState[1];
     var modalPartFilterState = React.useState('ALL'); var modalPartFilter = modalPartFilterState[0], setModalPartFilter = modalPartFilterState[1];
+    var aiImpState = React.useState(false); var aiImpOpen = aiImpState[0], setAiImpOpen = aiImpState[1]; // THÊM 26/10/2026 — nhập PDF/ảnh bằng AI
     var addOpenState = React.useState(false); var addOpen = addOpenState[0], setAddOpen = addOpenState[1];
     var formState = React.useState(blankExamForm); var form = formState[0], setForm = formState[1];
     var texFileState = React.useState(null); var texFile = texFileState[0], setTexFile = texFileState[1];
@@ -10035,7 +10039,7 @@
 
     var addModal = addOpen ? h('div',{className:'sm-overlay', onClick:function(e){ if(e.target===e.currentTarget && !uploading) setAddOpen(false); }},
       h('div',{className:'sm-modal sm-modal-wide', role:'dialog', 'aria-modal':'true', 'aria-label':'Nạp đề mới'},
-        h('div',{className:'sm-modal-head'}, h('h3',null, specialMode === 'hsg' ? 'Nạp đề thi HSG cấp tỉnh/thành phố' : (specialMode === 'olympic' ? 'Nạp đề thi đội tuyển Olympic' : 'Nạp đề mới theo cấu trúc chuẩn Bộ Giáo Dục')),
+        h('div',{className:'sm-modal-head'}, h('h3',null, specialMode === 'hsg' ? 'Nạp đề thi HSG cấp tỉnh/thành phố' : (specialMode === 'olympic' ? 'Nạp đề thi đội tuyển Olympic' : (specialMode === 'dgnl' ? 'Nạp đề ĐGNL ĐHQG-HCM (V-ACT)' : 'Nạp đề mới theo cấu trúc chuẩn Bộ Giáo Dục'))),
           h('button',{type:'button', className:'sm-modal-close', onClick:function(){ if(!uploading) setAddOpen(false); }}, h(IconClose))),
         h('form',{onSubmit:handleUpload},
           h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-title'},'Tiêu đề đề thi *'),
@@ -10063,6 +10067,18 @@
           // trong cửa sổ chọn tệp (không chọn được). Không giới hạn loại ở bộ chọn nữa; việc kiểm tra đuôi
           // (.tex hoặc .txt) làm trong onPickTex bên dưới.
           h('input',{id:'eb-tex', type:'file', className:'eb-file-input', onChange:onPickTex, disabled:uploading}),
+              // THÊM 26/10/2026 — bỏ bước "Claude → tải .tex + ảnh về máy → upload": AI chép thẳng PDF/ảnh đề sang .tex đúng mẫu
+              window.OPC_AIIMPORT ? h('div',{style:{display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap', margin:'8px 0 4px'}},
+                h('button',{type:'button', className:'btn btn-primary', disabled:uploading, onClick:function(){ setAiImpOpen(true); }}, '✨ Nhập từ PDF / ảnh bằng AI'),
+                texFile ? h('span',{style:{fontSize:'0.8rem', color:'var(--ink-2)'}}, 'Đang dùng: ' + texFile.name + (imgFiles.length ? ' + ' + imgFiles.length + ' hình' : '')) : h('span',{style:{fontSize:'0.8rem', color:'var(--ink-2)'}}, 'hoặc chọn file .tex có sẵn ở ô trên')) : null,
+              (aiImpOpen && window.OPC_AIIMPORT) ? h(window.OPC_AIIMPORT.Modal, { chuDe: form.chuDe, mode: specialMode || '', fireToast: props.fireToast, onClose: function(){ setAiImpOpen(false); },
+                onDone: function(r){
+                  setAiImpOpen(false);
+                  if(r.title && !form.title.trim()) setField('title', r.title);
+                  setImgFiles(r.imgFiles || []);
+                  onPickTex({ target: { files: [r.texFile], value: '' } });
+                  props.fireToast('Đã đưa kết quả AI vào form: kiểm tra lại câu hỏi, đáp án, gắn nano-point rồi bấm Lưu.');
+                } }) : null,
               h('div',{className:'eb-hint'}, 'Hỗ trợ tag phân loại: % [Mức độ][Chủ đề lớn][Dạng bài] (M1: Nhận biết, M2: Thông hiểu, M3: Vận dụng, M4: Vận dụng cao). Dùng iPad: nếu file .tex bị mờ, đổi đuôi thành .txt rồi chọn lại — vẫn nạp được.')),
 
             // Real-time analysis card if parsed
@@ -10339,8 +10355,36 @@
   // máy chủ, không chỉ ẩn trên giao diện.
   var SPECIAL_TRACKS = [
     { key:'hsg', label:'🏅 Đề HSG cấp tỉnh/TP', short:'HSG tỉnh/TP' },
-    { key:'olympic', label:'🏆 Đề đội tuyển Olympic', short:'Olympic' }
+    { key:'olympic', label:'🏆 Đề đội tuyển Olympic', short:'Olympic' },
+    { key:'dgnl', label:'🎯 Đề ĐGNL ĐHQG-HCM (V-ACT)', short:'ĐGNL' } // THÊM 26/10/2026
   ];
+  // THÊM 26/10/2026 — kết quả luyện ĐGNL của các em đã mở khoá
+  function DgnlResultsCard(props){
+    var OPCref = window.OPC;
+    var rs = React.useState(null); var rows = rs[0], setRows = rs[1];
+    var stu = props.students.filter(function(s){ return (s.specialAccess || []).indexOf('dgnl') > -1; });
+    var key = stu.map(function(s){ return s.id; }).join(',');
+    React.useEffect(function(){
+      var cancelled = false;
+      Promise.all(stu.map(function(s){ return OPCref.specialAttempts.loadForStudent(s.id).then(function(l){ return { s: s, list: l.filter(function(a){ return a.track === 'dgnl'; }).sort(function(a, b){ return String(b.createdAt).localeCompare(String(a.createdAt)); }) }; }).catch(function(){ return { s: s, list: [] }; }); }))
+        .then(function(r){ if(!cancelled) setRows(r); });
+      return function(){ cancelled = true; };
+    }, [key]);
+    function secTxt(a){ return Object.keys(a.sections || {}).map(function(k){ var x = a.sections[k]; return x.name + ' ' + x.correct + '/' + x.total; }).join(' · '); }
+    return h('div', { className:'card', style:{ marginBottom:14 } },
+      h('h3', { style:{ margin:0 } }, '📈 Kết quả luyện ĐGNL (' + stu.length + ' em đã mở khoá)'),
+      !rows ? h('p', { className:'sm-sub' }, 'Đang tải…') : !rows.length ? h('p', { className:'sm-sub' }, 'Chưa mở khoá cho em nào — vào tab "🔑 Mở khoá cho học sinh".') :
+      h('div', { className:'sm-table-wrap' }, h('table', { className:'sm-table' },
+        h('thead', null, h('tr', null, ['Học sinh', 'Số lần', 'Lần gần nhất', 'Cao nhất', 'Chi tiết lần gần nhất'].map(function(t){ return h('th', { key:t }, t); }))),
+        h('tbody', null, rows.map(function(r){
+          var last = r.list[0], best = r.list.reduce(function(m, a){ return Math.max(m, a.autoScore || 0); }, 0);
+          return h('tr', { key: r.s.id }, h('td', null, h('b', null, r.s.name)), h('td', null, r.list.length),
+            h('td', null, last ? h('span', null, h('b', null, (last.autoScore != null ? last.autoScore : '—') + '/1.200'), h('div', { style:{ fontSize:'0.74rem', color:'var(--muted)' } }, new Date(last.createdAt).toLocaleDateString('vi-VN') + ' · ' + (last.examTitle || ''))) : '—'),
+            h('td', null, best ? best + '/1.200' : '—'),
+            h('td', { style:{ fontSize:'0.8rem' } }, last ? 'Đúng ' + last.correct + '/' + last.total + ' · ' + secTxt(last) : '—'));
+        })))),
+      h('p', { style:{ fontSize:'0.76rem', color:'var(--ink-2)', marginTop:8 } }, 'Điểm thang 1.200 là quy đổi tham khảo theo % đúng từng phần (đề thật chấm IRT).'));
+  }
   function SpecialBankPanel(props){
     var OPCref = window.OPC;
     var subState = React.useState('hsg'); var sub = subState[0], setSub = subState[1];
@@ -10360,7 +10404,7 @@
       var next = on ? cur.filter(function(k){ return k !== track; }) : cur.concat([track]);
       setBusy(function(p){ var n = Object.assign({}, p); n[stu.id] = true; return n; });
       OPCref.students.update(stu.id, { specialAccess: next }).then(function(){
-        props.fireToast((on ? 'Đã khoá ' : 'Đã mở ') + (track === 'hsg' ? 'đề HSG tỉnh/TP' : 'đề Olympic') + ' cho ' + (stu.name || 'học sinh') + '.');
+        props.fireToast((on ? 'Đã khoá ' : 'Đã mở ') + ({ hsg: 'đề HSG tỉnh/TP', olympic: 'đề Olympic', dgnl: 'luyện thi ĐGNL ĐHQG-HCM' })[track] + ' cho ' + (stu.name || 'học sinh') + '.');
       }).catch(function(err){
         props.fireToast('Lỗi: ' + (err && (err.code || err.message) || 'không rõ'), true);
       }).finally(function(){
@@ -10377,8 +10421,13 @@
     if(sub !== 'access'){
       var tr = SPECIAL_TRACKS.filter(function(t){ return t.key === sub; })[0];
       return h('div', null, subTabs,
+        sub === 'dgnl' ? h(DgnlResultsCard, { students: students }) : null,
+        sub === 'dgnl' ? h('div', { className:'banner info', style:{ marginBottom:12 } }, h('span', null, '🎯'),
+          h('div', null, h('b', null, 'Đề ĐGNL ĐHQG-HCM (V-ACT): '), 'câu 4 lựa chọn (\\choice), học sinh làm trên máy, chấm tự động, có điểm quy đổi tham khảo thang 1.200. Ghi PHẦN THI vào ô thứ 2 của tag mỗi câu: ',
+            h('code', null, '%[M2][Toán học][Hàm số]'), ' · ', h('code', null, '%[M3][Phân tích số liệu][Đồ thị]'), ' · ', h('code', null, '%[M3][Suy luận khoa học][Vật lí]'),
+            ' (có thể thêm Logic, Tiếng Việt, Tiếng Anh). Thời gian mặc định 1,25 phút/câu như đề thật (120 câu – 150 phút). Mở khoá cho học sinh ở tab "🔑 Mở khoá".')) : null,
         h(ExamBankPanel, { key: sub, fireToast: props.fireToast, specialMode: sub, title: tr.label,
-          bankApi: sub === 'hsg' ? OPCref.hsgBank : OPCref.olympicBank }));
+          bankApi: sub === 'hsg' ? OPCref.hsgBank : (sub === 'dgnl' ? OPCref.dgnlBank : OPCref.olympicBank) }));
     }
 
     var term = q.trim().toLowerCase();
@@ -10393,7 +10442,7 @@
       h('div', { className:'card' },
         h('div', { className:'sm-toolbar' },
           h('div', null, h('h3', null, '🔑 Mở khoá luyện đề HSG / Olympic'),
-            h('p', { className:'sm-sub' }, 'Mặc định mọi học sinh chỉ luyện thi Vật lí 12; mục HSG/Olympic hiện ở trang học sinh dạng KHOÁ kèm lời nhắn \"liên hệ thầy\". Em nào có nhu cầu, thầy bật ở đây — em tải lại trang là luyện được. Đang mở: HSG ' + counts[0] + ' em · Olympic ' + counts[1] + ' em.')),
+            h('p', { className:'sm-sub' }, 'Mặc định mọi học sinh chỉ luyện thi Vật lí 12; các mục riêng hiện ở trang học sinh dạng KHOÁ kèm lời nhắn \"liên hệ thầy\". Em nào có nhu cầu (hoặc đã đóng gói luyện ĐGNL), thầy bật ở đây — em tải lại trang là luyện được. Đang mở: ' + SPECIAL_TRACKS.map(function(t, i){ return t.short + ' ' + counts[i] + ' em'; }).join(' · ') + '.')),
           h('input', { type:'search', placeholder:'Tìm tên / Gmail…', value:q, onChange:function(e){ setQ(e.target.value); },
             style:{ padding:'8px 12px', borderRadius:8, border:'1px solid var(--line)', minWidth:200 } })
         ),
@@ -10402,7 +10451,7 @@
             h('thead', null, h('tr', null, h('th', null, 'Học sinh'),
               SPECIAL_TRACKS.map(function(t){ return h('th', { key:t.key, style:{ textAlign:'center' } }, t.short); }))),
             h('tbody', null,
-              !list.length ? h('tr', null, h('td', { colSpan:3, style:{ color:'var(--muted)' } }, 'Không có học sinh phù hợp.')) :
+              !list.length ? h('tr', null, h('td', { colSpan: SPECIAL_TRACKS.length + 1, style:{ color:'var(--muted)' } }, 'Không có học sinh phù hợp.')) :
               list.map(function(stu){
                 var acc = Array.isArray(stu.specialAccess) ? stu.specialAccess : [];
                 return h('tr', { key: stu.id },
@@ -12040,7 +12089,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='nano' && 'active'), onClick:function(){ setTab('nano'); }}, '🗺️ Nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='nanotag' && 'active'), onClick:function(){ setTab('nanotag'); }}, '🏷️ Gắn nano-point'),
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
-        h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG & Olympic')
+        h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG · Olympic · ĐGNL')
       ),
       (window.OPC_SALES_ADMIN && tab === 'sales') ? h(window.OPC_SALES_ADMIN.SalesPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'mock') ? h(window.OPC_GROWTH.MockPanel, {fireToast:fireToast}) :

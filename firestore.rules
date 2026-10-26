@@ -275,6 +275,16 @@ service cloud.firestore {
       }
     }
 
+    // THÊM 26/10/2026 — NGÂN HÀNG ĐỀ ĐGNL ĐHQG-HCM (V-ACT): chỉ em được thầy mở khoá 'dgnl' mới đọc được.
+    match /de_thi_dgnl/{examId} {
+      allow read: if isOpcAdmin() || hasSpecialAccess('dgnl');
+      allow write: if isOpcAdmin();
+      match /images/{imageId} {
+        allow read: if isOpcAdmin() || hasSpecialAccess('dgnl');
+        allow write: if isOpcAdmin();
+      }
+    }
+
     match /de_thi/{examId} {
       allow read: if isSignedIn();
       allow write: if isOpcAdmin();

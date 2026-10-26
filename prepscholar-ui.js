@@ -668,7 +668,7 @@
       // — trước đây 2 đằng "trộn chung" trên cùng 1 trang dài, cuộn lên/xuống
       // đều vẫn thấy trang chủ marketing lẫn với phần luyện tập thật.
       if(typeof window.dispatchEvent === 'function'){
-        window.OPC_CURRENT_STUDENT = { id: real.id, name: real.name || '', lop: real.lop || '' }; window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: true, student: { id: real.id, name: real.name || '', lop: real.lop || '' } } })); // SỬA 23/10/2026 — kèm em nào (student-extras.js)
+        window.OPC_CURRENT_STUDENT = { id: real.id, name: real.name || '', lop: real.lop || '', specialAccess: Array.isArray(real.specialAccess) ? real.specialAccess : [] }; window.dispatchEvent(new CustomEvent('opc-student-auth', { detail: { loggedIn: true, student: window.OPC_CURRENT_STUDENT } })); // SỬA 23/10/2026 — kèm em nào (student-extras.js)
       }
       setMistakeLog([]); // học sinh thật bắt đầu từ sổ tay trống, không dùng seed minh hoạ
       setAssignedExams([]);
@@ -972,6 +972,13 @@
       return h('div', null,
         h('p', { style: { fontSize: '0.88rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: 0 } },
           'Mục luyện đề chuyên sâu dành cho học sinh ôn thi học sinh giỏi. Đề ở đây tách riêng, không tính vào điểm luyện thi Tốt nghiệp của em.'),
+        // THÊM 26/10/2026 — Luyện thi ĐGNL ĐHQG-HCM (dgnl.js): làm trên máy, chấm tự động
+        window.OPC_DGNL ? h('div', { className: 'ps-topic-card', style: { display: 'block', marginBottom: '14px', opacity: hasSpecial('dgnl') ? 1 : 0.75 } },
+          h('div', { className: 'ps-topic-title' }, (hasSpecial('dgnl') ? '' : '🔒 ') + '🎯 Luyện thi Đánh giá năng lực ĐHQG-HCM (V-ACT)'),
+          hasSpecial('dgnl') ? h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px' } },
+            h('span', { style: { fontSize: '0.86rem', color: 'var(--ink-2)' } }, 'Toán học + Tư duy khoa học · làm trên máy như thi thật · chấm ngay, điểm quy đổi thang 1.200.'),
+            h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ window.OPC_DGNL.openList({ id: student.id, name: student.name }); } }, 'Vào luyện ĐGNL ➔'))
+            : h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: '8px' } }, 'Mục này đang khoá. Em muốn luyện thi ĐGNL ĐHQG-HCM, hãy liên hệ thầy để được mở khoá.')) : null,
         ['hsg', 'olympic'].map(function(track){
           var meta = SPECIAL_META[track];
           var st = spLists[track] || {};
@@ -2665,7 +2672,7 @@
           className: 'ps-tab-btn ' + (tab === 'special' ? 'active' : ''),
           title: 'Luyện đề thi học sinh giỏi cấp tỉnh/thành phố và đội tuyển Olympic — thầy mở khoá theo nhu cầu.',
           onClick: function(){ setTab('special'); setExamSession(null); }
-        }, (hasSpecial('hsg') || hasSpecial('olympic')) ? '🏆 HSG & Olympic' : '🔒 HSG & Olympic')
+        }, (hasSpecial('hsg') || hasSpecial('olympic') || hasSpecial('dgnl')) ? (hasSpecial('dgnl') ? '🎯 ĐGNL · HSG' : '🏆 HSG & Olympic') : '🔒 HSG & Olympic')
       )
       ), // đóng div "chrome" (Hồ sơ + Chỉ số + Điều hướng, ẩn khi lockedMode)
 

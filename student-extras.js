@@ -282,6 +282,10 @@
     return h('div', null,
       inExam ? null : h('div', { className: 'sx-strip' },
         mockCards,
+        // THÊM 26/10/2026 — luyện thi ĐGNL ĐHQG-HCM (chỉ em được thầy mở khoá)
+        (window.OPC_DGNL && (stu.specialAccess || []).indexOf('dgnl') > -1) ? h('div', { className: 'sx-card mock' }, h('span', { className: 'ic' }, '🎯'),
+          h('div', { className: 'tx' }, h('b', null, 'Luyện thi ĐGNL ĐHQG-HCM'), h('small', null, 'Toán học + Tư duy khoa học · chấm ngay, điểm quy đổi thang 1.200'),
+            h('div', { className: 'sx-btns' }, h('button', { type: 'button', className: 'sx-b pri', onClick: function(){ window.OPC_DGNL.openList(stu); } }, 'Vào luyện ➔')))) : null,
         lessons.length ? h('div', { className: 'sx-card' }, h('span', { className: 'ic' }, '📺'),
           h('div', { className: 'tx' }, h('b', null, 'Video ôn lý thuyết'), h('small', null, nFx + ' bài giảng FaradayAI' + (nYt ? ' · ' + nYt + ' video ứng dụng thực tế' : '')),
             h('div', { className: 'sx-btns' }, h('button', { type: 'button', className: 'sx-b', onClick: function(){ setLibOpen(true); } }, 'Mở thư viện')))) : null,

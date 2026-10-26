@@ -618,7 +618,7 @@ async function loadRealQuestionBank(){
 // (nên không bao giờ lẫn vào luyện tập/thi thử Vật lí 12). firestore.rules
 // chỉ cho đọc khi hồ sơ học sinh có specialAccess chứa track tương ứng —
 // chưa được mở thì trả { ok:false, locked:true }.
-var SPECIAL_COLLECTIONS = { hsg: 'de_thi_hsg', olympic: 'de_thi_olympic' };
+var SPECIAL_COLLECTIONS = { hsg: 'de_thi_hsg', olympic: 'de_thi_olympic', dgnl: 'de_thi_dgnl' }; // SỬA 26/10/2026 — thêm ĐGNL ĐHQG-HCM
 
 // Chỉ tải DANH SÁCH đề (tiêu đề, số câu) — chưa tải ảnh cho nhẹ.
 async function loadSpecialExamList(track){
@@ -631,7 +631,7 @@ async function loadSpecialExamList(track){
       var ex = d.data() || {};
       var qs = ex.questions || [];
       list.push({ id: d.id, title: ex.title || 'Đề không tên', bai: ex.bai || '', chuDe: ex.chuDe || '',
-        total: qs.length, essayCount: qs.filter(function(q){ return q.type === 'essay'; }).length,
+        total: qs.length, essayCount: qs.filter(function(q){ return q.type === 'essay'; }).length, minutes: ex.minutes || null,
         images: ex.images || [], questions: qs });
     });
     return { ok: true, list: list };
@@ -648,6 +648,7 @@ async function loadSpecialExam(track, exam){
   return linkCtx(exam.questions || []).map(function(q){
     return {
       index: q.index, part: q.part || 'I', type: q.type || 'choice', level: q.level || '',
+      section: q.chuDeLon || '', topic: q.dangBai || '', // THÊM 26/10/2026 — phần thi ĐGNL (Toán học / Phân tích số liệu / Suy luận khoa học…)
       stem: q.stem || '', loiGiai: q.loigiai || '',
       options: q.type === 'essay' ? [] : (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; }),
       shortans: q.shortans || null,
@@ -670,6 +671,15 @@ async function saveSpecialAttempt(studentId, data){
     console.error('Lỗi lưu kết quả HSG/Olympic:', e);
     return { ok: false, error: (e && e.code) || 'unknown' };
   }
+}
+
+// THÊM 26/10/2026 — kết quả luyện đề riêng của em theo mục (vd 'dgnl'), mới nhất trước
+async function loadSpecialAttempts(studentId, track){
+  try{
+    var snap = await getDocs(collection(db, 'students', String(studentId), 'specialAttempts'));
+    var out = []; snap.forEach(function(d){ var x = d.data() || {}; if(!track || x.track === track) out.push(Object.assign({ id: d.id }, x)); });
+    return out.sort(function(a, b){ return String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
+  }catch(e){ console.warn('Không tải được kết quả luyện đề riêng:', e && e.code); return []; }
 }
 
 // ================= Cấu hình Gói dịch vụ (giá/tính năng/ẩn-hiện) =============
@@ -864,6 +874,7 @@ window.OPC_LIVE = {
   loadSpecialExamList: loadSpecialExamList,
   loadSpecialExam: loadSpecialExam,
   saveSpecialAttempt: saveSpecialAttempt,
+  loadSpecialAttempts: loadSpecialAttempts, // THÊM 26/10/2026
   // THÊM 15/10/2026 — Chẩn đoán 5 phút (diagnostic5.js)
   loadDiagnostic5: loadDiagnostic5,
   logDiagEvent: logDiagEvent,
