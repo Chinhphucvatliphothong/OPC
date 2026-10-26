@@ -228,6 +228,7 @@
     );
     return h('div', { className: 'dg2-fs' }, body);
   }
+  var host;
   function openList(student){
     if(!student || !student.id) return;
     ensureCss();
