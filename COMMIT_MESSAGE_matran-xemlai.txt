@@ -1,0 +1,7 @@
+Xem lại câu sai trong lịch sử ĐGNL + Ma trận đề kiểu Bộ GD cho đề cá nhân hóa
+
+- dgnl.js: nút "Xem lại n câu sai" trong Lịch sử bài làm (đọc lời giải, kiến thức cần ôn); mini test lưu danh sách câu (qids) để tính cả câu bỏ trống
+- exam-matrix.js (MỚI): ma trận đề chủ đề × Phần × mức độ M1–M4, mặc định chuẩn Bộ GD 18+4+6, chia sát tỉ lệ cả hai chiều
+- admin.html: cấu trúc đề "Theo ma trận đề" trong tạo đề cá nhân hóa (bảng chỉnh ma trận, câu ôn lại/chưa làm vẫn ưu tiên nhưng nằm đúng ô, báo cáo ô thiếu câu); nạp exam-matrix.js
+
+Co-Authored-By: Claude <noreply@anthropic.com>

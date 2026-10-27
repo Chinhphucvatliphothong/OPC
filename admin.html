@@ -1223,6 +1223,7 @@
 <script src="/admin-growth.js"></script>
 <script src="/admin-sales.js"></script>
 <script src="/admin-cleanup.js"></script>
+<script src="/exam-matrix.js"></script> <!-- THÊM 27/10/2026 — ma trận đề kiểu Bộ GD cho đề cá nhân hóa -->
 <script src="/admin-aiimport.js"></script> <!-- THÊM 26/10/2026 — nhập đề từ PDF/ảnh bằng AI --> <!-- THÊM 25/10/2026 — xoá bài làm ẩu + thùng rác --> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
 <script>
@@ -10566,6 +10567,8 @@
     var selectedTopicState = React.useState('Tất cả'); var selectedTopic = selectedTopicState[0], setSelectedTopic = selectedTopicState[1];
     var examStructureState = React.useState('moet28'); var examStructure = examStructureState[0], setExamStructure = examStructureState[1]; // moet28 | quick15 | custom
     var examCodeState = React.useState('101'); var examCode = examCodeState[0], setExamCode = examCodeState[1];
+    // THÊM 27/10/2026 — MA TRẬN ĐỀ (cấu trúc đề 'matrix'): trọng số chủ đề (%) × tỉ lệ mức độ M1–M4 (%) × số câu mỗi Phần
+    var mxState = React.useState({ w: {}, lv: { M1: 40, M2: 30, M3: 20, M4: 10 }, parts: { I: 18, II: 4, III: 6 } }); var mx = mxState[0], setMx = mxState[1];
 
     var generatedState = React.useState(null); var generated = generatedState[0], setGenerated = generatedState[1];
     var loadErrState = React.useState(null); var loadErr = loadErrState[0], setLoadErr = loadErrState[1];
@@ -10724,6 +10727,22 @@
       };
     }, [questionPool, selectedTopic]);
 
+    // Hàng của ma trận = các chủ đề lớn đang có câu hỏi trong phạm vi học sinh đã mở khoá (theo thứ tự CHU_DE_LIST)
+    var matrixRows = React.useMemo(function(){
+      var set = {}; questionPool.forEach(function(q){ var n = q.chuDeLon || q.chuDe; if(n) set[n] = (set[n] || 0) + 1; });
+      var names = Object.keys(set);
+      names.sort(function(a, b){ var ia = CHU_DE_LIST.indexOf(a), ib = CHU_DE_LIST.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+      return names;
+    }, [questionPool]);
+    var matrixSpec = React.useMemo(function(){
+      var base = window.OPC_MATRIX ? window.OPC_MATRIX.presetBGD(matrixRows) : { rows: [] };
+      base.rows.forEach(function(r){ if(mx.w[r.name] != null) r.w = Number(mx.w[r.name]) || 0; });
+      base.lv = mx.lv; base.parts = mx.parts;
+      return base;
+    }, [matrixRows, mx]);
+    var matrixCells = React.useMemo(function(){ return window.OPC_MATRIX ? window.OPC_MATRIX.allocate(matrixSpec) : {}; }, [matrixSpec]);
+    var matrixSummary = React.useMemo(function(){ return window.OPC_MATRIX ? window.OPC_MATRIX.describe(matrixCells) : { byRow: {}, byLv: {}, byPart: {}, total: 0 }; }, [matrixCells]);
+
     var student = students.filter(function(s){ return s.id === selectedStudentId; })[0];
 
     // Generate personalized exam based on the selected profile and matrix
@@ -10801,9 +10820,12 @@
       }
 
       // Desired question counts by Part
-      var targetP1 = examStructure === 'quick15' ? 10 : 18;
-      var targetP2 = examStructure === 'quick15' ? 2 : 4;
-      var targetP3 = examStructure === 'quick15' ? 3 : 6;
+      var useMatrix = examStructure === 'matrix' && !!window.OPC_MATRIX && matrixRows.length > 0; // THÊM 27/10/2026
+      var targetP1 = useMatrix ? (Number(mx.parts.I) || 0) : (examStructure === 'quick15' ? 10 : 18);
+      var targetP2 = useMatrix ? (Number(mx.parts.II) || 0) : (examStructure === 'quick15' ? 2 : 4);
+      var targetP3 = useMatrix ? (Number(mx.parts.III) || 0) : (examStructure === 'quick15' ? 3 : 6);
+      var mxLeft = useMatrix ? Object.assign({}, matrixCells) : null; // số câu còn cần ở từng ô ma trận
+      function mxKey(q){ var n = (matrixRows.filter(function(r){ return window.OPC_MATRIX._norm(r) === window.OPC_MATRIX._norm(q.chuDeLon || q.chuDe); })[0]) || ''; return n + '|' + q.part + '|' + q.level; }
 
       // Group pool by Part and Level
       function filterPool(part, levelArray){
@@ -10852,6 +10874,7 @@
           var partTarget = rq.part === 'I' ? targetP1 : (rq.part === 'II' ? targetP2 : targetP3);
           var partChosen = rq.part === 'I' ? chosenP1 : (rq.part === 'II' ? chosenP2 : chosenP3);
           if(partChosen.length >= partTarget) continue; // Phần đó đã đủ chỗ, bỏ qua câu này
+          if(mxLeft){ var mk = mxKey(rq); if(!(mxLeft[mk] > 0)) continue; mxLeft[mk]--; } // THÊM 27/10/2026 — câu ôn lại cũng phải nằm trong ô ma trận còn chỗ
           if(rq.part === 'I') chosenP1.push(rq); else if(rq.part === 'II') chosenP2.push(rq); else chosenP3.push(rq);
           reviewChosen.push(rq);
         }
@@ -10870,7 +10893,13 @@
       function filterPoolExclChosen(part, levelArray){
         return filterPool(part, levelArray).filter(function(q){ return alreadyChosen.indexOf(q) === -1; });
       }
-      if(goalProfile === 'foundation'){
+      var matrixPicked = null;
+      if(useMatrix){
+        // THÊM 27/10/2026 — đề cá nhân hóa THEO MA TRẬN: bốc từng ô (chủ đề × Phần × mức độ) trong số câu chưa chọn
+        var mxPool = pool.filter(function(q){ return alreadyChosen.indexOf(q) === -1; });
+        matrixPicked = window.OPC_MATRIX.pick(mxPool, mxLeft, { rows: matrixRows, rnd: Math.random });
+        chosenP1 = chosenP1.concat(matrixPicked.I); chosenP2 = chosenP2.concat(matrixPicked.II); chosenP3 = chosenP3.concat(matrixPicked.III);
+      } else if(goalProfile === 'foundation'){
         var m12Pool = shuffle(filterPoolExclChosen('I', ['M1', 'M2']));
         var m3Pool = shuffle(filterPoolExclChosen('I', ['M3']));
         chosenP1 = chosenP1.concat(m12Pool.slice(0, Math.round(remP1 * 0.7)), m3Pool.slice(0, Math.round(remP1 * 0.3)));
@@ -10933,6 +10962,7 @@
         m4: allSelected.filter(function(q){ return q.level === 'M4'; }).length,
         reviewCount: reviewChosen.length,
         excludedAttemptedCount: excludedAttemptedCount,
+        matrix: useMatrix ? { planned: matrixSummary, shortage: matrixPicked ? matrixPicked.shortage : [], substituted: matrixPicked ? matrixPicked.substituted : 0 } : null, // THÊM 27/10/2026
         avoidedAssigned: avoidedAssigned, reusedAssigned: reusedAssigned,
         grouped: allSelected.filter(function(q){ return !!q.groupPassage; }).length
       };
@@ -11306,6 +11336,7 @@
                   h('select',{value:examStructure, onChange:function(e){ setExamStructure(e.target.value); }},
                     h('option',{value:'moet28'}, 'Chuẩn BGD (28 câu)'),
                     h('option',{value:'quick15'}, 'Luyện nhanh (15 câu)')
+                    , h('option',{value:'matrix'}, 'Theo ma trận đề (chủ đề × mức độ × phần)')
                   )
                 ),
                 h('div',{className:'sm-field'},
@@ -11313,6 +11344,33 @@
                   h('input',{type:'text', className:'mono', value:examCode, onChange:function(e){ setExamCode(e.target.value); }})
                 )
               ),
+
+              // ============ THÊM 27/10/2026 — Bảng ma trận đề (chỉ hiện khi chọn "Theo ma trận đề") ============
+              examStructure !== 'matrix' ? null : (function(){
+                function numIn(val, onCh, w){ return h('input',{type:'number', min:0, max:100, value:val, style:{width:(w||60)+'px', padding:'4px 6px'}, onChange:function(e){ onCh(Math.max(0, Number(e.target.value) || 0)); }}); }
+                var lvSum = ['M1','M2','M3','M4'].reduce(function(a, k){ return a + (Number(mx.lv[k]) || 0); }, 0);
+                var totalQ = (Number(mx.parts.I) || 0) + (Number(mx.parts.II) || 0) + (Number(mx.parts.III) || 0);
+                var LVN = { M1: 'M1 · Biết', M2: 'M2 · Hiểu', M3: 'M3 · Vận dụng', M4: 'M4 · Vận dụng cao' };
+                return h('div',{className:'sm-field', style:{marginTop:14, background:'var(--surface-2)', borderRadius:'8px', padding:'12px'}},
+                  h('label',null,'📐 Ma trận đề — chuẩn Bộ GD (có thể chỉnh)'),
+                  h('div',{style:{fontSize:'0.72rem', color:'var(--ink-2)', margin:'2px 0 10px', lineHeight:1.5}}, 'Hệ thống bốc câu cho từng ô (chủ đề × Phần × mức độ). Đề vẫn cá nhân hoá: câu em từng sai / chưa làm được ưu tiên, nhưng phải nằm đúng ô ma trận. Chủ đề lấy theo phạm vi học sinh đã được mở khoá.'),
+                  h('div',{style:{display:'flex', gap:'14px', flexWrap:'wrap', alignItems:'center', marginBottom:'8px', fontSize:'0.84rem'}},
+                    h('b',null,'Số câu:'),
+                    [['I','Phần I (ABCD)'],['II','Phần II (Đ/S)'],['III','Phần III (trả lời ngắn)']].map(function(x){ return h('label',{key:x[0], style:{display:'flex', gap:'6px', alignItems:'center'}}, x[1], numIn(mx.parts[x[0]], function(v){ var np = Object.assign({}, mx.parts); np[x[0]] = v; setMx(Object.assign({}, mx, {parts: np})); }, 54)); }),
+                    h('span',{style:{color:'var(--ink-2)'}}, '= ' + totalQ + ' câu')),
+                  h('div',{style:{display:'flex', gap:'14px', flexWrap:'wrap', alignItems:'center', marginBottom:'8px', fontSize:'0.84rem'}},
+                    h('b',null,'Tỉ lệ mức độ (%):'),
+                    ['M1','M2','M3','M4'].map(function(k){ return h('label',{key:k, style:{display:'flex', gap:'6px', alignItems:'center'}}, LVN[k], numIn(mx.lv[k], function(v){ var nl = Object.assign({}, mx.lv); nl[k] = v; setMx(Object.assign({}, mx, {lv: nl})); }, 54)); }),
+                    lvSum !== 100 ? h('span',{style:{color:'#b45309'}}, '⚠ tổng ' + lvSum + '% — hệ thống tự quy về 100%') : null),
+                  matrixRows.length ? h('table',{className:'sm-table', style:{width:'100%', fontSize:'0.82rem'}},
+                    h('thead',null, h('tr',null, h('th',null,'Chủ đề'), h('th',{style:{width:'90px'}},'Tỉ trọng'), h('th',{style:{width:'90px'}},'Số câu'))),
+                    h('tbody',null, matrixSpec.rows.map(function(r){ return h('tr',{key:r.name}, h('td',null,r.name), h('td',null, numIn(r.w, function(v){ var nw = Object.assign({}, mx.w); nw[r.name] = v; setMx(Object.assign({}, mx, {w: nw})); }, 64)), h('td',null, h('b',null, matrixSummary.byRow[r.name] || 0))); }))
+                  ) : h('div',{style:{fontSize:'0.8rem', color:'#b45309'}}, 'Chưa có câu hỏi nào trong phạm vi học sinh đã mở khoá — chọn học sinh hoặc nạp thêm đề.'),
+                  h('div',{style:{fontSize:'0.78rem', color:'var(--ink-2)', marginTop:'8px'}},
+                    'Phân bổ theo mức độ: ' + ['M1','M2','M3','M4'].map(function(k){ return k + '=' + (matrixSummary.byLv[k] || 0); }).join(' · ') + ' (tổng ' + matrixSummary.total + ' câu)'),
+                  h('button',{type:'button', className:'btn btn-secondary', style:{fontSize:'0.78rem', marginTop:'8px'}, onClick:function(){ setMx({ w: {}, lv: { M1: 40, M2: 30, M3: 20, M4: 10 }, parts: { I: 18, II: 4, III: 6 } }); }}, '↺ Về chuẩn Bộ GD (28 câu: 18 + 4 + 6)')
+                );
+              })(),
 
               // ============ Tuỳ chọn nâng cao — THÊM 25/9/2026 =================
               // Bản THẬT của 2 tuỳ chọn trước đây chỉ có ở khối minh hoạ công
@@ -11410,6 +11468,11 @@
                     // THÊM 15/10/2026
                     generated.stats.avoidedAssigned ? h('div',{style:{fontSize:'0.76rem', color:'var(--ink-2)', marginTop:'4px'}}, '🚫 Đã tránh ' + generated.stats.avoidedAssigned + ' câu có trong các đề đã giao trước' + (generated.stats.reusedAssigned ? ' (ngân hàng không đủ câu mới nên dùng lại ' + generated.stats.reusedAssigned + ' câu)' : '')) : null,
                     generated.stats.grouped ? h('div',{style:{fontSize:'0.76rem', color:'#6d28d9', marginTop:'4px'}}, '🔗 Gồm ' + generated.stats.grouped + ' câu chùm (lấy đủ cả cụm, kèm đoạn dữ kiện dùng chung)') : null,
+                    generated.stats.matrix ? h('div',{style:{fontSize:'0.76rem', marginTop:'6px', lineHeight:1.55}},
+                      h('div',{style:{color:'#0f766e', fontWeight:700}}, '📐 Theo ma trận: ' + ['M1','M2','M3','M4'].map(function(k){ return k + ' ' + (generated.stats.matrix.planned.byLv[k] || 0); }).join(' · ') + ' (kế hoạch) — ' + Object.keys(generated.stats.matrix.planned.byRow).map(function(r){ return r + ' ' + generated.stats.matrix.planned.byRow[r]; }).join(' · ')),
+                      generated.stats.matrix.substituted ? h('div',{style:{color:'var(--ink-2)'}}, '↔ ' + generated.stats.matrix.substituted + ' câu phải thay bằng câu cùng Phần (mức độ/chủ đề gần nhất) vì ô đó thiếu câu trong ngân hàng.') : null,
+                      generated.stats.matrix.shortage.length ? h('div',{style:{color:'#b91c1c', fontWeight:700}}, '⚠ Còn thiếu câu: ' + generated.stats.matrix.shortage.map(function(x){ return x.row + ' · Phần ' + x.part + ' · ' + x.level + ' (cần ' + x.need + ', có ' + x.got + ')'; }).join('; ') + ' — nạp thêm câu cho các ô này.') : h('div',{style:{color:'#15803d'}}, '✓ Mọi ô ma trận đều đủ câu.')
+                    ) : null,
                     generated.stats.excludedAttemptedCount ? h('div',{style:{fontSize:'0.76rem', color:'#0369a1', marginTop:'4px'}}, '🆕 Đã loại ' + generated.stats.excludedAttemptedCount + ' câu học sinh từng làm trước đó') : null
                   ),
                   h('div',{style:{display:'flex', gap:'8px', flexWrap:'wrap'}},
