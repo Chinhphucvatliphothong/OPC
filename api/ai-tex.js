@@ -53,7 +53,21 @@ var SYSTEM_INSTRUCTION = [
   'box là toạ độ chuẩn hoá 0–1000 trên ảnh tương ứng (img 0 = ẢNH 1, img 1 = ẢNH 2), bao trọn hình kèm nhãn, sát mép, không lấn chữ đề.'
 ].join('\n');
 
+// SỬA 27/10/2026 — CHẾ ĐỘ "AI TỰ GIẢI" (mặc định bật cho đề ĐGNL): lời giải chi tiết cho MỌI câu, đáp án tự giải khi đề thiếu,
+// và nano (đơn vị kiến thức nhỏ nhất) do AI tự đặt tên — thầy không cần tự gắn. Ưu tiên hơn các quy tắc cũ về đáp án/lời giải.
+var SOLVE_ADDON = [
+  '',
+  'QUY TẮC BỔ SUNG — CHẾ ĐỘ TỰ GIẢI (ƯU TIÊN HƠN các quy tắc ở trên về đáp án và lời giải):',
+  '- MỌI câu đều phải có \\loigiai{...} CHI TIẾT bằng tiếng Việt: nêu dữ kiện, công thức/quy tắc dùng, từng bước biến đổi và thay số (có đơn vị), kết luận chọn phương án nào; ngắn gọn nêu vì sao các phương án còn lại sai. Công thức đặt trong $...$, số thập phân dùng {,}.',
+  '- Nếu đề CÓ đáp án/lời giải sẵn: dùng đúng đáp án của đề (đặt \\True), viết lại lời giải rõ từng bước cho học sinh hiểu.',
+  '- Nếu đề KHÔNG có đáp án: TỰ GIẢI cẩn thận từng bước (kiểm tra lại phép tính, đơn vị, điều kiện), đặt \\True vào phương án đúng và thêm dòng \"% AI_TU_GIAI\" ngay trước \\end{ex}. Chỉ khi hình/chữ mờ không thể giải thì không đặt \\True, ghi \"% CHUA_CO_DAP_AN\" và nêu lý do trong notes.',
+  '- NANO (bắt buộc cho mỗi câu): ngay dòng liền sau \\begin{ex}%[...] thêm 1 dòng \"% @nano-dgnl: <Tên nano>\". Nano = đơn vị kiến thức nhỏ nhất cần có để làm đúng câu đó (vd \"Nhiệt nóng chảy\", \"Xác suất có điều kiện\", \"Đọc biểu đồ cột\", \"Suy luận từ bảng số liệu\"). Tên 2–6 từ, danh từ chuẩn theo chương trình, KHÔNG kèm số/mã. Nếu cùng kiến thức với một nano đã có trong danh sách được cung cấp thì dùng ĐÚNG tên đó, chỉ đặt tên mới khi thật sự khác.'
+].join('\n');
+
 function clampStr(v, max){ return String(v == null ? '' : v).slice(0, max); }
+
+// THÊM 27/10/2026 — tự giải + lời giải chi tiết lâu hơn chép thuần → cho phép chạy tới 60 giây
+export const config = { maxDuration: 60 };
 
 export default async function handler(req, res){
   if(req.method !== 'POST'){ res.status(405).json({ error: 'Chỉ hỗ trợ POST.' }); return; }
@@ -68,6 +82,11 @@ export default async function handler(req, res){
     parts.push({ inlineData: { mimeType: im.mime || 'image/jpeg', data: String(im.data) } });
   });
   var hint = [];
+  var solve = body.solve === true || (body.solve == null && body.mode === 'dgnl');
+  if(solve){
+    var nl = Array.isArray(body.nanoList) ? body.nanoList.slice(0, 80).map(function(x){ return clampStr(x, 60); }).filter(Boolean) : [];
+    hint.push(nl.length ? 'Danh sách nano ĐÃ CÓ (ưu tiên dùng lại đúng tên): ' + nl.join(' | ') : 'Chưa có nano nào — hãy đặt tên nano chuẩn, ngắn.');
+  }
   if(body.mode === 'dgnl') hint.push('ĐÂY LÀ ĐỀ ĐÁNH GIÁ NĂNG LỰC ĐHQG-HCM (V-ACT): mọi câu là trắc nghiệm 4 lựa chọn (\\choice), KHÔNG chia Phần I/II/III (không ghi \\tieuephan). Ô thứ 2 của tag là PHẦN THI: Toán học / Logic / Phân tích số liệu / Suy luận khoa học / Tiếng Việt / Tiếng Anh; ô thứ 3 là dạng bài (vd Hàm số, Xác suất, Đồ thị, Vật lí, Hoá học, Sinh học). Đoạn dữ kiện dùng chung cho nhiều câu ghi như câu chùm.');
   else if(body.mode === 'hsg' || body.mode === 'olympic') hint.push('ĐÂY LÀ ĐỀ HỌC SINH GIỎI/OLYMPIC: câu tự luận chép nguyên văn trong \\begin{ex}...\\end{ex} kèm \\loigiai nếu có, không cần \\choice.');
   if(body.chuDe && body.mode !== 'dgnl') hint.push('Chủ đề chính của đề (gợi ý): ' + clampStr(body.chuDe, 80));
@@ -79,9 +98,9 @@ export default async function handler(req, res){
   var model = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
   var payload = {
-    systemInstruction: { role: 'system', parts: [{ text: SYSTEM_INSTRUCTION }] },
+    systemInstruction: { role: 'system', parts: [{ text: solve ? SYSTEM_INSTRUCTION + SOLVE_ADDON : SYSTEM_INSTRUCTION }] },
     contents: [{ role: 'user', parts: parts }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 16000, responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'low' } }
+    generationConfig: { temperature: 0.1, maxOutputTokens: solve ? 24000 : 16000, responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: solve ? 'medium' : 'low' } }
   };
   var lastErr = '';
   for(var attempt = 0; attempt < 2; attempt++){
