@@ -4727,6 +4727,9 @@
   // opts.allowEssay (THÊM 30/9/2026, chỉ ngân hàng HSG/Olympic): câu không có
   // \\choice / \\choiceTF / \\shortans được nhận là câu TỰ LUẬN (type
   // 'essay') thay vì câu trắc nghiệm rỗng. Ngân hàng Vật lí 12 giữ nguyên.
+  // THÊM 27/10/2026 — gỡ comment LaTeX (%...) khỏi nội dung hiển thị: trước đây dòng tag "%[M3][Phần thi][Dạng bài]" nằm ngay
+  // sau \begin{ex} bị lẫn vào ĐỀ BÀI và hiện thô cho học sinh. Giữ nguyên \% (dấu phần trăm thật).
+  function stripTexComments(t){ return String(t || '').replace(/(^|[^\\])%[^\n]*/g, '$1').replace(/\n{3,}/g, '\n\n').trim(); }
   function parseTexBank(content, filename, opts){
     var allowEssay = !!(opts && opts.allowEssay);
     // THÊM 25/9/2026: gỡ trước cú pháp \immini{ \begin{ex}...\end{ex} }{hình}
@@ -4738,6 +4741,7 @@
     var inEx = false;
     var exBuffer = [];
     var lastCommentTag = null;
+    var lastNanoName = ''; // THÊM 27/10/2026 — nano tự tạo (ĐGNL)
     var lastNanoIds = []; // THÊM 5/10/2026 — các mã nano đọc từ dòng "% @nano: …" ngay trước câu
     var titleCand = '';
     var preambleBuffer = [];
@@ -4771,6 +4775,9 @@
 
       var nanoLine = line.match(/%.*?@nano\s*:\s*(.*)$/i);
       if(nanoLine){ lastNanoIds = parseNanoTagIds(nanoLine[1]); }
+      // THÊM 27/10/2026 — nano tự tạo cho đề ĐGNL: dòng "% @nano-dgnl: Tên nano" (AI sinh khi nhập đề), không thuộc danh mục nano Vật lí 12
+      var nanoNameLine = line.match(/%\s*@nano-dgnl\s*:\s*(.*)$/i);
+      if(nanoNameLine){ lastNanoName = nanoNameLine[1].trim().slice(0, 80); }
 
       var tm = line.match(tagRegex);
       if(tm){
@@ -4807,6 +4814,8 @@
           var tag = lastCommentTag || { level: 'M2', chuDeLon: 'Vật lí', dangBai: 'Chung' };
           lastCommentTag = null;
           var nanoTagIds = lastNanoIds; lastNanoIds = [];
+          var nanoName = lastNanoName; lastNanoName = '';
+          var aiSolved = /%\s*AI_TU_GIAI/i.test(full), aiCheckM = full.match(/%\s*AI_CAN_KIEM_TRA\s*:?\s*(.*)/i), aiCheck = aiCheckM ? (aiCheckM[1] || 'cần kiểm tra').trim() : '';
 
           var qType = 'choice';
           if(/\\choiceTF/i.test(full)) qType = 'choiceTF';
@@ -4820,6 +4829,7 @@
           // SỬA 2/10/2026 — \immini{đoạn văn}{hình} đứng TRONG câu: trước đây chỉ xoá "\immini{" nên còn sót "}{"
           // giữa đoạn văn và hình (hiện chữ thô "}{ ..." ở màn hình học sinh). Nay bóc đúng 2 tham số rồi nối lại.
           stem = unwrapImminiInStem(stem).trim();
+          stem = stripTexComments(stem); // SỬA 27/10/2026 — bỏ dòng tag/comment lọt vào đề bài
 
           // Bóc tách phương án lựa chọn
           var options = [];
@@ -4829,7 +4839,7 @@
               var rawOpts = extractBraceBlocks(full, cIdx + 7, 4);
               options = rawOpts.map(function(opt, oIdx){
                 var isTrue = /\\True\b/.test(opt);
-                var text = opt.replace(/\\True\b/, '').trim();
+                var text = stripTexComments(opt.replace(/\\True\b/, '')).trim();
                 return { key: String.fromCharCode(65 + oIdx), text: text, isTrue: isTrue };
               });
             }
@@ -4868,7 +4878,7 @@
           // KaTeX render lỗi -> hiển thị lại dạng LaTeX thô cho học sinh.
           var loigiaiIdx = full.indexOf('\\loigiai');
           var loigiaiBlocks = loigiaiIdx > -1 ? extractBraceBlocks(full, loigiaiIdx + 8, 1) : [];
-          var loigiai = loigiaiBlocks.length ? loigiaiBlocks[0].trim() : '';
+          var loigiai = loigiaiBlocks.length ? stripTexComments(loigiaiBlocks[0]) : '';
 
           // Bóc tách tên hình ảnh
           var imgMatches = [];
@@ -4895,6 +4905,8 @@
             chuDeLon: tag.chuDeLon,
             dangBai: tag.dangBai,
             nanoTagIds: nanoTagIds,
+            nanoName: nanoName, // THÊM 27/10/2026 — nano AI tự tạo (ĐGNL)
+            aiSolved: aiSolved, aiCheck: aiCheck, // THÊM 27/10/2026 — đáp án/lời giải do AI tự giải; aiCheck = lý do cần thầy kiểm tra
             stem: stem,
             options: options,
             shortans: shortansVal,

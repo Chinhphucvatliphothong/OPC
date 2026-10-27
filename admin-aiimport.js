@@ -5,6 +5,8 @@
  *        \loigiai của thầy → tự CẮT hình minh hoạ theo khung AI chỉ → thầy xem/sửa .tex + hình → "Dùng kết quả này"
  *        đưa thẳng vào form nạp đề (phân tích câu, gắn nano-point, lưu như cũ).
  * PDF đọc bằng pdf.js (cdnjs) ngay trên trình duyệt; mỗi trang gửi kèm trang kế để chép nốt câu tràn trang.
+ * SỬA 27/10/2026 — "AI tự giải" (mặc định bật cho đề ĐGNL): lời giải chi tiết mọi câu, tự giải khi đề thiếu đáp án, NANO do AI tự đặt tên
+ *   (dòng % @nano-dgnl:), rồi 1 lượt AI giải lại độc lập (/api/ai-verify) — câu lệch/không chắc được gắn cờ % AI_CAN_KIEM_TRA để thầy chỉ xem đúng những câu đó.
  * Xuất: window.OPC_AIIMPORT = { Modal }
  */
 (function(window){
@@ -79,7 +81,10 @@
     var bs = React.useState(''); var busy = bs[0], setBusy = bs[1];
     var ts = React.useState(''); var tex = ts[0], setTex = ts[1];
     var es = React.useState(''); var extra = es[0], setExtra = es[1];
+    var sv = React.useState(props.mode === 'dgnl'); var solve = sv[0], setSolve = sv[1];   // AI tự giải + lời giải + nano
+    var vf = React.useState(true); var verify = vf[0], setVerify = vf[1];                    // AI giải lại độc lập để kiểm tra
     var stopRef = React.useRef(false);
+    function nanoNames(t){ var out = [], re = /%\s*@nano-dgnl\s*:\s*(.+)/gi, m; while((m = re.exec(String(t || ''))) !== null){ var n = m[1].trim(); if(n && out.indexOf(n) < 0) out.push(n); } return out; }
     var figAll = [].concat.apply([], results.map(function(r){ return (r && r.figs) || []; }));
     async function onPick(e){
       var list = Array.prototype.slice.call(e.target.files || []); e.target.value = '';
@@ -108,7 +113,7 @@
         var r = null, tries = 0;
         while(!r && tries < 4){
           try{
-            var resp = await fetch('/api/ai-tex', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: imgs, chuDe: props.chuDe || '', part: part, extra: extra, mode: props.mode || '' }) });
+            var resp = await fetch('/api/ai-tex', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: imgs, chuDe: props.chuDe || '', part: part, extra: extra, mode: props.mode || '', solve: solve, nanoList: solve ? nanoNames(out.map(function(x){ return x && x.tex; }).join('\n')).slice(-80) : [] }) });
             var j = await resp.json().catch(function(){ return {}; });
             if(resp.status === 429){ tries++; setBusy('Google đang giới hạn lượt — chờ 40 giây rồi chép tiếp trang ' + (i + 1) + '…'); await new Promise(function(ok){ setTimeout(ok, 40000); }); continue; }
             if(!resp.ok) throw new Error(j.error || ('Lỗi ' + resp.status));
@@ -125,7 +130,18 @@
             figs.push({ id: fg.id, name: name, canvas: cnv, url: cnv.toDataURL('image/png') });
             t = t.split('{' + fg.id + '}').join('{' + name + '}');
           }
-          pageRes = { tex: t, figs: figs, notes: r.notes || '' };
+          var vnote = '';
+          if(solve && verify && /\\begin\{ex\}/.test(t)){
+            setBusy('AI đang giải lại độc lập để kiểm tra trang ' + (i + 1) + '/' + pages.length + '…');
+            try{
+              var vr = await fetch('/api/ai-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tex: t, images: [{ mime: 'image/jpeg', data: jpegB64(pages[i].canvas, 1300) }] }) });
+              if(vr.status === 429){ setBusy('Google đang giới hạn lượt — chờ 40 giây rồi kiểm tra tiếp trang ' + (i + 1) + '…'); await new Promise(function(ok){ setTimeout(ok, 40000); }); vr = await fetch('/api/ai-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tex: t, images: [{ mime: 'image/jpeg', data: jpegB64(pages[i].canvas, 1300) }] }) }); }
+              var vj = await vr.json().catch(function(){ return {}; });
+              if(vr.ok && vj.tex){ t = vj.tex; if(vj.flagged && vj.flagged.length) vnote = 'câu ' + vj.flagged.join(', ') + ' cần thầy xem lại (AI giải lại ra khác/không chắc)'; }
+              else vnote = 'chưa kiểm tra lại được trang này (' + (vj.error || vr.status) + ')';
+            }catch(ev){ vnote = 'chưa kiểm tra lại được trang này'; }
+          }
+          pageRes = { tex: t, figs: figs, notes: [r.notes || '', vnote].filter(Boolean).join(' · ') };
           part = lastPart(t) || part;
         }
         out[i] = pageRes; setResults(out.slice());
@@ -148,6 +164,7 @@
       var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([tex], { type: 'text/plain' })); a.download = (files[0] ? files[0].name.replace(/\.[^.]+$/, '') : 'de') + '_AI.tex'; a.click();
     }
     var nQ = (tex.match(/\\begin\{ex\}/g) || []).length, noKey = (tex.match(/CHUA_CO_DAP_AN/g) || []).length;
+    var nSolved = (tex.match(/%\s*AI_TU_GIAI/g) || []).length, nCheck = (tex.match(/%\s*AI_CAN_KIEM_TRA/g) || []).length, nNano = (tex.match(/%\s*@nano-dgnl\s*:/g) || []).length;
     var done = results.filter(function(r){ return r && !r.err; }).length, errs = results.filter(function(r){ return r && r.err; }).length;
     return h('div', { className: 'sm-overlay', style: { zIndex: 1300 }, onClick: function(e){ if(e.target === e.currentTarget && !busy) props.onClose(); } },
       h('div', { className: 'sm-modal', style: { maxWidth: '1100px', width: '100%' } },
@@ -160,6 +177,9 @@
           pages && !busy ? h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ run(0); } }, results.length ? '↻ Chép lại tất cả' : '🤖 AI chép ' + pages.length + ' trang') : null,
           (pages && !busy && errs) ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ var k = results.findIndex(function(r){ return r && r.err; }); run(k < 0 ? 0 : k); } }, '↻ Chép lại từ trang lỗi') : null,
           busy && /AI đang|giới hạn/.test(busy) ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ stopRef.current = true; } }, '⏹ Dừng') : null),
+        pages ? h('div', { style: { display: 'flex', gap: '16px', flexWrap: 'wrap', margin: '8px 0 0', fontSize: '0.84rem' } },
+          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' } }, h('input', { type: 'checkbox', checked: solve, disabled: !!busy, onChange: function(e){ setSolve(e.target.checked); } }), 'AI tự giải: viết lời giải chi tiết, tự tìm đáp án nếu đề thiếu, tự tạo nano'),
+          solve ? h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' } }, h('input', { type: 'checkbox', checked: verify, disabled: !!busy, onChange: function(e){ setVerify(e.target.checked); } }), 'AI giải lại lần 2 độc lập để kiểm tra đáp án (khuyên bật, chậm hơn ~2×)') : null) : null,
         busy ? h('div', { className: 'banner info', style: { margin: '10px 0' } }, h('span', null, '⏳'), h('div', null, busy)) : null,
         pages ? h('div', { style: { display: 'flex', gap: '6px', overflowX: 'auto', margin: '10px 0', paddingBottom: '4px' } },
           pages.map(function(p, i){ var r = results[i];
@@ -171,6 +191,9 @@
         tex ? h('div', { style: { display: 'grid', gridTemplateColumns: figAll.length ? 'minmax(0,2fr) minmax(0,1fr)' : '1fr', gap: '12px' } },
           h('div', null,
             h('div', { style: { fontSize: '0.82rem', fontWeight: 700, marginBottom: '4px' } }, '📄 .tex (' + nQ + ' câu · ' + done + '/' + pages.length + ' trang' + (noKey ? ' · ⚠ ' + noKey + ' câu chưa có đáp án — tìm "CHUA_CO_DAP_AN" để thêm \\True' : '') + ')'),
+            (solve && nQ) ? h('div', { style: { fontSize: '0.8rem', margin: '0 0 6px', lineHeight: 1.6 } },
+              '🤖 AI tự giải ' + nSolved + ' câu (đề không có đáp án) · 🔬 ' + nNano + '/' + nQ + ' câu đã có nano',
+              nCheck ? h('div', { style: { color: 'var(--critical)', fontWeight: 700 } }, '⚠ ' + nCheck + ' câu cần thầy/cô xem lại — tìm \"AI_CAN_KIEM_TRA\" trong khung bên dưới (AI giải lại ra đáp án khác hoặc không chắc). Các câu còn lại hai lượt giải đều trùng nhau.') : (verify && done ? h('div', { style: { color: 'var(--good)', fontWeight: 700 } }, '✓ Hai lượt giải độc lập cho kết quả trùng nhau ở mọi câu đã kiểm tra.') : null)) : null,
             h('textarea', { value: tex, onChange: function(e){ setTex(e.target.value); }, spellCheck: false, style: { width: '100%', boxSizing: 'border-box', height: '380px', fontFamily: '"IBM Plex Mono",monospace', fontSize: '0.8rem', lineHeight: 1.5, padding: '8px', borderRadius: '8px', border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)' } })),
           figAll.length ? h('div', null,
             h('div', { style: { fontSize: '0.82rem', fontWeight: 700, marginBottom: '4px' } }, '🖼 Hình đã cắt (' + figAll.length + ')'),

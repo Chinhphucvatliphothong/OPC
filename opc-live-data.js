@@ -648,6 +648,7 @@ async function loadSpecialExam(track, exam){
   return linkCtx(exam.questions || []).map(function(q){
     return {
       index: q.index, part: q.part || 'I', type: q.type || 'choice', level: q.level || '',
+      nano: q.nanoName || '', // THÊM 27/10/2026 — nano AI tự tạo cho đề ĐGNL (tên đơn vị kiến thức nhỏ nhất)
       section: q.chuDeLon || '', topic: q.dangBai || '', // THÊM 26/10/2026 — phần thi ĐGNL (Toán học / Phân tích số liệu / Suy luận khoa học…)
       stem: q.stem || '', loiGiai: q.loigiai || '',
       options: q.type === 'essay' ? [] : (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; }),

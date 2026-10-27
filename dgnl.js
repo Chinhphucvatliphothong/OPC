@@ -18,6 +18,8 @@
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   // LaTeX trong đề → HTML (KaTeX nếu có)
   function tex(t){
+    // SỬA 27/10/2026 — bỏ comment LaTeX (dòng tag %[M3][..][..], % @nano…) còn sót trong dữ liệu cũ; giữ \% (phần trăm thật)
+    t = String(t || '').replace(/(^|[^\\])%[^\n]*/g, '$1');
     var s = String(t || '').replace(/\\textbf\{([^{}]*)\}/g, '**$1**').replace(/\\textit\{([^{}]*)\}/g, '$1').replace(/\\\\/g, '\n').replace(/~/g, ' ');
     var out = '';
     s.split(/(\$\$[\s\S]+?\$\$|\$[^$]+\$)/g).forEach(function(p){
@@ -83,6 +85,17 @@
   ].join('\n');
   function ensureCss(){ if(document.getElementById('dg2-css')) return; var s = document.createElement('style'); s.id = 'dg2-css'; s.textContent = CSS; document.head.appendChild(s); }
 
+  // THÊM 27/10/2026 — các nano (đơn vị kiến thức nhỏ) em làm sai trong bài này, nhiều lỗi nhất trước
+  function weakNanoList(qs, ans){
+    var m = {};
+    qs.forEach(function(q){ if(!q.nano) return; var x = m[q.nano] = m[q.nano] || { name: q.nano, wrong: 0, total: 0 }; x.total++; if(ans[q.index] !== correctKey(q)) x.wrong++; });
+    return Object.keys(m).map(function(k){ return m[k]; }).filter(function(x){ return x.wrong > 0; }).sort(function(a, b){ return b.wrong - a.wrong; }).slice(0, 8);
+  }
+  function nanoSummary(qs, ans){
+    var m = {};
+    qs.forEach(function(q){ if(!q.nano) return; var k = q.nano.slice(0, 60).replace(/[.\/#$\[\]]/g, ' '); var x = m[k] = m[k] || { correct: 0, total: 0 }; x.total++; if(ans[q.index] === correctKey(q)) x.correct++; });
+    return m;
+  }
   function Exam(props){
     var qs = props.questions, ex = props.exam, st = props.student;
     var isMini = !!ex.mini; // SỬA 27/10/2026 — mini test: không lưu nháp, không quy đổi 1.200
@@ -112,11 +125,11 @@
         var sec = {}; Object.keys(r.sections).forEach(function(k){ sec[k] = { name: r.sections[k].name, correct: r.sections[k].correct, total: r.sections[k].total }; });
         if(isMini){
           L.saveSpecialAttempt(st.id, { track: 'dgnl-mini', mini: true, examId: 'mini', examTitle: ex.title, correct: r.correct, total: r.total, pct: Math.round(r.correct / Math.max(1, r.total) * 100),
-            sections: sec, minutesUsed: r.minutesUsed, answers: ans, auto: !!auto }).then(function(res){ setSaved(!!(res && res.ok)); });
+            sections: sec, nanos: nanoSummary(qs, ans), minutesUsed: r.minutesUsed, answers: ans, auto: !!auto }).then(function(res){ setSaved(!!(res && res.ok)); });
           return;
         }
         L.saveSpecialAttempt(st.id, { track: 'dgnl', examId: ex.id, examTitle: ex.title, autoScore: r.est1200, scaled: r.scaled, maxScaled: r.maxScaled, correct: r.correct, total: r.total,
-          sections: sec, minutesUsed: r.minutesUsed, maxScore: 1200, selfScore: r.est1200 != null ? Math.round(r.est1200 / 60 * 100) / 100 : null, answers: ans, auto: !!auto })
+          sections: sec, nanos: nanoSummary(qs, ans), minutesUsed: r.minutesUsed, maxScore: 1200, selfScore: r.est1200 != null ? Math.round(r.est1200 / 60 * 100) / 100 : null, answers: ans, auto: !!auto })
           .then(function(res){ setSaved(!!(res && res.ok)); });
       }
     }
@@ -141,7 +154,8 @@
             isMini ? null : h('div', { style: { fontSize: '.76rem', color: 'var(--ink-2)', marginTop: '4px' } }, 'Đề thật chấm theo độ khó từng câu (IRT) nên điểm thật có thể lệch — dùng để theo dõi tiến bộ.'),
             saved ? h('div', { style: { fontSize: '.8rem', color: '#15803d', fontWeight: 700 } }, '✓ Đã lưu kết quả.') : null)),
         h('div', { className: 'dg2-score' }, Object.keys(result.sections).map(function(k){ var s = result.sections[k];
-          return h('div', { key: k }, h('span', { style: { fontSize: '.78rem', fontWeight: 700 } }, s.name), h('b', null, s.correct + '/' + s.total), h('span', { style: { fontSize: '.76rem', color: 'var(--ink-2)' } }, Math.round(s.correct / s.total * 100) + '% đúng')); })))) : null,
+          return h('div', { key: k }, h('span', { style: { fontSize: '.78rem', fontWeight: 700 } }, s.name), h('b', null, s.correct + '/' + s.total), h('span', { style: { fontSize: '.76rem', color: 'var(--ink-2)' } }, Math.round(s.correct / s.total * 100) + '% đúng')); })),
+        (function(){ var wn = weakNanoList(qs, ans); return wn.length ? h('div', { style: { marginTop: '12px', fontSize: '.88rem' } }, h('b', null, '🔬 Kiến thức cần ôn lại: '), wn.map(function(x, i){ return h('span', { key: i, style: { display: 'inline-block', margin: '3px 6px 0 0', padding: '3px 10px', borderRadius: '999px', background: 'rgba(220,38,38,.08)', border: '1px solid rgba(220,38,38,.35)' } }, x.name + ' (sai ' + x.wrong + '/' + x.total + ')'); })) : null; })())) : null,
       h('div', { className: 'dg2-wrap' },
         h('div', null,
           h('div', { className: 'dg2-sec' }, secs.map(function(s){ var done = s.idx.filter(function(i){ return ans[qs[i].index]; }).length;
@@ -154,7 +168,7 @@
             h('div', { className: 'dg2-stem' }, T(q.stem, 'div')),
             (q.images || []).map(function(im, k){ return h('img', { key: k, className: 'dg2-img', src: im.url, alt: '' }); }),
             (q.options || []).map(function(o){ return h('button', { key: o.key, type: 'button', className: optCls(o), disabled: review, onClick: function(){ var a = Object.assign({}, ans); a[q.index] = o.key; setAns(a); } }, h('b', null, o.key), T(o.text, 'div')); }),
-            review ? h('div', { className: 'dg2-sol' }, h('b', null, ans[q.index] ? (ans[q.index] === ck ? '✅ Em chọn đúng ' + ck + '. ' : '❌ Em chọn ' + ans[q.index] + ', đáp án đúng ' + ck + '. ') : '⚪ Em bỏ trống — đáp án ' + ck + '. '), q.loiGiai ? T(q.loiGiai, 'div') : h('span', { style: { color: 'var(--ink-2)' } }, 'Thầy chưa nạp lời giải.')) : null,
+            review ? h('div', { className: 'dg2-sol' }, q.nano ? h('div', { style: { fontSize: '.76rem', fontWeight: 700, color: '#8a5a12', marginBottom: '6px' } }, '🔬 Kiến thức: ' + q.nano) : null, h('b', null, ans[q.index] ? (ans[q.index] === ck ? '✅ Em chọn đúng ' + ck + '. ' : '❌ Em chọn ' + ans[q.index] + ', đáp án đúng ' + ck + '. ') : '⚪ Em bỏ trống — đáp án ' + ck + '. '), q.loiGiai ? T(q.loiGiai, 'div') : h('span', { style: { color: 'var(--ink-2)' } }, 'Thầy chưa nạp lời giải.')) : null,
             h('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: '14px' } },
               h('button', { type: 'button', className: 'dg2-b', disabled: cur === 0, onClick: function(){ setCur(cur - 1); } }, '← Câu trước'),
               cur < qs.length - 1 ? h('button', { type: 'button', className: 'dg2-b p', onClick: function(){ setCur(cur + 1); } }, 'Câu sau →') : (!review ? h('button', { type: 'button', className: 'dg2-b p', onClick: function(){ finish(false); } }, 'Nộp bài') : null)))),
@@ -170,6 +184,7 @@
   }
 
   // ===== THÊM 27/10/2026 — MINI TEST THÍCH ỨNG: gom câu từ mọi đề ĐGNL, chọn theo phần thi + lịch sử làm bài =====
+  function nanoKey(n){ return norm(n).replace(/[^a-z0-9]+/g, ' ').trim(); }
   var SEC_ORDER = ['toan', 'logic', 'kh', 'tv', 'ta', 'khac'];
   function rawSec(q){ return sectionOf({ section: q.chuDeLon || '', topic: q.dangBai || '' }); }
   function rawCorrect(q){ var o = (q.options || []).filter(function(x){ return x.isTrue; })[0]; return o ? o.key : null; }
@@ -184,7 +199,7 @@
       qs.forEach(function(q){
         var uid = ex.id + '_q' + q.index, sec = rawSec(q);
         var dep = prev && (q.ctxFrom != null || (q.groupPassage && q.groupPassage === prev.groupPassage) || refersPrev(q.stem));
-        var item = { uid: uid, exId: ex.id, index: q.index, sec: sec.key, ck: rawCorrect(q) };
+        var item = { uid: uid, exId: ex.id, index: q.index, sec: sec.key, ck: rawCorrect(q), nano: q.nanoName ? nanoKey(q.nanoName) : '', nanoName: q.nanoName || '' };
         byUid[uid] = item;
         if(dep && cur){ cur.items.push(item); }
         else { cur = { exId: ex.id, sec: sec.key, items: [item] }; units.push(cur); }
@@ -206,7 +221,14 @@
     });
     return st;
   }
-  function pickMini(pool, hist, secKeys, n, adaptive){
+  // THÊM 27/10/2026 — độ thành thạo từng nano (theo lần làm gần nhất của mỗi câu): { nanoKey: { seen, ok } }
+  function buildNanoStats(history, byUid){
+    var ns = {};
+    Object.keys(history).forEach(function(uid){ var it = byUid[uid]; if(!it || !it.nano) return; var x = ns[it.nano] = ns[it.nano] || { seen: 0, ok: 0 }; x.seen++; x.ok += history[uid]; });
+    return ns;
+  }
+  function pickMini(pool, hist, secKeys, n, adaptive, nanoStats){
+    nanoStats = nanoStats || {};
     var cand = pool.units.filter(function(u){ return secKeys.indexOf(u.sec) > -1; });
     if(!cand.length) return [];
     // trọng số từng phần: phần em yếu hơn → được nhiều câu hơn
@@ -223,7 +245,9 @@
     secKeys.forEach(function(k){ quota[k] = Math.floor(n * w[k] / (sumW || 1)); assigned += quota[k]; });
     secKeys.slice().sort(function(a, b){ return w[b] - w[a]; }).forEach(function(k){ if(assigned < n && w[k] > 0){ quota[k]++; assigned++; } });
     function unitScore(u){
-      var sc = 0; u.items.forEach(function(it){ var v = hist[it.uid]; sc += !adaptive ? 1 : (v == null ? 2 : (v === 0 ? 3 : 0.5)); });
+      var sc = 0; u.items.forEach(function(it){ var v = hist[it.uid]; var base = !adaptive ? 1 : (v == null ? 2 : (v === 0 ? 3 : 0.5));
+        if(adaptive && it.nano){ var ns = nanoStats[it.nano]; if(!ns) base += 0.5; else if(ns.seen >= 2 && ns.ok / ns.seen < 0.6) base += 1.5; } // nano em còn yếu → ưu tiên
+        sc += base; });
       return sc / u.items.length * (0.7 + Math.random() * 0.6);
     }
     var chosen = [], used = {}, total = 0;
@@ -266,6 +290,8 @@
     if(!defaultSel.length) defaultSel = secKeys;
     var sel = (picked || defaultSel).filter(function(k){ return avail[k]; });
     var history = React.useMemo(function(){ return buildHistory(hist, pool.byUid); }, [hist, list]);
+    var nanoStats = React.useMemo(function(){ return buildNanoStats(history, pool.byUid); }, [history, pool]);
+    var weakNanos = Object.keys(nanoStats).filter(function(k){ return nanoStats[k].seen >= 2 && nanoStats[k].ok / nanoStats[k].seen < 0.6; }).length;
     var seenCount = Object.keys(history).length, wrongCount = Object.keys(history).filter(function(k){ return history[k] === 0; }).length;
 
     function toggleSec(k){ var cur = sel.slice(); var i = cur.indexOf(k); if(i > -1) cur.splice(i, 1); else cur.push(k); setPicked(cur); }
@@ -282,7 +308,7 @@
 
     function startMini(){
       if(!sel.length){ alert('Chọn ít nhất 1 phần thi.'); return; }
-      var units = pickMini(pool, history, sel, nQ, adaptive);
+      var units = pickMini(pool, history, sel, nQ, adaptive, nanoStats);
       if(!units.length){ alert('Chưa có câu phù hợp trong các phần đã chọn.'); return; }
       var need = {}; units.forEach(function(u){ need[u.exId] = 1; });
       setBusy('Đang chuẩn bị mini test…');
@@ -321,7 +347,7 @@
               h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', fontSize: '.9rem', cursor: 'pointer' } },
                 h('input', { type: 'checkbox', checked: adaptive, onChange: function(e){ setAdaptive(e.target.checked); } }),
                 'Thích ứng: ưu tiên câu em chưa làm, câu từng sai, và phần em còn yếu'),
-              h('div', { style: { fontSize: '.78rem', color: 'var(--ink-2)', margin: '8px 0 12px' } }, 'Câu được gom từ tất cả đề ĐGNL; các câu chung dữ kiện luôn đi cùng nhau (nên số câu có thể lệch 1–2 câu). Em đã làm ' + seenCount + ' câu' + (wrongCount ? ', trong đó ' + wrongCount + ' câu sai gần nhất.' : '.')),
+              h('div', { style: { fontSize: '.78rem', color: 'var(--ink-2)', margin: '8px 0 12px' } }, 'Câu được gom từ tất cả đề ĐGNL; các câu chung dữ kiện luôn đi cùng nhau (nên số câu có thể lệch 1–2 câu). Em đã làm ' + seenCount + ' câu' + (wrongCount ? ', trong đó ' + wrongCount + ' câu sai gần nhất' : '') + (weakNanos ? '; còn ' + weakNanos + ' đơn vị kiến thức (nano) cần ôn thêm.' : '.')),
               h('button', { type: 'button', className: 'dg2-b p', disabled: !!busy || !sel.length, onClick: startMini }, 'Bắt đầu mini test ➔')
             ) : h('div', { className: 'dg2-card' }, h('b', null, '📚 Danh sách đề đầy đủ'),
               !list.length ? h('p', { style: { color: 'var(--ink-2)' } }, 'Thầy chưa nạp đề nào.') :
@@ -351,5 +377,5 @@
     function close(){ try{ ReactDOM.unmountComponentAtNode(host); }catch(e){} }
     ReactDOM.render(h(List, { student: student, onClose: close }), host);
   }
-  window.OPC_DGNL = { openList: openList, _score: score, _sectionOf: sectionOf, _buildPool: buildPool, _buildHistory: buildHistory, _pickMini: pickMini };
+  window.OPC_DGNL = { openList: openList, _score: score, _sectionOf: sectionOf, _buildPool: buildPool, _buildHistory: buildHistory, _pickMini: pickMini, _buildNanoStats: buildNanoStats };
 })(window);

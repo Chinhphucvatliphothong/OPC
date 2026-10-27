@@ -1,0 +1,10 @@
+ĐGNL: bỏ thẻ %[M3].. khỏi đề bài, AI tự giải + nano tự tạo + kiểm tra lại đáp án
+
+- admin.html: parseTexBank gỡ comment LaTeX khỏi đề/phương án/lời giải; đọc "% @nano-dgnl:" và cờ AI_TU_GIAI / AI_CAN_KIEM_TRA
+- dgnl.js: bỏ comment còn sót trong dữ liệu cũ khi hiển thị; mini test dùng nano (ưu tiên nano em còn yếu); kết quả hiện "Kiến thức cần ôn"
+- opc-live-data.js: loadSpecialExam trả thêm trường nano
+- api/ai-tex.js: chế độ AI tự giải (lời giải chi tiết mọi câu, tự tìm đáp án khi đề thiếu, tự đặt tên nano), maxDuration 60s
+- api/ai-verify.js (MỚI): AI giải lại độc lập, câu lệch/không chắc gắn cờ để thầy chỉ xem đúng những câu đó
+- admin-aiimport.js: tuỳ chọn "AI tự giải" + "giải lại lần 2", thống kê số câu cần xem lại
+
+Co-Authored-By: Claude <noreply@anthropic.com>
