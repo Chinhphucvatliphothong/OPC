@@ -1,0 +1,8 @@
+Sửa lỗi học sinh không vào được ĐGNL + thêm Mini test thích ứng
+
+- dgnl.js: khung danh sách bọc class 'dg2-fs' không có CSS → đổi 'dg2-ov' (toàn màn hình)
+- Mini test thích ứng: gom câu từ mọi đề ĐGNL, chọn phần thi + 5/10/20/30 câu,
+  ưu tiên câu chưa làm / từng sai / phần yếu, giữ nguyên cụm câu chung dữ kiện
+- Mini lưu track 'dgnl-mini' (không lẫn điểm thang 1.200); bỏ cách cắt ngẫu nhiên 45/75 phút cũ
+
+Co-Authored-By: Claude <noreply@anthropic.com>
