@@ -189,6 +189,13 @@
   .cp-chapter-box h4{ font-size:0.9rem; margin:0 0 6px; }
   .cp-chapter-box .btn{ font-size:0.78rem; padding:6px 10px; margin-top:6px; margin-right:6px; }
   .cp-stem{ font-size:0.82rem; color:var(--ink-2); max-width:60ch; line-height:1.5; }
+  /* THÊM 28/10/2026 — khoá/mở từng bài + khoá/mở đề trong ngân hàng (panel "Quản lý chương") */
+  .cp-lesson-row{ display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px dashed var(--line); font-size:0.84rem; }
+  .cp-lesson-row:first-of-type{ border-top:none; }
+  .cp-lesson-row .cp-lesson-name{ flex:1; min-width:0; line-height:1.4; }
+  .cp-lesson-row.locked .cp-lesson-name{ color:var(--muted); }
+  .cp-lesson-count{ font-size:0.74rem; color:var(--muted); white-space:nowrap; font-family:"IBM Plex Mono",monospace; }
+  .cp-lesson-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; margin-top:12px; }
   .sm-student-cell{ display:flex; align-items:center; gap:11px; }
   .sm-avatar{ width:34px; height:34px; border-radius:50%; background:color-mix(in srgb, var(--accent) 18%, var(--surface-2)); color:var(--accent-strong); font-weight:700; font-size:0.85rem; display:flex; align-items:center; justify-content:center; flex:none; }
   .sm-student-name{ font-weight:600; color:var(--ink); display:flex; align-items:center; gap:7px; }
@@ -1181,6 +1188,24 @@
       // Bỏ danh sách riêng -> em đó quay về theo mặc định của lớp.
       resetStudentChapters: function(studentId){
         return updateDoc(doc(db, 'students', studentId), { unlockedChapters: deleteField() });
+      },
+      // THÊM 28/10/2026 — KHOÁ/MỞ TỪNG BÀI: defaultLockedLessons (mặc định lớp) + lockedLessons riêng từng em
+      // (ghi đè mặc định, giống unlockedChapters); lockedExams = đề trong ngân hàng bị khoá với học sinh.
+      saveDefaultLockedLessons: function(keys){
+        return setDoc(doc(db, 'settings', 'curriculum'), { defaultLockedLessons: keys, updatedAt: serverTimestamp() }, { merge: true });
+      },
+      setStudentLockedLessons: function(studentId, keys){
+        return updateDoc(doc(db, 'students', studentId), { lockedLessons: keys });
+      },
+      resetStudentLockedLessons: function(studentId){
+        return updateDoc(doc(db, 'students', studentId), { lockedLessons: deleteField() });
+      },
+      saveLockedExams: function(ids){
+        return setDoc(doc(db, 'settings', 'curriculum'), { lockedExams: ids, updatedAt: serverTimestamp() }, { merge: true });
+      },
+      // Đọc 1 lần (dùng khi cần biết đề nào đang khoá mà không cần theo dõi liên tục)
+      getOnce: function(){
+        return getDoc(doc(db, 'settings', 'curriculum')).then(function(snap){ return snap.exists() ? snap.data() : null; });
       }
     };
    }catch(err){
@@ -2839,7 +2864,7 @@
       setBusy(true);
       try{
         var c = auto.struct.split('-').map(Number);
-        var qs = ctGenerateExam(pool, { I: c[0], II: c[1], III: c[2] }, cstats, { seed: f.lop + '|' + Date.now(), topicKeys: auto.topics });
+        var qs = ctGenerateExam(pool.filter(function(q){ return !q.examLocked; }), { I: c[0], II: c[1], III: c[2] }, cstats, { seed: f.lop + '|' + Date.now(), topicKeys: auto.topics });
         if(!qs.length) throw new Error('Ngân hàng đề chưa có đủ câu phù hợp (thử bỏ lọc chuyên đề).');
         var base = qs.map(function(q){ var x = Object.assign({}, q); x.images = []; x.groupImages = []; return x; });
         var versions = ctBuildVersions(base, Math.max(1, Math.min(8, Number(f.count) || 1)), Number(f.baseCode) || 101, { shuffleQ: f.shuffleQ, shuffleOpt: f.shuffleOpt }, f.lop + '|' + Date.now());
@@ -3242,18 +3267,26 @@
     return !!q.correctKey && (q.options || []).length === 4;
   }
   // Toàn bộ câu trong ngân hàng (dạng câu hỏi của học sinh, chưa kèm ảnh)
+  // SỬA 28/10/2026 — mỗi câu mang cờ examLocked (đề đang bị khoá trong settings/curriculum.lockedExams). Pool vẫn giữ ĐỦ câu
+  // (để tra lại đề/phiếu ôn đã giao theo mã câu); nơi BỐC câu mới (đề tự sinh cho lớp, phiếu ôn) phải bỏ câu examLocked.
   function ctLoadPool(){
     return new Promise(function(resolve, reject){
       var done = false;
+      var lockedP = (window.OPC && window.OPC.curriculum && window.OPC.curriculum.getOnce)
+        ? window.OPC.curriculum.getOnce().catch(function(){ return null; }) : Promise.resolve(null);
       var unsub = window.OPC.examBank.subscribe(function(snap){
         if(done) return; done = true;
-        var pool = [];
-        snap.docs.forEach(function(d){
-          var ex = d.data() || {};
-          (ex.questions || []).forEach(function(q){ var s = toStudentQuestionShape(q, d.id, ex.title, []); s.images = []; s.groupImages = []; if(ctUsable(s)) pool.push(s); });
-        });
         setTimeout(function(){ try{ unsub(); }catch(e){} }, 0);
-        resolve(pool);
+        lockedP.then(function(curData){
+          var locked = window.OPC_CURRICULUM ? window.OPC_CURRICULUM.getLockedExams(curData) : [];
+          var pool = [];
+          snap.docs.forEach(function(d){
+            var ex = d.data() || {};
+            var isLocked = locked.indexOf(d.id) > -1;
+            (ex.questions || []).forEach(function(q){ var s = toStudentQuestionShape(q, d.id, ex.title, []); s.images = []; s.groupImages = []; s.examLocked = isLocked; if(ctUsable(s)) pool.push(s); });
+          });
+          resolve(pool);
+        });
       }, function(err){ if(!done){ done = true; reject(err); } });
     });
   }
@@ -3429,7 +3462,7 @@
           setBusy('Đang chọn câu cho từng em…');
           var per = {}, maxH = 0, info = [];
           roster.forEach(function(st){
-            var g = ctGenerateReview(pool, test.questions, test.results[st.id].answers, Number(n) || 8, test.id + '|' + st.id, {});
+            var g = ctGenerateReview(pool.filter(function(q){ return !q.examLocked; }), test.questions, test.results[st.id].answers, Number(n) || 8, test.id + '|' + st.id, {});
             if(!g.questions.length) return;
             per[st.id] = g.questions.map(function(q){ return q.id; });
             maxH = Math.max(maxH, ctReviewLayout({}, g.questions).H);
@@ -3552,6 +3585,7 @@
     var evState = React.useState(null); var events = evState[0], setEvents = evState[1];
     var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
     var chapState = React.useState([]); var chaps = chapState[0], setChaps = chapState[1];
+    var lockExState = React.useState([]); var lockedEx = lockExState[0], setLockedEx = lockExState[1]; // THÊM 28/10/2026 — đề đang khoá
     var filterState = React.useState('all'); var leadFilter = filterState[0], setLeadFilter = filterState[1];
 
     React.useEffect(function(){
@@ -3571,8 +3605,10 @@
         });
         setPool(out);
       }, function(e){ console.error(e); setPool([]); });
+      var u4 = OPCref.curriculum ? OPCref.curriculum.subscribe(function(d){ setLockedEx(window.OPC_CURRICULUM ? window.OPC_CURRICULUM.getLockedExams(d) : []); },
+        function(e){ console.error('Lỗi tải settings/curriculum (Chẩn đoán 5 phút):', e); }) : function(){};
       refreshEvents();
-      return function(){ u1(); u2(); u3(); };
+      return function(){ u1(); u2(); u3(); u4(); };
     }, []);
     React.useEffect(function(){
       if(cfg === undefined || draft) return;
@@ -3587,9 +3623,10 @@
     function set(k, v){ setDraft(function(p){ var n = Object.assign({}, p); n[k] = v; return n; }); }
     var chapPool = React.useMemo(function(){
       if(!pool) return [];
-      if(!chaps.length || !window.OPC_CURRICULUM) return pool;
-      return pool.filter(function(q){ return chaps.indexOf(q.chuong) > -1; });
-    }, [pool, chaps.join(',')]);
+      var base = lockedEx.length ? pool.filter(function(q){ return lockedEx.indexOf(q.examId) < 0; }) : pool; // THÊM 28/10/2026 — bỏ câu của đề đang khoá
+      if(!chaps.length || !window.OPC_CURRICULUM) return base;
+      return base.filter(function(q){ return chaps.indexOf(q.chuong) > -1; });
+    }, [pool, chaps.join(','), lockedEx.join(',')]);
     function autoPick(){
       var n = Math.max(5, Math.min(20, Number(draft.count) || 10));
       if(chapPool.length < n){ props.fireToast('Ngân hàng chỉ có ' + chapPool.length + ' câu phù hợp (Phần I, không hình/bảng) — giảm số câu hoặc bỏ lọc chương.', true); }
@@ -6949,6 +6986,8 @@
             if(!nano) return null;
             var bai = window.OPC_NANO.getBai(nano.baiKey);
             if(bai && !topicAllowed(bai.chuDeKey)) return null;
+            // THÊM 28/10/2026 — bài đang khoá với em này thì không đưa vào báo cáo phụ huynh
+            if(bai && CUR && CUR.getLockedLessons(s, repCur).indexOf(bai.key) > -1) return null;
             return { name: nano.name, pct: Math.round(s.nanoMastery[id]) };
           })
           .filter(Boolean)
@@ -8290,6 +8329,9 @@
     var searchState = React.useState(''); var search = searchState[0], setSearch = searchState[1];
     var pickState = React.useState({}); var picks = pickState[0], setPicks = pickState[1]; // key "<examId>#<idx>" -> chương chọn
     var showAllState = React.useState(false); var showAll = showAllState[0], setShowAll = showAllState[1];
+    // THÊM 28/10/2026 — khoá/mở từng bài: phạm vi đang chỉnh ('class' = cả lớp, hoặc id 1 học sinh); khoá/mở đề: ô lọc
+    var scopeState = React.useState('class'); var scope = scopeState[0], setScope = scopeState[1];
+    var examSearchState = React.useState(''); var examSearch = examSearchState[0], setExamSearch = examSearchState[1];
 
     React.useEffect(function(){
       if(!OPCref || !OPCref.curriculum) return;
@@ -8307,19 +8349,23 @@
     // ---- Thống kê câu hỏi theo chương + danh sách câu chưa gắn chương ----
     var bankInfo = React.useMemo(function(){
       var perChapter = {};
-      if(!CUR) return { perChapter: perChapter, untagged: [] };
-      CUR.ALL_CHAPTERS.forEach(function(n){ perChapter[n] = { I: 0, II: 0, III: 0 }; });
+      var perBai = {}, noBai = {}; // THÊM 28/10/2026 — số câu theo từng bài; số câu đã có chương nhưng chưa gắn bài
+      if(!CUR) return { perChapter: perChapter, perBai: perBai, noBai: noBai, untagged: [] };
+      CUR.ALL_CHAPTERS.forEach(function(n){ perChapter[n] = { I: 0, II: 0, III: 0 }; noBai[n] = 0; });
       var untagged = [];
       exams.forEach(function(exam){
         (exam.questions || []).forEach(function(q, idx){
           var c = CUR.inferChuong(q);
+          var bKeys = CUR.questionLessonKeys(q);
+          bKeys.forEach(function(k){ perBai[k] = (perBai[k] || 0) + 1; });
+          if(c && !bKeys.length) noBai[c] = (noBai[c] || 0) + 1;
           if(c){ perChapter[c][q.part || 'I'] = (perChapter[c][q.part || 'I'] || 0) + 1; return; }
           var sugTopic = window.OPC_NANO ? window.OPC_NANO.findChuDeByText(q.chuDeLon) : null;
           var suggestion = sugTopic ? (CUR.TOPIC_TO_CHUONG[sugTopic.key] || null) : null;
           untagged.push({ key: exam.id + '#' + idx, examId: exam.id, examTitle: exam.title || '(chưa đặt tên)', idx: idx, q: q, suggestion: suggestion });
         });
       });
-      return { perChapter: perChapter, untagged: untagged };
+      return { perChapter: perChapter, perBai: perBai, noBai: noBai, untagged: untagged };
     }, [exams]);
 
     if(!CUR){
@@ -8378,6 +8424,83 @@
         .then(function(){ props.fireToast('Đã ' + (on ? 'mở' : 'khoá') + ' Chương ' + num + ' cho cả lớp.'); })
         .catch(function(err){ console.error(err); props.fireToast('Có lỗi khi lưu — một số học sinh có thể chưa được cập nhật, thử lại.', true); })
         .finally(function(){ setBulkBusy(false); });
+    }
+
+    // ===== THÊM 28/10/2026 — KHOÁ/MỞ TỪNG BÀI =====
+    // Phạm vi 'class': sửa mặc định lớp + danh sách riêng của các em đang có cấu hình riêng (giống nút "cho cả lớp"
+    // của chương). Phạm vi 1 học sinh: chỉ ghi lockedLessons riêng của em đó (ghi đè mặc định lớp).
+    var lockedDefault = CUR.getLockedLessons(null, cur.data);
+    function lockedOf(s){ return CUR.getLockedLessons(s, cur.data); }
+    function hasOwnLessons(s){ return Array.isArray(s.lockedLessons); }
+    function applyLessons(list, keys, lock){
+      var set = {}; keys.forEach(function(k){ set[k] = true; });
+      var next = list.filter(function(k){ return !set[k]; });
+      if(lock) keys.forEach(function(k){ next.push(k); });
+      return CUR.normalizeKeys(next);
+    }
+    var scopeStudent = scope === 'class' ? null : (students.filter(function(s){ return s.id === scope; })[0] || null);
+    var scopeLocked = scopeStudent ? lockedOf(scopeStudent) : lockedDefault;
+    var scopeChapters = scopeStudent ? chaptersOf(scopeStudent) : defaultChapters;
+    var scopeLabel = scopeStudent ? (scopeStudent.name || 'học sinh') : 'cả lớp';
+    function changeLessons(keys, lock, doneMsg){
+      if(!keys.length) return;
+      setBulkBusy(true);
+      var jobs = [];
+      if(scopeStudent){
+        jobs.push(OPCref.curriculum.setStudentLockedLessons(scopeStudent.id, applyLessons(lockedOf(scopeStudent), keys, lock)));
+      } else {
+        jobs.push(OPCref.curriculum.saveDefaultLockedLessons(applyLessons(lockedDefault, keys, lock)));
+        students.forEach(function(s){
+          if(hasOwnLessons(s)) jobs.push(OPCref.curriculum.setStudentLockedLessons(s.id, applyLessons(lockedOf(s), keys, lock)));
+        });
+      }
+      Promise.all(jobs)
+        .then(function(){ props.fireToast(doneMsg + ' (' + scopeLabel + ').'); })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setBulkBusy(false); });
+    }
+    function toggleLesson(bai){
+      var lock = scopeLocked.indexOf(bai.key) < 0;
+      changeLessons([bai.key], lock, (lock ? 'Đã khoá ' : 'Đã mở ') + bai.name.split(':')[0]);
+    }
+    function setChapterLessons(num, lock){
+      var keys = CUR.listBai(num).map(function(b){ return b.key; });
+      if(!window.confirm((lock ? 'Khoá' : 'Mở') + ' TẤT CẢ ' + keys.length + ' bài của Chương ' + num + ' cho ' + scopeLabel + '?')) return;
+      changeLessons(keys, lock, (lock ? 'Đã khoá' : 'Đã mở') + ' mọi bài của Chương ' + num);
+    }
+    function resetStudentLessons(s){
+      setBulkBusy(true);
+      OPCref.curriculum.resetStudentLockedLessons(s.id)
+        .then(function(){ props.fireToast((s.name || 'Học sinh') + ' đã quay về theo bài khoá mặc định của lớp.'); })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setBulkBusy(false); });
+    }
+
+    // ===== THÊM 28/10/2026 — KHOÁ/MỞ ĐỀ TRONG NGÂN HÀNG ĐỀ (áp dụng mọi học sinh) =====
+    var lockedExamIds = CUR.getLockedExams(cur.data);
+    var examsShown = exams.filter(function(ex){
+      if(!examSearch.trim()) return true;
+      return ((ex.title || '') + ' ' + (ex.chuDe || '') + ' ' + (ex.bai || '')).toLowerCase().indexOf(examSearch.trim().toLowerCase()) > -1;
+    });
+    function setExamsLocked(list, lock, doneMsg){
+      var ids = list.map(function(ex){ return ex.id; });
+      var set = {}; ids.forEach(function(id){ set[id] = true; });
+      var next = lockedExamIds.filter(function(id){ return !set[id]; });
+      if(lock) ids.forEach(function(id){ next.push(id); });
+      setBulkBusy(true);
+      OPCref.curriculum.saveLockedExams(CUR.normalizeKeys(next))
+        .then(function(){ props.fireToast(doneMsg); })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setBulkBusy(false); });
+    }
+    function toggleExam(ex){
+      var lock = lockedExamIds.indexOf(ex.id) < 0;
+      setExamsLocked([ex], lock, (lock ? 'Đã khoá đề "' : 'Đã mở đề "') + (ex.title || '') + '" với học sinh.');
+    }
+    function setAllShownExams(lock){
+      if(!examsShown.length) return;
+      if(!window.confirm((lock ? 'Khoá' : 'Mở') + ' ' + examsShown.length + ' đề đang hiển thị với học sinh?')) return;
+      setExamsLocked(examsShown, lock, (lock ? 'Đã khoá ' : 'Đã mở ') + examsShown.length + ' đề.');
     }
 
     var filteredUntagged = bankInfo.untagged.filter(function(it){
@@ -8445,6 +8568,12 @@
             h('h4', null, chapterName(c.num)),
             h('div', { style: { fontSize: '0.78rem', color: 'var(--muted)' } },
               'Ngân hàng: P.I ' + q.I + ' · P.II ' + q.II + ' · P.III ' + q.III + ' câu'),
+            // THÊM 28/10/2026 — số bài đang khoá (mặc định lớp) trong chương
+            (function(){
+              var all = CUR.listBai(c.num), nLocked = all.filter(function(b){ return lockedDefault.indexOf(b.key) > -1; }).length;
+              return h('div', { style: { fontSize: '0.78rem', marginTop: 2, color: nLocked ? 'var(--warning)' : 'var(--muted)' } },
+                nLocked ? ('🔒 ' + nLocked + '/' + all.length + ' bài đang khoá (lớp)') : ('Tất cả ' + all.length + ' bài đang mở (lớp)'));
+            })(),
             h('label', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', marginTop: 6, cursor: 'pointer' } },
               h('input', { type: 'checkbox', checked: isDefault, disabled: bulkBusy || !cur.loaded, onChange: function(){ toggleDefault(c.num); } }),
               'Mở mặc định cho học sinh mới / theo lớp'),
@@ -8491,6 +8620,93 @@
             }) : h('tr', null, h('td', { colSpan: 6, style: { color: 'var(--muted)' } }, 'Chưa có học sinh nào.'))
           )
         )
+      ),
+
+      // ---- THÊM 28/10/2026: Khoá/mở từng bài ----
+      h('div', { style: { marginTop: '28px' } },
+        h('div', { className: 'sm-toolbar' },
+          h('div', null, h('h3', null, '📖 Khoá / mở từng bài trong chương'),
+            h('p', { className: 'sm-sub' }, 'Dùng khi chương đã mở nhưng các em chưa học hết các bài: bài bị khoá thì câu hỏi thuộc bài đó không xuất hiện trong luyện tập thích ứng, Drill, thi thử và đề cá nhân hoá. Câu chưa gắn bài vẫn theo chương. Chọn \"Cả lớp\" để sửa mặc định (các em có cấu hình bài riêng cũng được cập nhật), hoặc chọn một em để chỉnh riêng.'))
+        ),
+        h('div', { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 } },
+          h('label', { style: { fontSize: '0.84rem', fontWeight: 700 } }, 'Áp dụng cho: '),
+          h('select', { value: scopeStudent ? scope : 'class', onChange: function(e){ setScope(e.target.value); }, style: { minWidth: 200 } },
+            h('option', { value: 'class' }, 'Cả lớp (mặc định)'),
+            students.map(function(s){ return h('option', { key: s.id, value: s.id }, s.name || s.username || s.id); })),
+          scopeStudent ? (hasOwnLessons(scopeStudent)
+            ? h('span', null, h('span', { style: { fontSize: '0.78rem', fontWeight: 700 } }, 'Cấu hình bài riêng '),
+                h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.72rem', padding: '4px 8px' }, disabled: bulkBusy, onClick: function(){ resetStudentLessons(scopeStudent); } }, '↺ Theo lớp'))
+            : h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, 'Đang theo bài khoá mặc định của lớp — chỉnh bên dưới sẽ tạo cấu hình riêng cho em này')) : null
+        ),
+        h('div', { className: 'cp-lesson-grid' },
+          CUR.CHAPTERS.map(function(c){
+            var lessons = CUR.listBai(c.num);
+            var chapterOpen = scopeChapters.indexOf(c.num) > -1;
+            var nLocked = lessons.filter(function(b){ return scopeLocked.indexOf(b.key) > -1; }).length;
+            return h('div', { key: c.num, className: 'cp-chapter-box', style: { minWidth: 0 } },
+              h('h4', null, chapterName(c.num)),
+              h('div', { style: { fontSize: '0.78rem', color: nLocked ? 'var(--warning)' : 'var(--muted)' } },
+                nLocked ? ('🔒 ' + nLocked + '/' + lessons.length + ' bài đang khoá') : ('Tất cả ' + lessons.length + ' bài đang mở')),
+              !chapterOpen ? h('div', { style: { fontSize: '0.76rem', color: 'var(--critical)', marginTop: 2 } }, '⚠️ Chương này đang khoá với ' + scopeLabel + ' — mở chương ở bảng phía trên thì các bài đang mở mới có hiệu lực.') : null,
+              bankInfo.noBai[c.num] ? h('div', { style: { fontSize: '0.76rem', color: 'var(--muted)', marginTop: 2 } }, bankInfo.noBai[c.num] + ' câu chưa gắn bài — không bị khoá theo bài.') : null,
+              h('div', null,
+                h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !cur.loaded, onClick: function(){ setChapterLessons(c.num, false); } }, '🔓 Mở hết bài'),
+                h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy || !cur.loaded, onClick: function(){ setChapterLessons(c.num, true); } }, '🔒 Khoá hết bài')
+              ),
+              h('div', { style: { marginTop: 8 } },
+                lessons.map(function(b){
+                  var isLocked = scopeLocked.indexOf(b.key) > -1;
+                  return h('div', { key: b.key, className: cx('cp-lesson-row', isLocked && 'locked') },
+                    h('button', {
+                      type: 'button', className: cx('cp-switch', !isLocked && 'on'),
+                      disabled: bulkBusy || !cur.loaded,
+                      title: (isLocked ? 'Đang khoá — bấm để mở ' : 'Đang mở — bấm để khoá ') + b.name,
+                      'aria-pressed': !isLocked,
+                      onClick: function(){ toggleLesson(b); }
+                    }),
+                    h('span', { className: 'cp-lesson-name' }, (isLocked ? '🔒 ' : '') + b.name),
+                    h('span', { className: 'cp-lesson-count' }, (bankInfo.perBai[b.key] || 0) + ' câu'));
+                })
+              )
+            );
+          })
+        )
+      ),
+
+      // ---- THÊM 28/10/2026: Khoá/mở đề trong ngân hàng ----
+      h('div', { style: { marginTop: '28px' } },
+        h('div', { className: 'sm-toolbar' },
+          h('div', null, h('h3', null, '🗂️ Khoá / mở đề trong ngân hàng đề: ' + lockedExamIds.length + '/' + exams.length + ' đề đang khoá'),
+            h('p', { className: 'sm-sub' }, 'Đề bị khoá thì hệ thống KHÔNG lấy câu của đề đó cho luyện tập thích ứng, Drill, thi thử, đề cá nhân hoá, đề tự sinh cho lớp, phiếu ôn và Chẩn đoán 5 phút (áp dụng mọi học sinh). Đề đã giao sẵn cho em, đề thầy chọn thủ công và lịch sử làm bài không thay đổi.')),
+          h('div', { className: 'sm-actions' },
+            h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy || !cur.loaded || !examsShown.length, onClick: function(){ setAllShownExams(true); } }, '🔒 Khoá các đề đang lọc'),
+            h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !cur.loaded || !examsShown.length, onClick: function(){ setAllShownExams(false); } }, '🔓 Mở các đề đang lọc'))
+        ),
+        exams.length ? h('div', { className: 'sm-field', style: { marginTop: '12px', maxWidth: '360px' } },
+          h('input', { type: 'text', placeholder: 'Lọc theo tên đề / chuyên đề…', value: examSearch, onChange: function(e){ setExamSearch(e.target.value); } })) : null,
+        exams.length ? h('div', { className: 'sm-table-wrap' },
+          h('table', { className: 'sm-table' },
+            h('thead', null, h('tr', null,
+              h('th', null, 'Đề'), h('th', null, 'Chuyên đề'), h('th', { style: { textAlign: 'center' } }, 'Số câu'), h('th', { style: { textAlign: 'center' } }, 'Cho học sinh dùng'))),
+            h('tbody', null, examsShown.map(function(ex){
+              var isLocked = lockedExamIds.indexOf(ex.id) > -1;
+              var n = (ex.questions && ex.questions.length) || (ex.stats && ex.stats.total) || 0;
+              return h('tr', { key: ex.id, style: isLocked ? { opacity: 0.75 } : null },
+                h('td', null, h('div', { style: { fontWeight: 700, fontSize: '0.84rem' } }, (isLocked ? '🔒 ' : '') + (ex.title || '(chưa đặt tên)')),
+                  ex.examKind === 'soTruong' ? h('div', { style: { fontSize: '0.74rem', color: 'var(--muted)' } }, '🏫 Đề Sở/Trường') : null),
+                h('td', { style: { fontSize: '0.8rem' } }, ex.chuDe || '—'),
+                h('td', { className: 'sm-num', style: { textAlign: 'center' } }, n),
+                h('td', { style: { textAlign: 'center' } },
+                  h('button', {
+                    type: 'button', className: cx('cp-switch', !isLocked && 'on'),
+                    disabled: bulkBusy || !cur.loaded,
+                    title: isLocked ? 'Đang khoá — bấm để mở đề này cho học sinh' : 'Đang mở — bấm để khoá đề này',
+                    'aria-pressed': !isLocked,
+                    onClick: function(){ toggleExam(ex); }
+                  })));
+            }))
+          )
+        ) : h('div', { className: 'banner info' }, h('span', null, 'ℹ️'), h('div', null, 'Ngân hàng đề chưa có đề nào.'))
       ),
 
       // ---- Câu hỏi chưa gắn chương ----
@@ -8944,6 +9160,28 @@
     // Không truyền gì -> đúng ngân hàng Luyện thi Vật lí 12 như trước.
     var bankApi = props.bankApi || OPCref.examBank;
     var specialMode = props.specialMode || null; // null | 'hsg' | 'olympic'
+    // THÊM 28/10/2026 — KHOÁ/MỞ ĐỀ VỚI HỌC SINH (chỉ ngân hàng Luyện thi Vật lí 12; lưu trong settings/curriculum.lockedExams —
+    // cùng dữ liệu với mục "🗂️ Khoá / mở đề" ở tab Quản lý chương). Đề khoá: hệ thống không lấy câu của đề cho học sinh.
+    var lockCfgState = React.useState(null); var lockCfg = lockCfgState[0], setLockCfg = lockCfgState[1];
+    var lockBusyState = React.useState(false); var lockBusy = lockBusyState[0], setLockBusy = lockBusyState[1];
+    React.useEffect(function(){
+      if(specialMode || !OPCref || !OPCref.curriculum) return;
+      var u = OPCref.curriculum.subscribe(function(d){ setLockCfg(d || {}); },
+        function(e){ console.error('Lỗi tải settings/curriculum (Ngân hàng đề):', e); });
+      return function(){ u(); };
+    }, [specialMode]);
+    var lockedExamIds = (window.OPC_CURRICULUM && !specialMode) ? window.OPC_CURRICULUM.getLockedExams(lockCfg) : [];
+    function toggleExamLock(exam){
+      if(lockBusy || lockCfg === null || !window.OPC_CURRICULUM) return;
+      var wasLocked = lockedExamIds.indexOf(exam.id) > -1;
+      var next = lockedExamIds.filter(function(id){ return id !== exam.id; });
+      if(!wasLocked) next.push(exam.id);
+      setLockBusy(true);
+      OPCref.curriculum.saveLockedExams(next)
+        .then(function(){ props.fireToast(wasLocked ? 'Đã mở đề cho học sinh.' : 'Đã khoá đề — hệ thống sẽ không lấy câu của đề này cho học sinh.'); })
+        .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
+        .finally(function(){ setLockBusy(false); });
+    }
     // THÊM 9/10/2026 — id đề đang đóng gói .zip (.tex + ảnh), để khoá nút trong lúc chờ
     var bundleBusyState = React.useState(null); var bundleBusy = bundleBusyState[0], setBundleBusy = bundleBusyState[1];
     var paperEntryState = React.useState(null); var paperEntry = paperEntryState[0], setPaperEntry = paperEntryState[1]; // THÊM 12/10/2026 — nhập bài giấy
@@ -9812,6 +10050,7 @@
                   h('div',{className:'eb-title-cell'}, x.title),
                   x.bai ? h('div',{className:'eb-bai-cell'}, x.bai) : null,
                   h('div',{className:'eb-badges-row'},
+                    lockedExamIds.indexOf(x.id) > -1 ? h('span',{className:'eb-part-pill', style:{color:'var(--critical)', fontWeight:700}}, '🔒 Đang khoá với học sinh') : null,
                     qCount ? h('span',{className:'eb-part-pill'}, qCount + ' câu') : null,
                     stats && (stats.p1 || stats.p2 || stats.p3) ? h('span',{className:'eb-part-pill'}, 'P1:'+stats.p1+' · P2:'+stats.p2+' · P3:'+stats.p3) : null
                   )
@@ -9833,6 +10072,7 @@
                   h('div',{style:{display:'inline-flex', gap:'10px', alignItems:'center', justifyContent:'flex-end', flexWrap:'wrap'}},
                   // THÊM 9/10/2026 — tải nhanh trọn bộ .tex + ảnh ngay từ danh sách
                   (x.tex || (x.images && x.images.length)) ? h('button',{type:'button', className:'sm-link-btn', disabled: !!bundleBusy, title:'Tải file .tex gốc kèm toàn bộ ảnh (1 file .zip)', onClick:function(){ handleDownloadBundle(x); }}, bundleBusy === x.id ? 'Đang gói…' : '⬇ .zip') : null,
+                  specialMode ? null : h('button',{type:'button', className:'sm-link-btn', disabled: lockBusy || lockCfg === null, title: lockedExamIds.indexOf(x.id) > -1 ? 'Mở lại đề này cho học sinh (luyện tập, thi thử, đề cá nhân hoá…)' : 'Khoá đề: hệ thống không lấy câu của đề này cho học sinh', onClick:function(){ toggleExamLock(x); }}, lockedExamIds.indexOf(x.id) > -1 ? '🔓 Mở đề' : '🔒 Khoá đề'),
                   h('button',{type:'button', className:'sm-link-btn', onClick:function(){ setSelected(x); setDetailTab('overview'); }}, 'Xem chi tiết')
                 ))
               );
@@ -10718,13 +10958,21 @@
       var st = students.filter(function(s){ return s.id === selectedStudentId; })[0];
       return window.OPC_CURRICULUM.getUnlockedChapters(st || null, genCur);
     }, [students, selectedStudentId, genCur]);
+    // THÊM 28/10/2026 — bài đang khoá của em này (riêng em hoặc mặc định lớp) + đề đang khoá trong ngân hàng:
+    // câu thuộc chúng bị loại khỏi đề cá nhân hoá, giống hệt phía trang học sinh (prepscholar.js applyChapterFilter).
+    var accessRules = React.useMemo(function(){
+      var CURx = window.OPC_CURRICULUM;
+      if(!CURx) return { lockedLessons: [], lockedExams: [] };
+      var st = students.filter(function(s){ return s.id === selectedStudentId; })[0];
+      return { lockedLessons: CURx.getLockedLessons(st || null, genCur), lockedExams: CURx.getLockedExams(genCur) };
+    }, [students, selectedStudentId, genCur]);
     var questionPool = React.useMemo(function(){
       if(!window.OPC_CURRICULUM) return [];
       return allQuestionPool.filter(function(q){
         var c = window.OPC_CURRICULUM.inferChuong(q);
-        return !!c && selectedStudentChapters.indexOf(c) > -1;
+        return !!c && selectedStudentChapters.indexOf(c) > -1 && !window.OPC_CURRICULUM.isQuestionLocked(q, accessRules);
       });
-    }, [allQuestionPool, selectedStudentChapters.join(',')]);
+    }, [allQuestionPool, selectedStudentChapters.join(','), accessRules]);
 
     // Số câu hỏi khả dụng theo từng Phần, để hiện rõ cho giáo viên biết vì
     // sao đề tạo ra có thể thiếu Phần II/III (ví dụ ngân hàng đề chưa có
@@ -11264,7 +11512,11 @@
         sourceMode !== 'personalized' ? null : h('div',{className:'banner info', style:{marginTop:'10px'}}, h('span',null,'📚'),
           h('div',null, 'Chỉ lấy câu thuộc chương đã mở của học sinh này: ',
             h('b',null, selectedStudentChapters.length ? selectedStudentChapters.map(function(n){ var c = window.OPC_CURRICULUM && window.OPC_CURRICULUM.getChapter(n); return 'Chương ' + n + (c ? ' (' + c.name + ')' : ''); }).join(', ') : 'chưa mở chương nào'),
-            '. Câu chưa gắn chương không được dùng — đổi ở tab "📚 Quản lý chương".')),
+            '. Câu chưa gắn chương không được dùng',
+            (accessRules.lockedLessons.length || accessRules.lockedExams.length)
+              ? ' · đang bỏ qua ' + (accessRules.lockedLessons.length ? accessRules.lockedLessons.length + ' bài bị khoá' : '') + (accessRules.lockedLessons.length && accessRules.lockedExams.length ? ' và ' : '') + (accessRules.lockedExams.length ? accessRules.lockedExams.length + ' đề bị khoá' : '')
+              : '',
+            ' — đổi ở tab "📚 Quản lý chương".')),
 
         sourceMode !== 'personalized' ? null : (
           poolCounts.total === 0
@@ -11674,9 +11926,12 @@
         }
       });
       var pool = [];
+      // THÊM 28/10/2026 — không bốc câu thuộc bài đang khoá của em này hoặc đề đang khoá trong ngân hàng
+      var lockRules = CUR ? { lockedLessons: CUR.getLockedLessons(stu, drillCur), lockedExams: CUR.getLockedExams(drillCur) } : null;
       drillExams.filter(function(ex){ return ex.examKind !== 'soTruong'; }).forEach(function(ex){
         (ex.questions || []).forEach(function(q){
           if(!CUR || CUR.inferChuong(q) !== chuong) return;
+          if(lockRules && CUR.isQuestionLocked(Object.assign({}, q, { examId: ex.id }), lockRules)) return;
           var qid = ex.id + '_q' + q.index;
           if(recentRight[qid]) return;
           var nid = (q.nanoPointIds && q.nanoPointIds[0]) || null;

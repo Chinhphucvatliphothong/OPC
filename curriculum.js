@@ -16,6 +16,9 @@
  *  - Firestore "settings/curriculum": { defaultUnlockedChapters: [1,2] }
  *    — chương mở mặc định cho cả lớp. Mỗi học sinh (students/{id}) có thể
  *    có `unlockedChapters` riêng, GHI ĐÈ hoàn toàn mặc định.
+ *  - THÊM 28/10/2026: cùng doc đó còn có `defaultLockedLessons` (bài khoá mặc định
+ *    cả lớp) và `lockedExams` (đề khoá trong ngân hàng); mỗi học sinh có thể có
+ *    `lockedLessons` riêng ghi đè mặc định lớp — xem phần "KHOÁ/MỞ TỪNG BÀI" bên dưới.
  */
 (function(window){
   'use strict';
@@ -114,6 +117,101 @@
     return CHAPTERS.filter(function(c){ return c.num === num; })[0] || null;
   }
 
+  // ===== THÊM 28/10/2026 — KHOÁ/MỞ TỪNG BÀI + KHOÁ/MỞ ĐỀ TRONG NGÂN HÀNG ĐỀ =====
+  // Chương đã mở nhưng lớp chưa học hết các bài -> khoá riêng từng bài (key bài
+  // trong nano-map.js: 'nhiet-1' … 'hn-5'). Câu thuộc bài khoá không xuất hiện
+  // với học sinh. Câu CHƯA gắn bài (không suy ra được bài) vẫn theo chương như cũ.
+  //  - settings/curriculum.defaultLockedLessons: ['nhiet-3', ...] — bài khoá mặc định cả lớp.
+  //  - students/{id}.lockedLessons: danh sách bài khoá RIÊNG của em, GHI ĐÈ mặc định lớp
+  //    (giống cách unlockedChapters ghi đè defaultUnlockedChapters).
+  //  - settings/curriculum.lockedExams: [examId, ...] — đề trong ngân hàng bị khoá với
+  //    học sinh (áp dụng mọi em): hệ thống không lấy câu của đề đó để luyện tập thích ứng,
+  //    Drill, thi thử, đề cá nhân hoá… Đề đã giao sẵn cho em và lịch sử làm bài không đổi.
+  function normalizeKeys(arr){
+    if(!Array.isArray(arr)) return [];
+    var seen = {}, out = [];
+    arr.forEach(function(v){
+      var s = String(v == null ? '' : v).trim();
+      if(s && !seen[s]){ seen[s] = true; out.push(s); }
+    });
+    return out;
+  }
+
+  // Bài khoá của 1 học sinh: danh sách riêng (nếu có) ghi đè mặc định lớp; không có gì -> không khoá bài nào.
+  function getLockedLessons(student, curriculum){
+    if(student && Array.isArray(student.lockedLessons)) return normalizeKeys(student.lockedLessons);
+    if(curriculum && Array.isArray(curriculum.defaultLockedLessons)) return normalizeKeys(curriculum.defaultLockedLessons);
+    return [];
+  }
+
+  function getLockedExams(curriculum){
+    return (curriculum && Array.isArray(curriculum.lockedExams)) ? normalizeKeys(curriculum.lockedExams) : [];
+  }
+
+  // Các bài (nano-map.js BAI) thuộc 1 chương 1–4, theo thứ tự mục lục.
+  function listBai(chuong){
+    var N = window.OPC_NANO;
+    if(!N || !N.BAI) return [];
+    return N.BAI.filter(function(b){ return TOPIC_TO_CHUONG[b.chuDeKey] === chuong; });
+  }
+
+  // Chương của 1 bài (theo key bài) — null nếu không nhận ra.
+  function chuongOfBai(baiKey){
+    var N = window.OPC_NANO;
+    var b = (N && N.getBai) ? N.getBai(baiKey) : null;
+    if(b && TOPIC_TO_CHUONG[b.chuDeKey]) return TOPIC_TO_CHUONG[b.chuDeKey];
+    return chuongFromCode(baiKey);
+  }
+
+  // Mọi bài mà 1 câu hỏi thuộc về. Nhận cả 2 dạng câu: dạng THÔ trong de_thi (nanoBaiKey,
+  // nanoPointIds, dangBai) và dạng đã chuyển cho học sinh (baiKey, nanoIds). Câu gắn nhiều
+  // nano-point thuộc nhiều bài thì liệt kê đủ — chỉ cần 1 bài đang khoá là câu bị ẩn.
+  function questionLessonKeys(q){
+    var out = [];
+    if(!q) return out;
+    function add(k){ k = String(k == null ? '' : k).trim(); if(k && out.indexOf(k) < 0) out.push(k); }
+    var N = window.OPC_NANO;
+    add(q.baiKey); add(q.nanoBaiKey);
+    var ids = (Array.isArray(q.nanoIds) && q.nanoIds.length) ? q.nanoIds
+      : (Array.isArray(q.nanoPointIds) && q.nanoPointIds.length) ? q.nanoPointIds
+      : (q.nanoId ? [q.nanoId] : []);
+    if(N && N.getNano){
+      ids.forEach(function(id){ var nn = N.getNano(id); if(nn) add(nn.baiKey); });
+    }
+    // Câu thô chưa có mã bài/nano: đoán bài từ tên "Dạng bài" giống transformQuestion.
+    if(!out.length && N && q.dangBai && N.findBaiByText){
+      var cd = N.findChuDeByText ? N.findChuDeByText(q.chuDeLon) : null;
+      var b = N.findBaiByText(q.dangBai, cd ? cd.key : null);
+      if(b) add(b.key);
+    }
+    return out;
+  }
+
+  // Mã đề chứa câu: examId (câu đã gắn) hoặc tách từ mã câu "<examId>_q<index>".
+  function examIdOfQuestion(q){
+    if(!q) return null;
+    if(q.examId) return String(q.examId);
+    var id = q.id == null ? '' : String(q.id);
+    var i = id.lastIndexOf('_q');
+    return i > 0 ? id.slice(0, i) : null;
+  }
+
+  // Câu có đang bị khoá không? rules = { lockedLessons:[...], lockedExams:[...] }.
+  function isQuestionLocked(q, rules){
+    rules = rules || {};
+    var le = rules.lockedExams || [];
+    if(le.length){
+      var eid = examIdOfQuestion(q);
+      if(eid && le.indexOf(eid) > -1) return true;
+    }
+    var ll = rules.lockedLessons || [];
+    if(ll.length){
+      var ks = questionLessonKeys(q);
+      for(var i = 0; i < ks.length; i++){ if(ll.indexOf(ks[i]) > -1) return true; }
+    }
+    return false;
+  }
+
   window.OPC_CURRICULUM = {
     CHAPTERS: CHAPTERS,
     ALL_CHAPTERS: ALL_CHAPTERS,
@@ -124,6 +222,15 @@
     inferChuong: inferChuong,
     getUnlockedChapters: getUnlockedChapters,
     hasAllChapters: hasAllChapters,
-    getChapter: getChapter
+    getChapter: getChapter,
+    // THÊM 28/10/2026 — khoá/mở từng bài + khoá/mở đề trong ngân hàng
+    normalizeKeys: normalizeKeys,
+    getLockedLessons: getLockedLessons,
+    getLockedExams: getLockedExams,
+    listBai: listBai,
+    chuongOfBai: chuongOfBai,
+    questionLessonKeys: questionLessonKeys,
+    examIdOfQuestion: examIdOfQuestion,
+    isQuestionLocked: isQuestionLocked
   };
 })(window);

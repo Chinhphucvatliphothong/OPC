@@ -51,6 +51,8 @@
       // THÊM 28/9/2026 — danh sách chương admin mở RIÊNG cho em này (ghi đè
       // mặc định của lớp trong settings/curriculum). null = theo mặc định lớp.
       unlockedChapters: Array.isArray(real.unlockedChapters) ? real.unlockedChapters : null,
+      // THÊM 28/10/2026 — bài admin khoá RIÊNG cho em này (ghi đè mặc định lớp). null = theo mặc định lớp.
+      lockedLessons: Array.isArray(real.lockedLessons) ? real.lockedLessons : null,
       // THÊM 30/9/2026 — mục luyện đề HSG tỉnh/TP ('hsg') / Olympic
       // ('olympic') thầy đã mở riêng cho em này (admin tab "🏆 HSG & Olympic").
       specialAccess: Array.isArray(real.specialAccess) ? real.specialAccess : [],
@@ -792,12 +794,22 @@
       ? window.OPC_CURRICULUM.getUnlockedChapters({ unlockedChapters: student.unlockedChapters }, curriculum.data)
       : [];
     var unlockedKey = unlockedChapters.join(',');
+    // THÊM 28/10/2026 — bài đang khoá (riêng em hoặc mặc định lớp) + đề đang khoá trong ngân hàng
+    var lockedLessons = (curriculum.loaded && student && window.OPC_CURRICULUM)
+      ? window.OPC_CURRICULUM.getLockedLessons({ lockedLessons: student.lockedLessons }, curriculum.data)
+      : [];
+    var lockedExams = (curriculum.loaded && window.OPC_CURRICULUM)
+      ? window.OPC_CURRICULUM.getLockedExams(curriculum.data)
+      : [];
+    var accessKey = unlockedKey + '|' + lockedLessons.join(',') + '|' + lockedExams.join(',');
     var hasAllChapters = !!window.OPC_CURRICULUM && window.OPC_CURRICULUM.hasAllChapters(unlockedChapters);
     React.useEffect(function(){
       if(!window.PrepScholarEngine.setUnlockedChapters) return;
+      // SỬA 28/10/2026 — đặt luật khoá bài/đề TRƯỚC, rồi mới lọc theo chương (mỗi hàm đều lọc lại ngân hàng)
+      if(window.PrepScholarEngine.setAccessRules) window.PrepScholarEngine.setAccessRules({ lockedLessons: lockedLessons, lockedExams: lockedExams });
       window.PrepScholarEngine.setUnlockedChapters(unlockedChapters);
       setBankVersion(function(v){ return v + 1; });
-    }, [unlockedKey]);
+    }, [accessKey]);
     function chapterNamesText(list){
       if(!window.OPC_CURRICULUM || !list.length) return 'chưa có chương nào';
       return list.map(function(n){ var c = window.OPC_CURRICULUM.getChapter(n); return 'Chương ' + n + (c ? ' (' + c.name + ')' : ''); }).join(', ');
@@ -1464,6 +1476,11 @@
     function startNanoDrill(nanoId, nanoName){
       var questions = window.PrepScholarEngine.createNanoDrill(nanoId, 5);
       if(!questions.length){
+        var nanoObj = window.OPC_NANO && window.OPC_NANO.getNano ? window.OPC_NANO.getNano(nanoId) : null;
+        if(nanoObj && window.PrepScholarEngine.isBaiLocked && window.PrepScholarEngine.isBaiLocked(nanoObj.baiKey)){
+          alert('🔒 Bài chứa Tag này chưa được mở — chờ thầy cô mở bài.');
+          return;
+        }
         alert('Ngân hàng đề chưa có câu hỏi nào gắn Tag này — thầy cô cần nạp thêm đề.');
         return;
       }
@@ -1947,6 +1964,10 @@
     function startBaiDrill(baiKey, baiName){
       var questions = window.PrepScholarEngine.createBaiDrill(baiKey, 6);
       if(!questions.length){
+        if(window.PrepScholarEngine.isBaiLocked && window.PrepScholarEngine.isBaiLocked(baiKey)){
+          alert('🔒 Bài này chưa được mở — chờ thầy cô mở bài.');
+          return;
+        }
         alert('Ngân hàng đề chưa có câu hỏi nào cho Bài này — thầy cô cần nạp thêm đề.');
         return;
       }
@@ -3611,7 +3632,8 @@
             var baiStatus = window.PrepScholarEngine.buildBaiMasteryStatus(nanoMastery);
             // SỬA 28/9/2026: chỉ đẩy lên "Cần luyện ngay" các Tag thuộc chương đã mở.
             var redTags = window.PrepScholarEngine.getRedTags(nanoMastery, 50).filter(function(n){
-              return window.PrepScholarEngine.isTopicUnlocked(n.chuDeKey);
+              return window.PrepScholarEngine.isTopicUnlocked(n.chuDeKey)
+                && !(window.PrepScholarEngine.isBaiLocked && window.PrepScholarEngine.isBaiLocked(n.baiKey)); // THÊM 28/10/2026 — bỏ Tag thuộc bài đang khoá
             }).slice(0, 5);
             var STATUS_META = {
               green: { label: '🔒 Đã vững — tạm khoá', color: 'var(--good)', bg: 'color-mix(in srgb, var(--good) 10%, transparent)' },
@@ -3761,7 +3783,9 @@
               h('div', { className: 'ps-topic-grid' },
                 baiStatus.map(function(b){
                   var meta = STATUS_META[b.status];
-                  var baiLocked = !window.PrepScholarEngine.isTopicUnlocked(b.chuDeKey); // THÊM 28/9/2026
+                  var chapterClosed = !window.PrepScholarEngine.isTopicUnlocked(b.chuDeKey); // THÊM 28/9/2026
+                  var lessonClosed = !chapterClosed && !!(window.PrepScholarEngine.isBaiLocked && window.PrepScholarEngine.isBaiLocked(b.key)); // THÊM 28/10/2026 — bài bị thầy cô khoá
+                  var baiLocked = chapterClosed || lessonClosed;
                   return h('div', { key: b.key, className: 'ps-topic-card', style: { opacity: (b.status === 'green' || baiLocked) ? 0.7 : 1 } },
                     h('div', null,
                       h('div', { className: 'ps-topic-card-top' },
@@ -3775,7 +3799,7 @@
                     h('div', { className: 'ps-topic-card-actions' },
                       h('span', { style: { fontSize: '0.78rem', color: 'var(--ink-2)' } }, b.chuDeName),
                       baiLocked
-                        ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, '🔒 Chương chưa mở')
+                        ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, lessonClosed ? '🔒 Bài chưa mở — chờ thầy cô mở' : '🔒 Chương chưa mở')
                         : b.status === 'green'
                         ? h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, 'Có thể ôn lại tuỳ chọn')
                         : h('button', {

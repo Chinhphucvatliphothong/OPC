@@ -55,12 +55,38 @@
   // câu chương khoá trong khoảnh khắc chờ tải cấu hình.
   var ALL_QUESTIONS = [];
   var UNLOCKED_CHAPTERS = [];
+  // THÊM 28/10/2026 — KHOÁ/MỞ TỪNG BÀI + KHOÁ/MỞ ĐỀ (xem curriculum.js). Ngoài điều kiện
+  // "chương đã mở", câu còn phải KHÔNG thuộc bài đang khoá của em này và KHÔNG nằm trong đề
+  // đang khoá. Mặc định rỗng (không khoá gì) — trang học sinh gọi setAccessRules ngay sau khi
+  // đọc xong cấu hình; trước lúc đó UNLOCKED_CHAPTERS = [] nên vẫn chưa lộ câu nào.
+  var LOCKED_LESSONS = [];
+  var LOCKED_EXAMS = [];
 
   function applyChapterFilter(){
     QUESTION_BANK.length = 0;
+    var C = window.OPC_CURRICULUM;
+    var rules = { lockedLessons: LOCKED_LESSONS, lockedExams: LOCKED_EXAMS };
+    var useRules = !!(C && C.isQuestionLocked && (LOCKED_LESSONS.length || LOCKED_EXAMS.length));
     ALL_QUESTIONS.forEach(function(q){
-      if(q && q.chuong && UNLOCKED_CHAPTERS.indexOf(q.chuong) > -1) QUESTION_BANK.push(q);
+      if(!(q && q.chuong && UNLOCKED_CHAPTERS.indexOf(q.chuong) > -1)) return;
+      if(useRules && C.isQuestionLocked(q, rules)) return;
+      QUESTION_BANK.push(q);
     });
+  }
+
+  // rules = { lockedLessons:[baiKey...], lockedExams:[examId...] }
+  function setAccessRules(rules){
+    var C = window.OPC_CURRICULUM;
+    var norm = function(a){ return C && C.normalizeKeys ? C.normalizeKeys(a) : (Array.isArray(a) ? a.slice() : []); };
+    LOCKED_LESSONS = norm(rules && rules.lockedLessons);
+    LOCKED_EXAMS = norm(rules && rules.lockedExams);
+    applyChapterFilter();
+    return { lockedLessons: LOCKED_LESSONS.slice(), lockedExams: LOCKED_EXAMS.slice() };
+  }
+
+  // Bài (key nano-map.js) có đang bị thầy cô khoá với em này không.
+  function isBaiLocked(baiKey){
+    return !!baiKey && LOCKED_LESSONS.indexOf(baiKey) > -1;
   }
 
   function setUnlockedChapters(list){
@@ -1099,6 +1125,8 @@
     setUnlockedChapters: setUnlockedChapters,
     getUnlockedChapters: function(){ return UNLOCKED_CHAPTERS.slice(); },
     isTopicUnlocked: isTopicUnlocked,
+    setAccessRules: setAccessRules, // THÊM 28/10/2026 — khoá/mở từng bài + khoá/mở đề
+    isBaiLocked: isBaiLocked,
     MOET_STRUCTURE: MOET_STRUCTURE,
     getRollingExamShortages: getRollingExamShortages,
     createRollingExam: createRollingExam,

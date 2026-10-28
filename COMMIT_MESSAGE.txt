@@ -1,13 +1,16 @@
-FaradayAI: ĐGNL mini test thích ứng + xem lại câu sai, ma trận đề Bộ GD, AI tự giải, tab Đề Tổ (xuất 3 file Word)
+Quản lý chương: khoá/mở từng bài + khoá/mở đề trong ngân hàng đề
 
-- dgnl.js: sửa lỗi học sinh không vào được (khung danh sách dùng class không có CSS); mini test thích ứng theo phần thi/nano; xem lại câu sai trong lịch sử; gỡ thẻ %[M1][..][..] khi hiển thị
-- prepscholar-ui.js, admin.html (bản in PDF): gỡ thẻ %[M1][..][..] còn trong dữ liệu cũ khi hiển thị đề
-- admin.html: parseTexBank gỡ đúng thẻ/chú thích khỏi đề, đọc % @nano-dgnl và cờ AI; cấu trúc đề "Theo ma trận đề"; tab "Đề Tổ"
-- exam-matrix.js (MỚI): ma trận chủ đề × Phần × mức độ, chuẩn Bộ GD 18+4+6
-- api/ai-tex.js: AI tự giải (lời giải chi tiết mọi câu, tự tìm đáp án khi đề thiếu), nano tự tạo cho ĐGNL, maxDuration 60s
-- api/ai-verify.js (MỚI): AI giải lại độc lập, gắn cờ câu lệch/không chắc
-- admin-aiimport.js: tuỳ chọn AI tự giải + giải lại lần 2 (bật mặc định, mọi loại đề)
-- opc-live-data.js: loadSpecialExam trả thêm nano
-- to-docx.js, to-template.js, admin-to.js (MỚI): soạn đề ôn luyện theo kế hoạch Tổ từ ngân hàng đề, bảng duyệt + checklist, xuất 3 file Word theo mẫu mau_to.docx (không cần Python/pandoc)
+- Khoá/mở từng bài (theo key bài trong nano-map.js): mặc định lớp
+  (settings/curriculum.defaultLockedLessons) và riêng từng em
+  (students/{id}.lockedLessons, ghi đè mặc định lớp).
+- Khoá/mở đề trong ngân hàng (settings/curriculum.lockedExams): hệ thống không
+  lấy câu của đề khoá cho luyện tập thích ứng, Drill, thi thử, đề cá nhân hoá,
+  đề tự sinh cho lớp, phiếu ôn, Chẩn đoán 5 phút.
+- admin.html: mục "Khoá/mở từng bài" và "Khoá/mở đề" ở tab Quản lý chương;
+  nút 🔒 Khoá đề / 🔓 Mở đề ở danh sách Ngân hàng đề; lọc ở đề cá nhân hoá,
+  Drill, báo cáo phụ huynh, đề tự sinh, phiếu ôn, Chẩn đoán 5 phút.
+- curriculum.js: getLockedLessons/getLockedExams/isQuestionLocked...
+- prepscholar.js: setAccessRules, isBaiLocked; lọc ngân hàng theo bài/đề khoá.
+- prepscholar-ui.js: áp luật khoá cho học sinh, hiện 🔒 ở thẻ Bài.
 
 Co-Authored-By: Claude <noreply@anthropic.com>
