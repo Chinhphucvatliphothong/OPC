@@ -19,7 +19,7 @@
   // LaTeX trong đề → HTML (KaTeX nếu có)
   function tex(t){
     // SỬA 27/10/2026 — bỏ comment LaTeX (dòng tag %[M3][..][..], % @nano…) còn sót trong dữ liệu cũ; giữ \% (phần trăm thật)
-    t = String(t || '').replace(/(^|[^\\])%[^\n]*/g, '$1');
+    t = String(t || '').replace(/%\s*\[M[1-4]\]\s*\[[^\]\n]*\]\s*\[[^\]\n]*\]/gi, '').replace(/(^|\n)[ \t]*%[^\n]*/g, '$1').replace(/%\s*(?:@nano[\w-]*\s*:|AI_TU_GIAI|AI_CAN_KIEM_TRA|CHUA_CO_DAP_AN)[^\n]*/gi, '');
     var s = String(t || '').replace(/\\textbf\{([^{}]*)\}/g, '**$1**').replace(/\\textit\{([^{}]*)\}/g, '$1').replace(/\\\\/g, '\n').replace(/~/g, ' ');
     var out = '';
     s.split(/(\$\$[\s\S]+?\$\$|\$[^$]+\$)/g).forEach(function(p){

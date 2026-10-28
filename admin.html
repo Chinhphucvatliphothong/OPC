@@ -1221,6 +1221,11 @@
 <script src="/admin-ops.js"></script> <!-- THÊM 20/10/2026 — Việc hôm nay · Học phí · Link phụ huynh -->
 <script src="/faraday-extras.js"></script> <!-- THÊM 23/10/2026 — trình phát bài giảng FaradayAI + giấy khen (dùng chung với trang học sinh) -->
 <script src="/admin-growth.js"></script>
+<!-- THÊM 27/10/2026 — Đề Tổ: soạn đề ôn luyện theo kế hoạch Tổ + xuất 3 file Word -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="/to-template.js"></script>
+<script src="/to-docx.js"></script>
+<script src="/admin-to.js"></script>
 <script src="/admin-sales.js"></script>
 <script src="/admin-cleanup.js"></script>
 <script src="/exam-matrix.js"></script> <!-- THÊM 27/10/2026 — ma trận đề kiểu Bộ GD cho đề cá nhân hóa -->
@@ -1482,6 +1487,8 @@
     });
   }
   function tokenizeLatexRunsPDF(str){
+    str = String(str == null ? '' : str).replace(/%\s*\[M[1-4]\]\s*\[[^\]\n]*\]\s*\[[^\]\n]*\]/gi, '').replace(/(^|\n)[ \t]*%[^\n]*/g, '$1'); // SỬA 28/10/2026 — dữ liệu cũ còn thẻ %[M1][..][..] ở đầu đề: gỡ khi hiển thị
+    
     var i = 0, len = str.length;
     function parseNodes(stopAtBrace){
       var nodes = []; var buf = '';
@@ -4730,7 +4737,14 @@
   // 'essay') thay vì câu trắc nghiệm rỗng. Ngân hàng Vật lí 12 giữ nguyên.
   // THÊM 27/10/2026 — gỡ comment LaTeX (%...) khỏi nội dung hiển thị: trước đây dòng tag "%[M3][Phần thi][Dạng bài]" nằm ngay
   // sau \begin{ex} bị lẫn vào ĐỀ BÀI và hiện thô cho học sinh. Giữ nguyên \% (dấu phần trăm thật).
-  function stripTexComments(t){ return String(t || '').replace(/(^|[^\\])%[^\n]*/g, '$1').replace(/\n{3,}/g, '\n\n').trim(); }
+  // SỬA 28/10/2026 — chỉ gỡ ĐÚNG thẻ %[Mx][..][..] + các dòng chú thích; KHÔNG xoá phần đề đứng cùng dòng với thẻ (AI hay viết liền 1 dòng)
+  function stripTexComments(t){
+    t = String(t || '');
+    t = t.replace(/%\s*\[M[1-4]\]\s*\[[^\]\n]*\]\s*\[[^\]\n]*\]/gi, '');                                   // thẻ phân loại %[M1][Chủ đề][Dạng bài]
+    t = t.replace(/(^|\n)[ \t]*%[^\n]*/g, '$1');                                                          // dòng chú thích nguyên dòng
+    t = t.replace(/%\s*(?:@nano[\w-]*\s*:|AI_TU_GIAI|AI_CAN_KIEM_TRA|CHUA_CO_DAP_AN)[^\n]*/gi, '');       // dấu vết của AI/nano nằm giữa dòng
+    return t.replace(/\n{3,}/g, '\n\n').trim();
+  }
   function parseTexBank(content, filename, opts){
     var allowEssay = !!(opts && opts.allowEssay);
     // THÊM 25/9/2026: gỡ trước cú pháp \immini{ \begin{ex}...\end{ex} }{hình}
@@ -12151,6 +12165,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='prepscholar' && 'active'), onClick:function(){ setTab('prepscholar'); }}, '⚡ Giám sát thích ứng PrepScholar'),
         h('button',{type:'button', className:cx('tab-btn', tab==='exambank' && 'active'), onClick:function(){ setTab('exambank'); }}, 'Ngân hàng đề & câu hỏi'),
         h('button',{type:'button', className:cx('tab-btn', tab==='generator' && 'active'), onClick:function(){ setTab('generator'); }}, '🎯 Tạo đề cá nhân hóa'),
+        window.OPC_TO ? h('button',{type:'button', className:cx('tab-btn', tab==='to' && 'active'), onClick:function(){ setTab('to'); }}, '📝 Đề Tổ') : null,
         h('button',{type:'button', className:cx('tab-btn', tab==='curriculum' && 'active'), onClick:function(){ setTab('curriculum'); }}, '📚 Quản lý chương'),
         h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
         h('button',{type:'button', className:cx('tab-btn', tab==='room' && 'active'), onClick:function(){ setTab('room'); }}, '🎓 Phòng dạy'),
@@ -12166,6 +12181,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='pricing' && 'active'), onClick:function(){ setTab('pricing'); }}, '💰 Gói dịch vụ'),
         h('button',{type:'button', className:cx('tab-btn', tab==='special' && 'active'), onClick:function(){ setTab('special'); }}, '🏆 HSG · Olympic · ĐGNL')
       ),
+      (window.OPC_TO && tab === 'to') ? h(window.OPC_TO.Panel, {fireToast:fireToast}) :
       (window.OPC_SALES_ADMIN && tab === 'sales') ? h(window.OPC_SALES_ADMIN.SalesPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'mock') ? h(window.OPC_GROWTH.MockPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'lessons') ? h(window.OPC_GROWTH.LessonsPanel, {fireToast:fireToast}) :

@@ -81,7 +81,7 @@
     var bs = React.useState(''); var busy = bs[0], setBusy = bs[1];
     var ts = React.useState(''); var tex = ts[0], setTex = ts[1];
     var es = React.useState(''); var extra = es[0], setExtra = es[1];
-    var sv = React.useState(props.mode === 'dgnl'); var solve = sv[0], setSolve = sv[1];   // AI tự giải + lời giải + nano
+    var sv = React.useState(true); var solve = sv[0], setSolve = sv[1];   // AI tự giải + lời giải chi tiết (SỬA 28/10/2026: bật mặc định cho cả đề Vật lí 12; nano tự tạo chỉ ở đề ĐGNL)
     var vf = React.useState(true); var verify = vf[0], setVerify = vf[1];                    // AI giải lại độc lập để kiểm tra
     var stopRef = React.useRef(false);
     function nanoNames(t){ var out = [], re = /%\s*@nano-dgnl\s*:\s*(.+)/gi, m; while((m = re.exec(String(t || ''))) !== null){ var n = m[1].trim(); if(n && out.indexOf(n) < 0) out.push(n); } return out; }
@@ -113,7 +113,7 @@
         var r = null, tries = 0;
         while(!r && tries < 4){
           try{
-            var resp = await fetch('/api/ai-tex', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: imgs, chuDe: props.chuDe || '', part: part, extra: extra, mode: props.mode || '', solve: solve, nanoList: solve ? nanoNames(out.map(function(x){ return x && x.tex; }).join('\n')).slice(-80) : [] }) });
+            var resp = await fetch('/api/ai-tex', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: imgs, chuDe: props.chuDe || '', part: part, extra: extra, mode: props.mode || '', solve: solve, nanoList: (solve && props.mode === 'dgnl') ? nanoNames(out.map(function(x){ return x && x.tex; }).join('\n')).slice(-80) : [] }) });
             var j = await resp.json().catch(function(){ return {}; });
             if(resp.status === 429){ tries++; setBusy('Google đang giới hạn lượt — chờ 40 giây rồi chép tiếp trang ' + (i + 1) + '…'); await new Promise(function(ok){ setTimeout(ok, 40000); }); continue; }
             if(!resp.ok) throw new Error(j.error || ('Lỗi ' + resp.status));
@@ -178,7 +178,7 @@
           (pages && !busy && errs) ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ var k = results.findIndex(function(r){ return r && r.err; }); run(k < 0 ? 0 : k); } }, '↻ Chép lại từ trang lỗi') : null,
           busy && /AI đang|giới hạn/.test(busy) ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ stopRef.current = true; } }, '⏹ Dừng') : null),
         pages ? h('div', { style: { display: 'flex', gap: '16px', flexWrap: 'wrap', margin: '8px 0 0', fontSize: '0.84rem' } },
-          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' } }, h('input', { type: 'checkbox', checked: solve, disabled: !!busy, onChange: function(e){ setSolve(e.target.checked); } }), 'AI tự giải: viết lời giải chi tiết, tự tìm đáp án nếu đề thiếu, tự tạo nano'),
+          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' } }, h('input', { type: 'checkbox', checked: solve, disabled: !!busy, onChange: function(e){ setSolve(e.target.checked); } }), (props.mode === 'dgnl' ? 'AI tự giải: viết lời giải chi tiết, tự tìm đáp án nếu đề thiếu, tự tạo nano' : 'AI tự giải: viết lời giải chi tiết, tự tìm đáp án nếu đề thiếu')),
           solve ? h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' } }, h('input', { type: 'checkbox', checked: verify, disabled: !!busy, onChange: function(e){ setVerify(e.target.checked); } }), 'AI giải lại lần 2 độc lập để kiểm tra đáp án (khuyên bật, chậm hơn ~2×)') : null) : null,
         busy ? h('div', { className: 'banner info', style: { margin: '10px 0' } }, h('span', null, '⏳'), h('div', null, busy)) : null,
         pages ? h('div', { style: { display: 'flex', gap: '6px', overflowX: 'auto', margin: '10px 0', paddingBottom: '4px' } },
@@ -192,7 +192,7 @@
           h('div', null,
             h('div', { style: { fontSize: '0.82rem', fontWeight: 700, marginBottom: '4px' } }, '📄 .tex (' + nQ + ' câu · ' + done + '/' + pages.length + ' trang' + (noKey ? ' · ⚠ ' + noKey + ' câu chưa có đáp án — tìm "CHUA_CO_DAP_AN" để thêm \\True' : '') + ')'),
             (solve && nQ) ? h('div', { style: { fontSize: '0.8rem', margin: '0 0 6px', lineHeight: 1.6 } },
-              '🤖 AI tự giải ' + nSolved + ' câu (đề không có đáp án) · 🔬 ' + nNano + '/' + nQ + ' câu đã có nano',
+              '🤖 AI tự giải ' + nSolved + ' câu (đề không có đáp án)' + (props.mode === 'dgnl' ? ' · 🔬 ' + nNano + '/' + nQ + ' câu đã có nano' : ''),
               nCheck ? h('div', { style: { color: 'var(--critical)', fontWeight: 700 } }, '⚠ ' + nCheck + ' câu cần thầy/cô xem lại — tìm \"AI_CAN_KIEM_TRA\" trong khung bên dưới (AI giải lại ra đáp án khác hoặc không chắc). Các câu còn lại hai lượt giải đều trùng nhau.') : (verify && done ? h('div', { style: { color: 'var(--good)', fontWeight: 700 } }, '✓ Hai lượt giải độc lập cho kết quả trùng nhau ở mọi câu đã kiểm tra.') : null)) : null,
             h('textarea', { value: tex, onChange: function(e){ setTex(e.target.value); }, spellCheck: false, style: { width: '100%', boxSizing: 'border-box', height: '380px', fontFamily: '"IBM Plex Mono",monospace', fontSize: '0.8rem', lineHeight: 1.5, padding: '8px', borderRadius: '8px', border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)' } })),
           figAll.length ? h('div', null,

@@ -120,6 +120,8 @@
     });
   }
   function tokenizeLatexRuns(str){
+    str = String(str == null ? '' : str).replace(/%\s*\[M[1-4]\]\s*\[[^\]\n]*\]\s*\[[^\]\n]*\]/gi, '').replace(/(^|\n)[ \t]*%[^\n]*/g, '$1'); // SỬA 28/10/2026 — dữ liệu cũ còn thẻ %[M1][..][..] ở đầu đề: gỡ khi hiển thị
+    
     var i = 0, len = str.length;
     function parseNodes(stopAtBrace){
       var nodes = [];
