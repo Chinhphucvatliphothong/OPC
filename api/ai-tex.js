@@ -61,8 +61,10 @@ var SOLVE_ADDON = [
   '- MỌI câu đều phải có \\loigiai{...} CHI TIẾT bằng tiếng Việt: nêu dữ kiện, công thức/quy tắc dùng, từng bước biến đổi và thay số (có đơn vị), kết luận chọn phương án nào; ngắn gọn nêu vì sao các phương án còn lại sai. Công thức đặt trong $...$, số thập phân dùng {,}.',
   '- Nếu đề CÓ đáp án/lời giải sẵn: dùng đúng đáp án của đề (đặt \\True), viết lại lời giải rõ từng bước cho học sinh hiểu.',
   '- Nếu đề KHÔNG có đáp án: TỰ GIẢI cẩn thận từng bước (kiểm tra lại phép tính, đơn vị, điều kiện), đặt \\True vào phương án đúng và thêm dòng \"% AI_TU_GIAI\" ngay trước \\end{ex}. Chỉ khi hình/chữ mờ không thể giải thì không đặt \\True, ghi \"% CHUA_CO_DAP_AN\" và nêu lý do trong notes.',
-  '- NANO (bắt buộc cho mỗi câu): ngay dòng liền sau \\begin{ex}%[...] thêm 1 dòng \"% @nano-dgnl: <Tên nano>\". Nano = đơn vị kiến thức nhỏ nhất cần có để làm đúng câu đó (vd \"Nhiệt nóng chảy\", \"Xác suất có điều kiện\", \"Đọc biểu đồ cột\", \"Suy luận từ bảng số liệu\"). Tên 2–6 từ, danh từ chuẩn theo chương trình, KHÔNG kèm số/mã. Nếu cùng kiến thức với một nano đã có trong danh sách được cung cấp thì dùng ĐÚNG tên đó, chỉ đặt tên mới khi thật sự khác.'
 ].join('\n');
+
+// Nano tự tạo CHỈ dành cho đề ĐGNL (đề Vật lí 12 thường dùng danh mục nano-point có sẵn của app)
+var NANO_ADDON = '\n' + '- NANO (bắt buộc cho mỗi câu): ngay dòng liền sau \\begin{ex}%[...] thêm 1 dòng \"% @nano-dgnl: <Tên nano>\". Nano = đơn vị kiến thức nhỏ nhất cần có để làm đúng câu đó (vd \"Nhiệt nóng chảy\", \"Xác suất có điều kiện\", \"Đọc biểu đồ cột\", \"Suy luận từ bảng số liệu\"). Tên 2–6 từ, danh từ chuẩn theo chương trình, KHÔNG kèm số/mã. Nếu cùng kiến thức với một nano đã có trong danh sách được cung cấp thì dùng ĐÚNG tên đó, chỉ đặt tên mới khi thật sự khác.';
 
 function clampStr(v, max){ return String(v == null ? '' : v).slice(0, max); }
 
@@ -82,8 +84,8 @@ export default async function handler(req, res){
     parts.push({ inlineData: { mimeType: im.mime || 'image/jpeg', data: String(im.data) } });
   });
   var hint = [];
-  var solve = body.solve === true || (body.solve == null && body.mode === 'dgnl');
-  if(solve){
+  var solve = body.solve !== false; // SỬA 28/10/2026 — mặc định BẬT cho mọi loại đề (Vật lí 12, ĐGNL, HSG): lời giải chi tiết + tự giải khi đề thiếu đáp án
+  if(solve && body.mode === 'dgnl'){
     var nl = Array.isArray(body.nanoList) ? body.nanoList.slice(0, 80).map(function(x){ return clampStr(x, 60); }).filter(Boolean) : [];
     hint.push(nl.length ? 'Danh sách nano ĐÃ CÓ (ưu tiên dùng lại đúng tên): ' + nl.join(' | ') : 'Chưa có nano nào — hãy đặt tên nano chuẩn, ngắn.');
   }
@@ -98,7 +100,7 @@ export default async function handler(req, res){
   var model = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
   var payload = {
-    systemInstruction: { role: 'system', parts: [{ text: solve ? SYSTEM_INSTRUCTION + SOLVE_ADDON : SYSTEM_INSTRUCTION }] },
+    systemInstruction: { role: 'system', parts: [{ text: solve ? SYSTEM_INSTRUCTION + SOLVE_ADDON + (body.mode === 'dgnl' ? NANO_ADDON : '') : SYSTEM_INSTRUCTION }] },
     contents: [{ role: 'user', parts: parts }],
     generationConfig: { temperature: 0.1, maxOutputTokens: solve ? 24000 : 16000, responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: solve ? 'medium' : 'low' } }
   };
