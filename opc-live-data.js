@@ -631,6 +631,7 @@ async function loadSpecialExamList(track){
       var ex = d.data() || {};
       var qs = ex.questions || [];
       list.push({ id: d.id, title: ex.title || 'Đề không tên', bai: ex.bai || '', chuDe: ex.chuDe || '',
+        khoi: Number(ex.khoi) || 12, // THÊM 28/10/2026 — khối của đề HSG/Olympic (thiếu = 12)
         total: qs.length, essayCount: qs.filter(function(q){ return q.type === 'essay'; }).length, minutes: ex.minutes || null,
         images: ex.images || [], questions: qs });
     });

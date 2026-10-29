@@ -1179,6 +1179,11 @@
           onNext(snap.exists() ? snap.data() : null);
         }, onErr);
       },
+      // THÊM 28/10/2026 — chương mở mặc định riêng cho khối 10/11 (khối 12 vẫn dùng defaultUnlockedChapters ở trên)
+      saveDefaultForKhoi: function(khoi, chapters){
+        var m = {}; m[String(khoi)] = chapters;
+        return setDoc(doc(db, 'settings', 'curriculum'), { defaultUnlockedByKhoi: m, updatedAt: serverTimestamp() }, { merge: true });
+      },
       saveDefault: function(chapters){
         return setDoc(doc(db, 'settings', 'curriculum'), { defaultUnlockedChapters: chapters, updatedAt: serverTimestamp() }, { merge: true });
       },
@@ -4198,7 +4203,12 @@
   // gốc cho việc này vì CHU_DE_LIST còn được dùng làm danh sách chuyên đề
   // THẬT ở bộ lọc "Tạo đề cá nhân hóa" — thêm giá trị giả vào đó sẽ khiến
   // admin chọn nhầm một mục luôn trả về rỗng khi tạo đề cho học sinh.
-  var CHU_DE_UPLOAD_LIST = CHU_DE_LIST.concat(['Tổng hợp nhiều chuyên đề']);
+  // THÊM 28/10/2026 — chủ đề của Vật lí 10 & 11 (SGK Kết nối tri thức) — tên PHẢI khớp CHU_DE trong nano-map.js.
+  var CHU_DE_LIST_K10 = ["Mở đầu (VL10)", "Động học (VL10)", "Động lực học (VL10)", "Năng lượng, công, công suất (VL10)", "Động lượng (VL10)", "Chuyển động tròn đều (VL10)", "Biến dạng vật rắn – Áp suất chất lỏng (VL10)"];
+  var CHU_DE_LIST_K11 = ["Dao động (VL11)", "Sóng (VL11)", "Điện trường (VL11)", "Dòng điện, mạch điện (VL11)"];
+  // Danh sách chuyên đề theo KHỐI (10/11/12) cho form nạp đề.
+  function chuDeListFor(khoi){ return Number(khoi) === 10 ? CHU_DE_LIST_K10 : (Number(khoi) === 11 ? CHU_DE_LIST_K11 : CHU_DE_LIST); }
+  var CHU_DE_UPLOAD_LIST = CHU_DE_LIST.concat(CHU_DE_LIST_K10, CHU_DE_LIST_K11, ['Tổng hợp nhiều chuyên đề']);
   var MUC_DO_LIST = [
     {v:1, code:'M1', label:'M1 · Nhận biết', desc:'Hỏi định nghĩa, khái niệm, công thức cơ bản', color:'#0369a1'},
     {v:2, code:'M2', label:'M2 · Thông hiểu', desc:'Hiểu bản chất, tính toán 1 bước đơn giản, đọc đồ thị cơ bản', color:'#15803d'},
@@ -5003,7 +5013,7 @@
     var suggestedChuDe = CHU_DE_LIST[0];
     if(stats.topics.length > 1){
       suggestedChuDe = 'Tổng hợp nhiều chuyên đề';
-    } else if(stats.topics.length === 1 && CHU_DE_LIST.indexOf(stats.topics[0]) > -1){
+    } else if(stats.topics.length === 1 && (CHU_DE_LIST.indexOf(stats.topics[0]) > -1 || CHU_DE_LIST_K10.indexOf(stats.topics[0]) > -1 || CHU_DE_LIST_K11.indexOf(stats.topics[0]) > -1)){
       suggestedChuDe = stats.topics[0];
     } else {
       var fullText = ((filename||'') + ' ' + (titleCand||'') + ' ' + stats.topics.join(' ')).toLowerCase();
@@ -5022,8 +5032,15 @@
     var distinctLevelCount = (stats.m1 ? 1 : 0) + (stats.m2 ? 1 : 0) + (stats.m3 ? 1 : 0) + (stats.m4 ? 1 : 0);
     var suggestedMucDo = distinctLevelCount > 1 ? 0 : (stats.m1 ? 1 : stats.m2 ? 2 : stats.m3 ? 3 : stats.m4 ? 4 : 2);
 
+    // THÊM 28/10/2026 — đoán KHỐI từ tag chủ đề trong file: mọi chủ đề đều thuộc khối 10 (hoặc 11) -> gợi ý khối đó
+    var suggestedKhoi = null;
+    if(stats.topics.length){
+      if(stats.topics.every(function(t){ return CHU_DE_LIST_K10.indexOf(t) > -1; })) suggestedKhoi = 10;
+      else if(stats.topics.every(function(t){ return CHU_DE_LIST_K11.indexOf(t) > -1; })) suggestedKhoi = 11;
+    }
     return {
       title: titleCand || (filename ? filename.replace(/\.tex$/i, '').replace(/[_-]+/g, ' ') : ''),
+      suggestedKhoi: suggestedKhoi,
       suggestedChuDe: suggestedChuDe,
       suggestedMucDo: suggestedMucDo,
       stats: stats,
@@ -5100,7 +5117,7 @@
 
   // ================= Students panel & KPI Engine =================
   function blankStudentForm(){
-    return {name:'', username:'', password:'123', email:'', phone:'', school:'', parentName:'', parentPhone:'', parentEmail:'', targetScore:9.0};
+    return {name:'', username:'', password:'123', email:'', phone:'', school:'', parentName:'', parentPhone:'', parentEmail:'', targetScore:9.0, khoi:12};
   }
 
   // THÊM 29/9/2026 — các chuyên đề có số liệu mastery THẬT của 1 học sinh,
@@ -6195,6 +6212,7 @@
         password: form.password.trim() || '123', email: form.email.trim(), phone: form.phone.trim(),
         school: form.school.trim() || 'Chưa cập nhật', completedExamsCount: 0, averageScore: 0, highestScore: 0,
         targetScore: Number(form.targetScore) || 9.0, status: 'active',
+        khoi: Number(form.khoi) || 12, // THÊM 28/10/2026 — khối 10/11/12
         parentName: form.parentName.trim() || 'Chưa cập nhật', parentPhone: form.parentPhone.trim(),
         parentEmail: form.parentEmail.trim(), referralCode: code, commissionBalance: 0
       };
@@ -6395,7 +6413,7 @@
       : h('div',{className:'sm-table-wrap'},
           h('table',{className:'sm-table'},
             h('thead',null, h('tr',null,
-              h('th',{scope:'col'},'Học sinh'), h('th',{scope:'col'},'Trường THPT'), h('th',{scope:'col', style:{textAlign:'center'}},'Đề đã làm'),
+              h('th',{scope:'col'},'Học sinh'), h('th',{scope:'col'},'Trường THPT'), h('th',{scope:'col', style:{textAlign:'center'}},'Khối'), h('th',{scope:'col', style:{textAlign:'center'}},'Đề đã làm'),
               h('th',{scope:'col', style:{textAlign:'center'}},'Hoàn thành'),
               h('th',{scope:'col', style:{textAlign:'center'}},'Điểm TB'), h('th',{scope:'col', style:{textAlign:'center'}},'Cao nhất'),
               h('th',{scope:'col', style:{textAlign:'center'}},'Trạng thái'), h('th',{scope:'col', style:{textAlign:'right'}},'Chi tiết'))),
@@ -6406,6 +6424,10 @@
                   h('div',{className:'sm-avatar'}, initials(s.name)),
                   h('div',null, h('div',{className:'sm-student-name'}, s.name), h('div',{className:'sm-student-email'}, s.email)))),
                 h('td',null, s.school),
+                h('td',{style:{textAlign:'center'}}, h('select',{
+                  value: (Number(s.khoi) === 10 || Number(s.khoi) === 11) ? Number(s.khoi) : 12, 'aria-label':'Khối của ' + s.name, style:{fontSize:'0.8rem', padding:'3px 4px'},
+                  onChange:function(e){ OPCref.students.update(s.id, { khoi: Number(e.target.value) }).catch(function(){ props.fireToast('Không đổi được khối — thử lại.', true); }); }
+                }, h('option',{value:12},'12'), h('option',{value:11},'11'), h('option',{value:10},'10'))),
                 h('td',{className:'sm-num', style:{textAlign:'center'}}, (s.completedExamsCount||0)+' đề'),
                 h('td',{style:{textAlign:'center'}},
                   kpi.hasAssigned ? h('div',{style:{display:'inline-flex', alignItems:'center', gap:6}},
@@ -6663,7 +6685,11 @@
           h('div',{className:'sm-form-section'}, h('div',{className:'sm-form-section-title'}, 'Thông tin phụ huynh nhận báo cáo'),
             h('div',{className:'sm-form-grid'}, field('Họ tên phụ huynh','parentName'), field('SĐT / Zalo phụ huynh','parentPhone',{type:'tel'})),
             h('div',{style:{marginTop:'12px'}}, field('Email phụ huynh','parentEmail',{type:'email'}))),
-          h('div',{className:'sm-form-section'}, field('Mục tiêu điểm','targetScore',{type:'number', step:'0.25', min:'5', max:'10'})),
+          h('div',{className:'sm-form-grid', style:{marginTop:'12px'}},
+            field('Mục tiêu điểm','targetScore',{type:'number', step:'0.25', min:'5', max:'10'}),
+            h('div',{className:'sm-field'}, h('label',{htmlFor:'sm-f-khoi'},'Khối lớp'),
+              h('select',{id:'sm-f-khoi', value:Number(form.khoi)||12, onChange:function(e){ setField('khoi', Number(e.target.value)); }},
+                h('option',{value:12},'Lớp 12'), h('option',{value:11},'Lớp 11'), h('option',{value:10},'Lớp 10')))),
           h('div',{className:'sm-form-actions'},
             h('button',{type:'button', className:'btn btn-secondary', onClick:function(){ setAddOpen(false); }}, 'Huỷ'),
             h('button',{type:'submit', className:'btn btn-primary', disabled:saving}, saving ? 'Đang lưu…' : 'Tạo tài khoản học sinh')))
@@ -8332,6 +8358,8 @@
     // THÊM 28/10/2026 — khoá/mở từng bài: phạm vi đang chỉnh ('class' = cả lớp, hoặc id 1 học sinh); khoá/mở đề: ô lọc
     var scopeState = React.useState('class'); var scope = scopeState[0], setScope = scopeState[1];
     var examSearchState = React.useState(''); var examSearch = examSearchState[0], setExamSearch = examSearchState[1];
+    // THÊM 28/10/2026 — KHỐI đang quản lý (10/11/12): học sinh, chương, bài, đề đều chỉ hiện của khối này
+    var khoiViewState = React.useState(12); var khoiView = khoiViewState[0], setKhoiView = khoiViewState[1];
 
     React.useEffect(function(){
       if(!OPCref || !OPCref.curriculum) return;
@@ -8362,7 +8390,7 @@
           if(c){ perChapter[c][q.part || 'I'] = (perChapter[c][q.part || 'I'] || 0) + 1; return; }
           var sugTopic = window.OPC_NANO ? window.OPC_NANO.findChuDeByText(q.chuDeLon) : null;
           var suggestion = sugTopic ? (CUR.TOPIC_TO_CHUONG[sugTopic.key] || null) : null;
-          untagged.push({ key: exam.id + '#' + idx, examId: exam.id, examTitle: exam.title || '(chưa đặt tên)', idx: idx, q: q, suggestion: suggestion });
+          untagged.push({ key: exam.id + '#' + idx, examId: exam.id, examTitle: exam.title || '(chưa đặt tên)', idx: idx, q: q, suggestion: suggestion, khoi: CUR.khoiOf(exam) });
         });
       });
       return { perChapter: perChapter, perBai: perBai, noBai: noBai, untagged: untagged };
@@ -8372,7 +8400,15 @@
       return h('div', { className: 'card' }, h('p', null, 'Không tải được curriculum.js — kiểm tra lại file đã được deploy.'));
     }
 
-    var defaultChapters = CUR.getUnlockedChapters(null, cur.data);
+    // THÊM 28/10/2026 — chỉ làm việc trên MỘT khối: lọc học sinh/chương/đề theo khoiView
+    var allStudentsCount = { 10: 0, 11: 0, 12: 0 };
+    students.forEach(function(s){ allStudentsCount[CUR.khoiOf(s)]++; });
+    students = students.filter(function(s){ return CUR.khoiOf(s) === khoiView; });
+    var chaptersView = CUR.chaptersOfKhoi(khoiView);
+    var examsK = exams.filter(function(ex){ return CUR.khoiOf(ex) === khoiView; });
+    function saveDefaultK(list){ return khoiView === 12 ? OPCref.curriculum.saveDefault(list) : OPCref.curriculum.saveDefaultForKhoi(khoiView, list); }
+
+    var defaultChapters = CUR.getUnlockedChapters({ khoi: khoiView }, cur.data);
     function chaptersOf(s){ return CUR.getUnlockedChapters(s, cur.data); }
     function hasOwn(s){ return Array.isArray(s.unlockedChapters); }
     function withChapter(list, num, on){
@@ -8388,7 +8424,7 @@
       var key = s.id + '#' + num;
       markBusy(key, true);
       OPCref.curriculum.setStudentChapters(s.id, withChapter(list, num, on))
-        .then(function(){ props.fireToast((on ? 'Đã mở ' : 'Đã khoá ') + 'Chương ' + num + ' cho ' + (s.name || 'học sinh') + '.'); })
+        .then(function(){ props.fireToast((on ? 'Đã mở ' : 'Đã khoá ') + 'Chương ' + CUR.chapterNo(num) + ' cho ' + (s.name || 'học sinh') + '.'); })
         .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
         .finally(function(){ markBusy(key, false); });
     }
@@ -8404,7 +8440,7 @@
     function toggleDefault(num){
       var on = defaultChapters.indexOf(num) < 0;
       setBulkBusy(true);
-      OPCref.curriculum.saveDefault(withChapter(defaultChapters, num, on))
+      saveDefaultK(withChapter(defaultChapters, num, on))
         .then(function(){ props.fireToast('Đã cập nhật chương mở mặc định (áp dụng cho học sinh chưa có cấu hình riêng).'); })
         .catch(function(err){ console.error(err); props.fireToast('Không lưu được — thử lại.', true); })
         .finally(function(){ setBulkBusy(false); });
@@ -8414,14 +8450,14 @@
     // từng em đang có cấu hình riêng (em theo mặc định tự nhận theo).
     function setChapterForClass(num, on){
       var ch = CUR.getChapter(num);
-      if(!window.confirm((on ? 'Mở' : 'Khoá') + ' Chương ' + num + ' (' + (ch ? ch.name : '') + ') cho CẢ LỚP (' + students.length + ' học sinh)?')) return;
+      if(!window.confirm((on ? 'Mở' : 'Khoá') + ' Chương ' + CUR.chapterNo(num) + ' (' + (ch ? ch.name : '') + ') cho CẢ LỚP ' + khoiView + ' (' + students.length + ' học sinh)?')) return;
       setBulkBusy(true);
-      var jobs = [OPCref.curriculum.saveDefault(withChapter(defaultChapters, num, on))];
+      var jobs = [saveDefaultK(withChapter(defaultChapters, num, on))];
       students.forEach(function(s){
         if(hasOwn(s)) jobs.push(OPCref.curriculum.setStudentChapters(s.id, withChapter(chaptersOf(s), num, on)));
       });
       Promise.all(jobs)
-        .then(function(){ props.fireToast('Đã ' + (on ? 'mở' : 'khoá') + ' Chương ' + num + ' cho cả lớp.'); })
+        .then(function(){ props.fireToast('Đã ' + (on ? 'mở' : 'khoá') + ' Chương ' + CUR.chapterNo(num) + ' cho cả lớp.'); })
         .catch(function(err){ console.error(err); props.fireToast('Có lỗi khi lưu — một số học sinh có thể chưa được cập nhật, thử lại.', true); })
         .finally(function(){ setBulkBusy(false); });
     }
@@ -8465,8 +8501,8 @@
     }
     function setChapterLessons(num, lock){
       var keys = CUR.listBai(num).map(function(b){ return b.key; });
-      if(!window.confirm((lock ? 'Khoá' : 'Mở') + ' TẤT CẢ ' + keys.length + ' bài của Chương ' + num + ' cho ' + scopeLabel + '?')) return;
-      changeLessons(keys, lock, (lock ? 'Đã khoá' : 'Đã mở') + ' mọi bài của Chương ' + num);
+      if(!window.confirm((lock ? 'Khoá' : 'Mở') + ' TẤT CẢ ' + keys.length + ' bài của Chương ' + CUR.chapterNo(num) + ' cho ' + scopeLabel + '?')) return;
+      changeLessons(keys, lock, (lock ? 'Đã khoá' : 'Đã mở') + ' mọi bài của Chương ' + CUR.chapterNo(num));
     }
     function resetStudentLessons(s){
       setBulkBusy(true);
@@ -8478,7 +8514,8 @@
 
     // ===== THÊM 28/10/2026 — KHOÁ/MỞ ĐỀ TRONG NGÂN HÀNG ĐỀ (áp dụng mọi học sinh) =====
     var lockedExamIds = CUR.getLockedExams(cur.data);
-    var examsShown = exams.filter(function(ex){
+    var lockedInView = examsK.filter(function(ex){ return lockedExamIds.indexOf(ex.id) > -1; }).length;
+    var examsShown = examsK.filter(function(ex){
       if(!examSearch.trim()) return true;
       return ((ex.title || '') + ' ' + (ex.chuDe || '') + ' ' + (ex.bai || '')).toLowerCase().indexOf(examSearch.trim().toLowerCase()) > -1;
     });
@@ -8504,6 +8541,7 @@
     }
 
     var filteredUntagged = bankInfo.untagged.filter(function(it){
+      if(it.khoi !== khoiView) return false; // THÊM 28/10/2026 — chỉ câu của đề thuộc khối đang xem
       if(!search.trim()) return true;
       var hay = (it.examTitle + ' ' + (it.q.chuDeLon || '') + ' ' + (it.q.dangBai || '') + ' ' + (it.q.stem || '')).toLowerCase();
       return hay.indexOf(search.trim().toLowerCase()) > -1;
@@ -8550,7 +8588,7 @@
       saveTags(items);
     }
 
-    var chapterName = function(n){ var c = CUR.getChapter(n); return c ? c.icon + ' Chương ' + n + ': ' + c.name : 'Chương ' + n; };
+    var chapterName = function(n){ var c = CUR.getChapter(n); return c ? c.icon + ' Chương ' + CUR.chapterNo(n) + ': ' + c.name : 'Chương ' + CUR.chapterNo(n); };
     var pickedCount = filteredUntagged.filter(function(it){ return picks[it.key]; }).length;
 
     return h('div', { className: 'card' },
@@ -8559,9 +8597,17 @@
           h('p', { className: 'sm-sub' }, 'Dạy cuốn chiếu: học sinh chỉ luyện tập / thi thử với câu hỏi thuộc chương đã được mở. Cấu hình riêng của từng em ghi đè mặc định của lớp. Thay đổi có hiệu lực từ lần đăng nhập / tải lại trang tiếp theo của học sinh.'))
       ),
 
+      // ---- THÊM 28/10/2026: chọn KHỐI đang quản lý ----
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 12px' } },
+        h('span', { style: { fontSize: '0.84rem', fontWeight: 700 } }, 'Khối đang quản lý:'),
+        [12, 11, 10].map(function(k){
+          return h('button', { key: k, type: 'button', className: khoiView === k ? 'btn btn-primary' : 'btn btn-secondary', style: { padding: '5px 12px' },
+            'aria-pressed': khoiView === k, onClick: function(){ setKhoiView(k); setScope('class'); } }, 'Lớp ' + k + ' (' + allStudentsCount[k] + ' học sinh)');
+        })),
+
       // ---- Chương mặc định + mở/khoá cho cả lớp ----
       h('div', { className: 'cp-chip-row' },
-        CUR.CHAPTERS.map(function(c){
+        chaptersView.map(function(c){
           var isDefault = defaultChapters.indexOf(c.num) > -1;
           var q = bankInfo.perChapter[c.num];
           return h('div', { key: c.num, className: 'cp-chapter-box' },
@@ -8578,8 +8624,8 @@
               h('input', { type: 'checkbox', checked: isDefault, disabled: bulkBusy || !cur.loaded, onChange: function(){ toggleDefault(c.num); } }),
               'Mở mặc định cho học sinh mới / theo lớp'),
             h('div', null,
-              h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy, onClick: function(){ setChapterForClass(c.num, true); } }, '🔓 Mở chương ' + c.num + ' cho cả lớp'),
-              h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy, onClick: function(){ setChapterForClass(c.num, false); } }, '🔒 Khóa chương ' + c.num + ' cho cả lớp')
+              h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy, onClick: function(){ setChapterForClass(c.num, true); } }, '🔓 Mở chương ' + CUR.chapterNo(c.num) + ' cho cả lớp'),
+              h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy, onClick: function(){ setChapterForClass(c.num, false); } }, '🔒 Khóa chương ' + CUR.chapterNo(c.num) + ' cho cả lớp')
             )
           );
         })
@@ -8592,7 +8638,7 @@
         h('table', { className: 'sm-table' },
           h('thead', null, h('tr', null,
             h('th', null, 'Học sinh'),
-            CUR.CHAPTERS.map(function(c){ return h('th', { key: c.num, style: { textAlign: 'center' } }, 'Chương ' + c.num + ' · ' + c.name); }),
+            chaptersView.map(function(c){ return h('th', { key: c.num, style: { textAlign: 'center' } }, 'Chương ' + CUR.chapterNo(c.num) + ' · ' + c.name); }),
             h('th', null, 'Cấu hình')
           )),
           h('tbody', null,
@@ -8601,13 +8647,13 @@
               return h('tr', { key: s.id },
                 h('td', null, h('div', { style: { fontWeight: 700 } }, s.name || '(chưa đặt tên)'),
                   h('div', { style: { fontSize: '0.75rem', color: 'var(--muted)' } }, (s.username ? '@' + s.username : '') + (s.status && s.status !== 'active' ? ' · Tạm khoá' : ''))),
-                CUR.CHAPTERS.map(function(c){
+ chaptersView.map(function(c){
                   var on = list.indexOf(c.num) > -1;
                   return h('td', { key: c.num, style: { textAlign: 'center' } },
                     h('button', {
                       type: 'button', className: cx('cp-switch', on && 'on'),
                       disabled: !!busy[s.id + '#' + c.num] || bulkBusy || !cur.loaded,
-                      title: (on ? 'Đang mở — bấm để khoá' : 'Đang khoá — bấm để mở') + ' Chương ' + c.num,
+                      title: (on ? 'Đang mở — bấm để khoá' : 'Đang khoá — bấm để mở') + ' Chương ' + CUR.chapterNo(c.num),
                       'aria-pressed': on,
                       onClick: function(){ toggleCell(s, c.num); }
                     }));
@@ -8639,7 +8685,7 @@
             : h('span', { style: { fontSize: '0.78rem', color: 'var(--muted)' } }, 'Đang theo bài khoá mặc định của lớp — chỉnh bên dưới sẽ tạo cấu hình riêng cho em này')) : null
         ),
         h('div', { className: 'cp-lesson-grid' },
-          CUR.CHAPTERS.map(function(c){
+          chaptersView.map(function(c){
             var lessons = CUR.listBai(c.num);
             var chapterOpen = scopeChapters.indexOf(c.num) > -1;
             var nLocked = lessons.filter(function(b){ return scopeLocked.indexOf(b.key) > -1; }).length;
@@ -8676,15 +8722,15 @@
       // ---- THÊM 28/10/2026: Khoá/mở đề trong ngân hàng ----
       h('div', { style: { marginTop: '28px' } },
         h('div', { className: 'sm-toolbar' },
-          h('div', null, h('h3', null, '🗂️ Khoá / mở đề trong ngân hàng đề: ' + lockedExamIds.length + '/' + exams.length + ' đề đang khoá'),
+          h('div', null, h('h3', null, '🗂️ Khoá / mở đề trong ngân hàng đề (khối ' + khoiView + '): ' + lockedInView + '/' + examsK.length + ' đề đang khoá'),
             h('p', { className: 'sm-sub' }, 'Đề bị khoá thì hệ thống KHÔNG lấy câu của đề đó cho luyện tập thích ứng, Drill, thi thử, đề cá nhân hoá, đề tự sinh cho lớp, phiếu ôn và Chẩn đoán 5 phút (áp dụng mọi học sinh). Đề đã giao sẵn cho em, đề thầy chọn thủ công và lịch sử làm bài không thay đổi.')),
           h('div', { className: 'sm-actions' },
             h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy || !cur.loaded || !examsShown.length, onClick: function(){ setAllShownExams(true); } }, '🔒 Khoá các đề đang lọc'),
             h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !cur.loaded || !examsShown.length, onClick: function(){ setAllShownExams(false); } }, '🔓 Mở các đề đang lọc'))
         ),
-        exams.length ? h('div', { className: 'sm-field', style: { marginTop: '12px', maxWidth: '360px' } },
+        examsK.length ? h('div', { className: 'sm-field', style: { marginTop: '12px', maxWidth: '360px' } },
           h('input', { type: 'text', placeholder: 'Lọc theo tên đề / chuyên đề…', value: examSearch, onChange: function(e){ setExamSearch(e.target.value); } })) : null,
-        exams.length ? h('div', { className: 'sm-table-wrap' },
+        examsK.length ? h('div', { className: 'sm-table-wrap' },
           h('table', { className: 'sm-table' },
             h('thead', null, h('tr', null,
               h('th', null, 'Đề'), h('th', null, 'Chuyên đề'), h('th', { style: { textAlign: 'center' } }, 'Số câu'), h('th', { style: { textAlign: 'center' } }, 'Cho học sinh dùng'))),
@@ -8706,7 +8752,7 @@
                   })));
             }))
           )
-        ) : h('div', { className: 'banner info' }, h('span', null, 'ℹ️'), h('div', null, 'Ngân hàng đề chưa có đề nào.'))
+        ) : h('div', { className: 'banner info' }, h('span', null, 'ℹ️'), h('div', null, 'Khối ' + khoiView + ' chưa có đề nào trong ngân hàng.'))
       ),
 
       // ---- Câu hỏi chưa gắn chương ----
@@ -8737,8 +8783,8 @@
                 h('td', null, h('div', { className: 'cp-stem' }, stem.length > 160 ? stem.slice(0, 160) + '…' : stem)),
                 h('td', null,
                   h('select', { value: val, onChange: function(e){ var v = e.target.value; setPicks(function(prev){ var n = Object.assign({}, prev); if(v) n[it.key] = v; else delete n[it.key]; return n; }); } },
-                    h('option', { value: '' }, it.suggestion ? '— Gợi ý: Chương ' + it.suggestion + ' —' : '— Chọn chương —'),
-                    CUR.CHAPTERS.map(function(c){ return h('option', { key: c.num, value: String(c.num) }, 'Chương ' + c.num + ': ' + c.name); })
+                    h('option', { value: '' }, it.suggestion ? '— Gợi ý: Chương ' + CUR.chapterNo(it.suggestion) + ' —' : '— Chọn chương —'),
+                    chaptersView.map(function(c){ return h('option', { key: c.num, value: String(c.num) }, 'Chương ' + CUR.chapterNo(c.num) + ': ' + c.name); })
                   )),
                 h('td', null, h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '5px 10px' }, disabled: bulkBusy || !(val || it.suggestion), onClick: function(){ saveOne(it); } }, 'Lưu'))
               );
@@ -8757,7 +8803,7 @@
   // VẸN cả đề cho học sinh ở chế độ "Đề Sở/Trường (giữ nguyên đề)" trong
   // Tạo đề cá nhân hóa, không tách/trộn câu hỏi). Đề cũ nạp trước khi có
   // field này không có examKind -> mọi chỗ đọc phải coi thiếu field = 'nganHang'.
-  function blankExamForm(){ return {title:'', chuDe: CHU_DE_LIST[0], bai:'', mucDo: 2, examKind: 'nganHang'}; }
+  function blankExamForm(){ return {title:'', khoi: 12, chuDe: CHU_DE_LIST[0], bai:'', mucDo: 2, examKind: 'nganHang'}; }
 
   // ================= THÊM 17/10/2026 — SỬA CÂU Ở NGÂN HÀNG → SỬA LAN + CHẤM LẠI ĐIỂM =================
   // examNew: đề (ngân hàng) SAU khi sửa · qIndex: số câu vừa sửa · doRescore: đáp án có đổi không
@@ -9233,6 +9279,7 @@
     var errState = React.useState(null); var loadErr = errState[0], setLoadErr = errState[1];
     var searchState = React.useState(''); var search = searchState[0], setSearch = searchState[1];
     var filterChuDeState = React.useState('Tất cả'); var filterChuDe = filterChuDeState[0], setFilterChuDe = filterChuDeState[1];
+    var filterKhoiState = React.useState('all'); var filterKhoi = filterKhoiState[0], setFilterKhoi = filterKhoiState[1]; // THÊM 28/10/2026
     var filterMucDoState = React.useState('Tất cả'); var filterMucDo = filterMucDoState[0], setFilterMucDo = filterMucDoState[1];
     var selectedState = React.useState(null); var selected = selectedState[0], setSelected = selectedState[1];
     var detailTabState = React.useState('overview'); var detailTab = detailTabState[0], setDetailTab = detailTabState[1]; // overview | questions
@@ -9579,6 +9626,7 @@
         var texContent = texFile ? await texFile.text() : '';
         await bankApi.saveExamDoc(examRef, {
           title: form.title.trim() + ' — Câu ' + (idx + 1),
+          khoi: Number(form.khoi) || 12, // THÊM 28/10/2026 — khối 10/11/12
           chuDe: form.chuDe,
           bai: form.bai.trim(),
           mucDo: Number(form.mucDo),
@@ -9838,6 +9886,7 @@
 
     var q = search.trim().toLowerCase();
     var filtered = exams.filter(function(x){
+      if(filterKhoi !== 'all' && (Number(x.khoi) || 12) !== Number(filterKhoi)) return false; // THÊM 28/10/2026
       if(filterChuDe !== 'Tất cả' && x.chuDe !== filterChuDe) return false;
       if(filterMucDo !== 'Tất cả' && String(x.mucDo) !== String(filterMucDo)) return false;
       if(q){
@@ -9898,7 +9947,15 @@
         if(!form.title.trim() && analysis.title){
           setField('title', analysis.title);
         }
-        if(analysis.suggestedChuDe && form.chuDe === CHU_DE_LIST[0]){
+        // SỬA 28/10/2026 — theo KHỐI: file gắn thẻ chủ đề Vật lí 10/11 thì tự chuyển khối + chuyên đề tương ứng
+        // (chỉ khi thầy chưa tự chọn khác mặc định). Không bao giờ gợi ý chuyên đề của khối khác.
+        var khoiNow = Number(form.khoi) || 12;
+        if(analysis.suggestedKhoi && khoiNow === 12 && form.chuDe === CHU_DE_LIST[0]){
+          khoiNow = analysis.suggestedKhoi;
+          setField('khoi', khoiNow);
+          setField('chuDe', analysis.suggestedChuDe && chuDeListFor(khoiNow).indexOf(analysis.suggestedChuDe) > -1 ? analysis.suggestedChuDe : 'Tổng hợp nhiều chuyên đề');
+        } else if(analysis.suggestedChuDe && form.chuDe === chuDeListFor(khoiNow)[0]
+                  && (analysis.suggestedChuDe === 'Tổng hợp nhiều chuyên đề' || chuDeListFor(khoiNow).indexOf(analysis.suggestedChuDe) > -1)){
           setField('chuDe', analysis.suggestedChuDe);
         }
         if(analysis.suggestedMucDo != null && Number(form.mucDo) === 2){
@@ -9958,6 +10015,7 @@
 
         await bankApi.saveExamDoc(examRef, {
           title: form.title.trim(),
+          khoi: Number(form.khoi) || 12, // THÊM 28/10/2026 — khối 10/11/12 (thiếu = 12)
           chuDe: form.chuDe,
           bai: form.bai.trim(),
           mucDo: Number(form.mucDo),
@@ -10021,6 +10079,8 @@
       h('div',{className:'eb-filter-row'},
         h('div',{className:'sm-search'}, h(IconSearch),
           h('input',{type:'text', value:search, placeholder:'Tìm theo tiêu đề, bài, chủ đề...', onChange:function(e){ setSearch(e.target.value); }})),
+        specialMode === 'dgnl' ? null : h('select',{className:'eb-select', value:filterKhoi, onChange:function(e){ setFilterKhoi(e.target.value); }},
+          h('option',{value:'all'},'Mọi khối'), h('option',{value:'12'},'Khối 12'), h('option',{value:'11'},'Khối 11'), h('option',{value:'10'},'Khối 10')),
         h('select',{className:'eb-select', value:filterChuDe, onChange:function(e){ setFilterChuDe(e.target.value); }},
           h('option',null,'Tất cả'), CHU_DE_UPLOAD_LIST.map(function(c){ return h('option',{key:c, value:c}, c); })),
         h('select',{className:'eb-select', value:filterMucDo, onChange:function(e){ setFilterMucDo(e.target.value); }},
@@ -10050,6 +10110,7 @@
                   h('div',{className:'eb-title-cell'}, x.title),
                   x.bai ? h('div',{className:'eb-bai-cell'}, x.bai) : null,
                   h('div',{className:'eb-badges-row'},
+                    (Number(x.khoi) || 12) !== 12 ? h('span',{className:'eb-part-pill', style:{fontWeight:700}}, 'Khối ' + Number(x.khoi)) : null,
                     lockedExamIds.indexOf(x.id) > -1 ? h('span',{className:'eb-part-pill', style:{color:'var(--critical)', fontWeight:700}}, '🔒 Đang khoá với học sinh') : null,
                     qCount ? h('span',{className:'eb-part-pill'}, qCount + ' câu') : null,
                     stats && (stats.p1 || stats.p2 || stats.p3) ? h('span',{className:'eb-part-pill'}, 'P1:'+stats.p1+' · P2:'+stats.p2+' · P3:'+stats.p3) : null
@@ -10312,10 +10373,19 @@
           h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-title'},'Tiêu đề đề thi *'),
             h('input',{id:'eb-title', type:'text', required:true, value:form.title, placeholder:'Đề luyện chuyên đề Định luật Boyle số 1',
               onChange:function(e){ setField('title', e.target.value); }})),
+          // THÊM 28/10/2026 — chọn KHỐI của đề (Vật lí 10/11/12). Đề ĐGNL luôn là khối 12 nên không hiện ô này.
+          specialMode === 'dgnl' ? null : h('div',{className:'sm-field', style:{marginTop:12, maxWidth:260}},
+            h('label',{htmlFor:'eb-khoi'},'Khối *'),
+            h('select',{id:'eb-khoi', value:Number(form.khoi)||12, onChange:function(e){
+              var nk = Number(e.target.value);
+              setField('khoi', nk);
+              if(chuDeListFor(nk).indexOf(form.chuDe) < 0 && form.chuDe !== 'Tổng hợp nhiều chuyên đề') setField('chuDe', chuDeListFor(nk)[0]);
+            }},
+              h('option',{value:12},'Vật lí 12'), h('option',{value:11},'Vật lí 11'), h('option',{value:10},'Vật lí 10'))),
           h('div',{className:'sm-form-grid', style:{marginTop:12}},
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-chude'},'Chuyên đề chính *'),
               h('select',{id:'eb-chude', value:form.chuDe, onChange:function(e){ setField('chuDe', e.target.value); }},
-                CHU_DE_UPLOAD_LIST.map(function(c){ return h('option',{key:c, value:c}, c); }))),
+                chuDeListFor(form.khoi).concat(['Tổng hợp nhiều chuyên đề']).map(function(c){ return h('option',{key:c, value:c}, c); }))),
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-mucdo'},'Mức độ tổng quan *'),
               h('select',{id:'eb-mucdo', value:form.mucDo, onChange:function(e){ setField('mucDo', Number(e.target.value)); }},
                 MUC_DO_LIST.map(function(m){ return h('option',{key:m.v, value:m.v}, m.label); })))),
@@ -10722,7 +10792,7 @@
               list.map(function(stu){
                 var acc = Array.isArray(stu.specialAccess) ? stu.specialAccess : [];
                 return h('tr', { key: stu.id },
-                  h('td', null, h('b', null, stu.name || '(chưa đặt tên)'), h('div', { style:{ fontSize:'0.76rem', color:'var(--muted)' } }, stu.gmail || stu.email || '')),
+                  h('td', null, h('b', null, stu.name || '(chưa đặt tên)'), h('div', { style:{ fontSize:'0.76rem', color:'var(--muted)' } }, 'Khối ' + ((Number(stu.khoi) === 10 || Number(stu.khoi) === 11) ? Number(stu.khoi) : 12) + ' · ' + (stu.gmail || stu.email || ''))), // SỬA 28/10/2026 — hiện khối
                   SPECIAL_TRACKS.map(function(t){
                     var on = acc.indexOf(t.key) > -1;
                     return h('td', { key:t.key, style:{ textAlign:'center' } },

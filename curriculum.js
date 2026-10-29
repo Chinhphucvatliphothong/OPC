@@ -23,22 +23,61 @@
 (function(window){
   'use strict';
 
+  // THÊM 28/10/2026 — KHỐI 10/11/12. Mã chương: khối 12 giữ nguyên 1–4 (dữ liệu cũ không đổi);
+  // khối 10 = 101–107 (7 chương); khối 11 = 111–114 (4 chương). Mã chương luôn cho biết khối của câu.
   var CHAPTERS = [
-    { num: 1, topicKey: 'nhiet', name: 'Vật lí nhiệt', icon: '🔥' },
-    { num: 2, topicKey: 'khi', name: 'Khí lí tưởng', icon: '💨' },
-    { num: 3, topicKey: 'tu-truong', name: 'Từ trường', icon: '🧲' },
-    { num: 4, topicKey: 'hat-nhan', name: 'Vật lí hạt nhân', icon: '⚛️' }
+    { num: 1, topicKey: 'nhiet', name: 'Vật lí nhiệt', icon: '🔥', khoi: 12 },
+    { num: 2, topicKey: 'khi', name: 'Khí lí tưởng', icon: '💨', khoi: 12 },
+    { num: 3, topicKey: 'tu-truong', name: 'Từ trường', icon: '🧲', khoi: 12 },
+    { num: 4, topicKey: 'hat-nhan', name: 'Vật lí hạt nhân', icon: '⚛️', khoi: 12 },
+    { num: 101, topicKey: 'k10-mo-dau', name: 'Mở đầu', icon: '🔭', khoi: 10 },
+    { num: 102, topicKey: 'k10-dong-hoc', name: 'Động học', icon: '🚀', khoi: 10 },
+    { num: 103, topicKey: 'k10-dong-luc-hoc', name: 'Động lực học', icon: '🏋️', khoi: 10 },
+    { num: 104, topicKey: 'k10-nang-luong', name: 'Năng lượng, công, công suất', icon: '🔆', khoi: 10 },
+    { num: 105, topicKey: 'k10-dong-luong', name: 'Động lượng', icon: '💥', khoi: 10 },
+    { num: 106, topicKey: 'k10-tron-deu', name: 'Chuyển động tròn đều', icon: '🔄', khoi: 10 },
+    { num: 107, topicKey: 'k10-bien-dang', name: 'Biến dạng vật rắn – Áp suất chất lỏng', icon: '💧', khoi: 10 },
+    { num: 111, topicKey: 'k11-dao-dong', name: 'Dao động', icon: '〰️', khoi: 11 },
+    { num: 112, topicKey: 'k11-song', name: 'Sóng', icon: '🌊', khoi: 11 },
+    { num: 113, topicKey: 'k11-dien-truong', name: 'Điện trường', icon: '⚡', khoi: 11 },
+    { num: 114, topicKey: 'k11-dong-dien', name: 'Dòng điện, mạch điện', icon: '🔋', khoi: 11 }
   ];
-  var ALL_CHAPTERS = [1, 2, 3, 4];
+  var ALL_CHAPTERS = CHAPTERS.map(function(c){ return c.num; });
+  var KHOI_LIST = [10, 11, 12];
   var DEFAULT_UNLOCKED = [1, 2];
+
+  // Khối của 1 học sinh: students/{id}.khoi (10/11/12); thiếu/không hợp lệ -> 12 (dữ liệu cũ toàn lớp 12).
+  function khoiOf(v){
+    var n = Number(v && typeof v === 'object' ? v.khoi : v);
+    return (n === 10 || n === 11) ? n : 12;
+  }
+  function chaptersOfKhoi(k){
+    k = khoiOf(k);
+    return CHAPTERS.filter(function(c){ return c.khoi === k; });
+  }
+  function khoiOfChuong(num){
+    var c = CHAPTERS.filter(function(x){ return x.num === Number(num); })[0];
+    return c ? c.khoi : null;
+  }
+  // Số thứ tự chương HIỂN THỊ trong sách: khối 12 = 1–4; khối 10 = 101–107 -> 1–7; khối 11 = 111–114 -> 1–4.
+  function chapterNo(num){
+    var n = Number(num);
+    if(n >= 101 && n <= 107) return n - 100;
+    if(n >= 111 && n <= 114) return n - 110;
+    return n;
+  }
+  // Mặc định mở cho 1 khối khi admin chưa cấu hình: 2 chương đầu (giống khối 12 mặc định [1,2]).
+  function defaultUnlockedForKhoi(k){
+    return chaptersOfKhoi(k).slice(0, 2).map(function(c){ return c.num; });
+  }
 
   // Key chủ đề (CHU_DE_MAP/nano-map.js) -> số chương. 3 chuyên đề (cd1-*,
   // cd2-*, cd3-*) KHÔNG thuộc 4 chương SGK nên không có trong bảng này.
-  var TOPIC_TO_CHUONG = { 'nhiet': 1, 'khi': 2, 'tu-truong': 3, 'hat-nhan': 4 };
+  var TOPIC_TO_CHUONG = { 'nhiet': 1, 'khi': 2, 'tu-truong': 3, 'hat-nhan': 4, 'k10-mo-dau': 101, 'k10-dong-hoc': 102, 'k10-dong-luc-hoc': 103, 'k10-nang-luong': 104, 'k10-dong-luong': 105, 'k10-tron-deu': 106, 'k10-bien-dang': 107, 'k11-dao-dong': 111, 'k11-song': 112, 'k11-dien-truong': 113, 'k11-dong-dien': 114 };
 
   function toChuong(v){
     var n = Number(v);
-    return (n === 1 || n === 2 || n === 3 || n === 4) ? n : null;
+    return (isFinite(n) && ALL_CHAPTERS.indexOf(n) > -1) ? n : null;
   }
 
   // Chuẩn hoá 1 danh sách chương: chỉ giữ số 1–4, bỏ trùng, sắp tăng dần.
@@ -50,7 +89,7 @@
       var n = toChuong(v);
       if(n && !seen[n]){ seen[n] = true; out.push(n); }
     });
-    return out.sort();
+    return out.sort(function(a, b){ return a - b; });
   }
 
   // Suy số chương từ 1 mã kiến thức. Trả null nếu không nhận ra.
@@ -69,6 +108,13 @@
     // "C1.2", "ch3-...", "chuong4..."
     m = s.match(/^(?:c|ch|chuong)\s*([1-4])(?![0-9])/);
     if(m) return Number(m[1]);
+    // THÊM 28/10/2026 — mã bài/nano-point khối 10, 11: "k10-5", "k11-3.2" -> tra bài trong nano-map.js
+    var N0 = window.OPC_NANO;
+    if(N0 && /^k1[01]-\d/.test(s)){
+      var bk = s.split('.')[0];
+      var bb = N0.getBai ? N0.getBai(bk) : null;
+      if(bb && TOPIC_TO_CHUONG[bb.chuDeKey]) return TOPIC_TO_CHUONG[bb.chuDeKey];
+    }
     return null;
   }
 
@@ -103,14 +149,22 @@
 
   // Chương đã mở của 1 học sinh: danh sách riêng (nếu admin đã đặt) ghi đè
   // mặc định của lớp; chưa có cấu hình lớp thì dùng [1,2].
+  // SỬA 28/10/2026 — theo khối: khối 12 đúng như cũ (defaultUnlockedChapters); khối 10/11 đọc
+  // curriculum.defaultUnlockedByKhoi[khối], chưa cấu hình thì mở 2 chương đầu của khối đó.
   function getUnlockedChapters(student, curriculum){
     if(student && Array.isArray(student.unlockedChapters)) return normalizeChapters(student.unlockedChapters);
+    var k = khoiOf(student);
+    if(k !== 12){
+      var byK = curriculum && curriculum.defaultUnlockedByKhoi && curriculum.defaultUnlockedByKhoi[String(k)];
+      if(Array.isArray(byK)) return normalizeChapters(byK).filter(function(n){ return khoiOfChuong(n) === k; });
+      return defaultUnlockedForKhoi(k);
+    }
     if(curriculum && Array.isArray(curriculum.defaultUnlockedChapters)) return normalizeChapters(curriculum.defaultUnlockedChapters);
     return DEFAULT_UNLOCKED.slice();
   }
 
-  function hasAllChapters(unlocked){
-    return ALL_CHAPTERS.every(function(n){ return (unlocked || []).indexOf(n) > -1; });
+  function hasAllChapters(unlocked, khoi){
+    return chaptersOfKhoi(khoi).every(function(c){ return (unlocked || []).indexOf(c.num) > -1; });
   }
 
   function getChapter(num){
@@ -223,6 +277,13 @@
     getUnlockedChapters: getUnlockedChapters,
     hasAllChapters: hasAllChapters,
     getChapter: getChapter,
+    // THÊM 28/10/2026 — khối 10/11/12
+    KHOI_LIST: KHOI_LIST,
+    khoiOf: khoiOf,
+    chaptersOfKhoi: chaptersOfKhoi,
+    khoiOfChuong: khoiOfChuong,
+    chapterNo: chapterNo,
+    defaultUnlockedForKhoi: defaultUnlockedForKhoi,
     // THÊM 28/10/2026 — khoá/mở từng bài + khoá/mở đề trong ngân hàng
     normalizeKeys: normalizeKeys,
     getLockedLessons: getLockedLessons,

@@ -32,12 +32,35 @@
     'hat-nhan': { name: 'Vật lí hạt nhân', icon: '⚛️', defaultMastery: 50, warriorTitle: 'Chiến Binh Hạt Nhân' },
     'cd1-dxc': { name: 'Dòng điện xoay chiều (Chuyên đề)', icon: '🔌', defaultMastery: 50, warriorTitle: 'Chiến Binh Dòng Điện Xoay Chiều' },
     'cd2-yhoc': { name: 'Vật lí trong y học (Chuyên đề)', icon: '🫁', defaultMastery: 50, warriorTitle: 'Chiến Binh Y Học Vật Lí' },
-    'cd3-luongtu': { name: 'Vật lí lượng tử (Chuyên đề)', icon: '✨', defaultMastery: 50, warriorTitle: 'Chiến Binh Lượng Tử' }
+    'cd3-luongtu': { name: 'Vật lí lượng tử (Chuyên đề)', icon: '✨', defaultMastery: 50, warriorTitle: 'Chiến Binh Lượng Tử' },
+    // THÊM 28/10/2026 — VẬT LÍ 10 & 11 (SGK Kết nối tri thức). Key PHẢI khớp CHU_DE trong nano-map.js.
+    // Chủ đề không có trường khoi = khối 12.
+    'k10-mo-dau': { name: 'Mở đầu (VL10)', icon: '🔭', defaultMastery: 50, warriorTitle: 'Chiến Binh Mở đầu', khoi: 10 },
+    'k10-dong-hoc': { name: 'Động học (VL10)', icon: '🚀', defaultMastery: 50, warriorTitle: 'Chiến Binh Động học', khoi: 10 },
+    'k10-dong-luc-hoc': { name: 'Động lực học (VL10)', icon: '🏋️', defaultMastery: 50, warriorTitle: 'Chiến Binh Động lực học', khoi: 10 },
+    'k10-nang-luong': { name: 'Năng lượng, công, công suất (VL10)', icon: '🔆', defaultMastery: 50, warriorTitle: 'Chiến Binh Năng lượng, công, công suất', khoi: 10 },
+    'k10-dong-luong': { name: 'Động lượng (VL10)', icon: '💥', defaultMastery: 50, warriorTitle: 'Chiến Binh Động lượng', khoi: 10 },
+    'k10-tron-deu': { name: 'Chuyển động tròn đều (VL10)', icon: '🔄', defaultMastery: 50, warriorTitle: 'Chiến Binh Chuyển động tròn đều', khoi: 10 },
+    'k10-bien-dang': { name: 'Biến dạng vật rắn – Áp suất chất lỏng (VL10)', icon: '💧', defaultMastery: 50, warriorTitle: 'Chiến Binh Biến dạng vật rắn – Áp suất chất lỏng', khoi: 10 },
+    'k11-dao-dong': { name: 'Dao động (VL11)', icon: '〰️', defaultMastery: 50, warriorTitle: 'Chiến Binh Dao động', khoi: 11 },
+    'k11-song': { name: 'Sóng (VL11)', icon: '🌊', defaultMastery: 50, warriorTitle: 'Chiến Binh Sóng', khoi: 11 },
+    'k11-dien-truong': { name: 'Điện trường (VL11)', icon: '⚡', defaultMastery: 50, warriorTitle: 'Chiến Binh Điện trường', khoi: 11 },
+    'k11-dong-dien': { name: 'Dòng điện, mạch điện (VL11)', icon: '🔋', defaultMastery: 50, warriorTitle: 'Chiến Binh Dòng điện, mạch điện', khoi: 11 }
   };
   // Thứ tự chương trình học — dùng để xác định "chương hiện tại" (chủ đề
   // đầu tiên chưa đạt Xanh), giống 1 "mặt trận" học sinh đang chinh chiến.
   // 3 chuyên đề xếp SAU 4 chương SGK (thứ tự dạy thực tế phổ biến).
   var CHU_DE_ORDER = ['nhiet', 'khi', 'tu-truong', 'hat-nhan', 'cd1-dxc', 'cd2-yhoc', 'cd3-luongtu'];
+  // THÊM 28/10/2026 — thứ tự chủ đề theo KHỐI (khối 12 = CHU_DE_ORDER như cũ).
+  var CHU_DE_ORDER_BY_KHOI = {
+    12: CHU_DE_ORDER,
+    10: ["k10-mo-dau", "k10-dong-hoc", "k10-dong-luc-hoc", "k10-nang-luong", "k10-dong-luong", "k10-tron-deu", "k10-bien-dang"],
+    11: ["k11-dao-dong", "k11-song", "k11-dien-truong", "k11-dong-dien"]
+  };
+  function normKhoi(k){ var n = Number(k); return (n === 10 || n === 11) ? n : 12; }
+  // Các key chủ đề của 1 khối, theo thứ tự chương trình. Mọi chỗ cần "chủ đề của học sinh" phải dùng hàm này
+  // thay vì Object.keys(CHU_DE_MAP) (đó là TẤT CẢ khối).
+  function getTopicKeysForKhoi(k){ return (CHU_DE_ORDER_BY_KHOI[normKhoi(k)] || CHU_DE_ORDER).slice(); }
 
   // Ngân hàng câu hỏi THẬT — nạp từ Firestore (collection "de_thi", qua
   // opc-live-data.js -> replaceQuestionBank()). Giai đoạn thật hoàn toàn
@@ -308,10 +331,10 @@
   // mastery: null, isReal: false — phía UI (prepscholar-ui.js) hiển thị rõ
   // "Chưa kiểm tra" (màu xám) thay vì trộn lẫn vào thang đỏ/vàng/xanh.
   // ============================================================
-  function buildKnowledgeMap(studentMasteryByTopic, realNanoMastery){
+  function buildKnowledgeMap(studentMasteryByTopic, realNanoMastery, khoi){
     if(!window.OPC_NANO) return [];
     realNanoMastery = realNanoMastery || {};
-    return Object.keys(CHU_DE_MAP).map(function(topicKey){
+    return getTopicKeysForKhoi(khoi).map(function(topicKey){
       var topic = CHU_DE_MAP[topicKey];
       var base = (studentMasteryByTopic && studentMasteryByTopic[topicKey] != null) ? studentMasteryByTopic[topicKey] : topic.defaultMastery;
       var bais = window.OPC_NANO.getBaiByChuDe(topicKey).map(function(b){
@@ -407,22 +430,23 @@
   // "Chương hiện tại": chủ đề ĐẦU TIÊN theo thứ tự chương trình (CHU_DE_ORDER)
   // mà mastery chưa đạt Xanh (>=80%) — dùng làm danh xưng "Chiến Binh ..."
   // trên thẻ Cấp độ. Nếu cả 4 chủ đề đã Xanh, trả về chủ đề cuối cùng.
-  function getCurrentChuDe(masteryByTopic){
+  function getCurrentChuDe(masteryByTopic, khoi){
     masteryByTopic = masteryByTopic || {};
-    for(var i = 0; i < CHU_DE_ORDER.length; i++){
-      var key = CHU_DE_ORDER[i];
+    var order = getTopicKeysForKhoi(khoi);
+    for(var i = 0; i < order.length; i++){
+      var key = order[i];
       var m = masteryByTopic[key];
       if(m == null || m < MASTERY_GREEN_MIN) return key;
     }
-    return CHU_DE_ORDER[CHU_DE_ORDER.length - 1];
+    return order[order.length - 1];
   }
 
-  function computeStudentStatsFromAttempts(attempts){
+  function computeStudentStatsFromAttempts(attempts, khoi){
     var result = {
       mastery: {}, nanoMastery: {}, predicted: null, mistakeLog: [],
       radar5: { lyThuyet: null, vdc: null, neBayTF: null, doThi: null, tinhNhanh: null },
       levelXp: computeLevelXP([]),
-      currentChuDe: getCurrentChuDe({}),
+      currentChuDe: getCurrentChuDe({}, khoi),
       // completedExamsCount/averageScore/highestScore: THÊM 23/9/2026 để
       // trang admin (Danh sách học sinh) hiển thị đúng số đề đã làm/điểm TB/
       // điểm cao nhất THẬT thay vì luôn = 0 — xem syncStudentStats trong
@@ -542,7 +566,7 @@
 
     result.radar5 = computeRadar5(finals);
     result.levelXp = computeLevelXP(finals);
-    result.currentChuDe = getCurrentChuDe(result.mastery);
+    result.currentChuDe = getCurrentChuDe(result.mastery, khoi);
 
     // Đề đã làm / Điểm TB / Điểm cao nhất — tính trên MỌI lượt nộp bài thật
     // (Kiểm tra đầu vào, Drill, Thi thử, Luyện thích ứng, Đề được giao...),
@@ -1111,6 +1135,7 @@
     cleanGroupLead: cleanGroupLead, // THÊM 16/10/2026
     CHU_DE_MAP: CHU_DE_MAP,
     CHU_DE_ORDER: CHU_DE_ORDER,
+    getTopicKeysForKhoi: getTopicKeysForKhoi, // THÊM 28/10/2026 — chủ đề theo khối 10/11/12
     computeRadar5: computeRadar5,
     computeLevelXP: computeLevelXP,
     getCurrentChuDe: getCurrentChuDe,
@@ -1242,11 +1267,11 @@
     // sinh cụ thể (vd. student.mastery) để làm mốc tính, và (tuỳ chọn)
     // realNanoMastery tính từ lịch sử làm bài thật (student.nanoMastery) để
     // dùng số liệu thật thay vì suy diễn khi đã có.
-    getKnowledgeMap: function(studentMasteryByTopic, realNanoMastery){
-      return buildKnowledgeMap(studentMasteryByTopic, realNanoMastery);
+    getKnowledgeMap: function(studentMasteryByTopic, realNanoMastery, khoi){
+      return buildKnowledgeMap(studentMasteryByTopic, realNanoMastery, khoi);
     },
-    getWeakestNanoPoints: function(studentMasteryByTopic, n, realNanoMastery){
-      return getWeakestNanoPoints(buildKnowledgeMap(studentMasteryByTopic, realNanoMastery), n);
+    getWeakestNanoPoints: function(studentMasteryByTopic, n, realNanoMastery, khoi){
+      return getWeakestNanoPoints(buildKnowledgeMap(studentMasteryByTopic, realNanoMastery, khoi), n);
     },
     computeStudentStatsFromAttempts: computeStudentStatsFromAttempts,
     // THÊM 14/10/2026 — gắn dữ kiện câu trước cho câu "dựa vào câu trên" (xem linkPrevContext)

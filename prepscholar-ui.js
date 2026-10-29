@@ -25,10 +25,13 @@
     // không giả định trước em nào yếu/mạnh chuyên đề nào). THÊM 25/9/2026:
     // suy TỰ ĐỘNG từ CHU_DE_MAP (nay 7 chủ đề, gồm 3 chuyên đề) thay vì gõ
     // cứng 4 key — để không bỏ sót chủ đề mới nếu danh mục còn mở rộng thêm.
+    // THÊM 28/10/2026 — KHỐI 10/11/12 (students/{id}.khoi; thiếu = 12). Chủ đề mặc định theo đúng khối của em.
+    var khoi = window.OPC_CURRICULUM ? window.OPC_CURRICULUM.khoiOf(real) : 12;
     var defMastery = {};
-    Object.keys(window.PrepScholarEngine.CHU_DE_MAP).forEach(function(k){ defMastery[k] = 50; });
+    window.PrepScholarEngine.getTopicKeysForKhoi(khoi).forEach(function(k){ defMastery[k] = 50; });
     return {
       id: real.id,
+      khoi: khoi,
       name: real.name || 'Học sinh',
       email: real.email || '',
       target: Number(real.targetScore) || 9.0,
@@ -47,7 +50,7 @@
       // chủ đề đầu chương trình. Không bịa số đẹp cho học sinh mới.
       radar5: { lyThuyet: null, vdc: null, neBayTF: null, doThi: null, tinhNhanh: null },
       levelXp: { totalXP: 0, level: 1, xpIntoLevel: 0, xpForNextLevel: 2000 },
-      currentChuDe: 'nhiet',
+      currentChuDe: window.PrepScholarEngine.getTopicKeysForKhoi(khoi)[0],
       // THÊM 28/9/2026 — danh sách chương admin mở RIÊNG cho em này (ghi đè
       // mặc định của lớp trong settings/curriculum). null = theo mặc định lớp.
       unlockedChapters: Array.isArray(real.unlockedChapters) ? real.unlockedChapters : null,
@@ -692,7 +695,7 @@
         setAssignedExams(assigned);
         setAttempts(attempts);
         if(!attempts.length) return;
-        var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
+        var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts, appStu.khoi);
         setStudent(function(prev){
           if(!prev || prev.id !== appStu.id) return prev; // đã đăng xuất/đổi tài khoản trong lúc đang tải
           return Object.assign({}, prev, {
@@ -791,7 +794,7 @@
       return function(){ cancelled = true; };
     }, [liveReady, authed]);
     var unlockedChapters = (curriculum.loaded && student && window.OPC_CURRICULUM)
-      ? window.OPC_CURRICULUM.getUnlockedChapters({ unlockedChapters: student.unlockedChapters }, curriculum.data)
+      ? window.OPC_CURRICULUM.getUnlockedChapters({ unlockedChapters: student.unlockedChapters, khoi: student.khoi }, curriculum.data)
       : [];
     var unlockedKey = unlockedChapters.join(',');
     // THÊM 28/10/2026 — bài đang khoá (riêng em hoặc mặc định lớp) + đề đang khoá trong ngân hàng
@@ -802,7 +805,7 @@
       ? window.OPC_CURRICULUM.getLockedExams(curriculum.data)
       : [];
     var accessKey = unlockedKey + '|' + lockedLessons.join(',') + '|' + lockedExams.join(',');
-    var hasAllChapters = !!window.OPC_CURRICULUM && window.OPC_CURRICULUM.hasAllChapters(unlockedChapters);
+    var hasAllChapters = !!window.OPC_CURRICULUM && window.OPC_CURRICULUM.hasAllChapters(unlockedChapters, student && student.khoi);
     React.useEffect(function(){
       if(!window.PrepScholarEngine.setUnlockedChapters) return;
       // SỬA 28/10/2026 — đặt luật khoá bài/đề TRƯỚC, rồi mới lọc theo chương (mỗi hàm đều lọc lại ngân hàng)
@@ -888,7 +891,9 @@
         if(!hasSpecial(track) || (spLists._sid === student.id && spLists[track])) return;
         setSpLists(function(p){ var n = Object.assign({}, p, { _sid: student.id }); n[track] = { loading: true }; return n; });
         window.OPC_LIVE.loadSpecialExamList(track).then(function(res){
-          setSpLists(function(p){ var n = Object.assign({}, p); n[track] = res.ok ? { list: res.list } : { locked: !!res.locked, error: res.error }; return n; });
+          // THÊM 28/10/2026 — chỉ hiện đề đúng KHỐI của em (đề cũ chưa ghi khối = khối 12)
+          var khoiNow = student.khoi || 12;
+          setSpLists(function(p){ var n = Object.assign({}, p); n[track] = res.ok ? { list: res.list.filter(function(ex){ return (Number(ex.khoi) || 12) === khoiNow; }) } : { locked: !!res.locked, error: res.error }; return n; });
         });
       });
     }, [tab, student && student.id, student && (student.specialAccess || []).join(',')]);
@@ -985,9 +990,12 @@
 
       return h('div', null,
         h('p', { style: { fontSize: '0.88rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: 0 } },
-          'Mục luyện đề chuyên sâu dành cho học sinh ôn thi học sinh giỏi. Đề ở đây tách riêng, không tính vào điểm luyện thi Tốt nghiệp của em.'),
+          (student && student.khoi && student.khoi !== 12)
+            ? 'Mục luyện đề chuyên sâu Vật lí ' + student.khoi + ' dành cho học sinh ôn thi học sinh giỏi và Olympic. Đề ở đây tách riêng, không tính vào điểm luyện tập thường của em.'
+            : 'Mục luyện đề chuyên sâu dành cho học sinh ôn thi học sinh giỏi. Đề ở đây tách riêng, không tính vào điểm luyện thi Tốt nghiệp của em.'),
         // THÊM 26/10/2026 — Luyện thi ĐGNL ĐHQG-HCM (dgnl.js): làm trên máy, chấm tự động
-        window.OPC_DGNL ? h('div', { className: 'ps-topic-card', style: { display: 'block', marginBottom: '14px', opacity: hasSpecial('dgnl') ? 1 : 0.75 } },
+        // SỬA 28/10/2026 — khối 10/11 KHÔNG có mục ĐGNL (thay bằng HSG & Olympic VL10/VL11)
+        (window.OPC_DGNL && !(student && student.khoi && student.khoi !== 12)) ? h('div', { className: 'ps-topic-card', style: { display: 'block', marginBottom: '14px', opacity: hasSpecial('dgnl') ? 1 : 0.75 } },
           h('div', { className: 'ps-topic-title' }, (hasSpecial('dgnl') ? '' : '🔒 ') + '🎯 Luyện thi Đánh giá năng lực ĐHQG-HCM (V-ACT)'),
           hasSpecial('dgnl') ? h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px' } },
             h('span', { style: { fontSize: '0.86rem', color: 'var(--ink-2)' } }, 'Toán học + Tư duy khoa học · làm trên máy như thi thật · chấm ngay, điểm quy đổi thang 1.200.'),
@@ -1310,7 +1318,7 @@
       if(!student) return;
       setAiSuggest(function(prev){ return Object.assign({}, prev, { loading: true, error: null, fetchedOnce: true }); });
       var weakest = (window.PrepScholarEngine && window.PrepScholarEngine.getWeakestNanoPoints)
-        ? window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5, student.nanoMastery)
+        ? window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5, student.nanoMastery, student.khoi)
         : [];
       fetch('/api/ai-suggest', {
         method: 'POST',
@@ -1358,7 +1366,7 @@
 
     function fetchAiAdaptivePriority(seedMastery){
       if(!window.PrepScholarEngine || !window.PrepScholarEngine.getWeakestNanoPoints || !student) return;
-      var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 15, seedMastery)
+      var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 15, seedMastery, student.khoi)
         .filter(function(n){ return n.mastery < window.PrepScholarEngine.MASTERY_GREEN_MIN; });
       if(weakest.length < 2) return; // quá ít Tag để việc sắp xếp lại có ý nghĩa
       setAiAdaptive({ priority: null, reason: null, loading: true });
@@ -2255,7 +2263,7 @@
     function applyAttemptsAndSync(studentId, attempts){
       if(!attempts) return;
       setAttempts(attempts);
-      var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts);
+      var stats = window.PrepScholarEngine.computeStudentStatsFromAttempts(attempts, student && student.khoi);
       setStudent(function(prev){
         if(!prev || prev.id !== studentId) return prev;
         return Object.assign({}, prev, {
@@ -2380,7 +2388,7 @@
       // đề trong CHU_DE_MAP (nay 7, gồm 3 chuyên đề), không cộng cứng đúng 4
       // chủ đề SGK cũ — nếu không, điểm dự đoán không bao giờ phản ánh đúng
       // phong độ chuyên đề của học sinh.
-      var avgMasteryKeys = Object.keys(window.PrepScholarEngine.CHU_DE_MAP);
+      var avgMasteryKeys = window.PrepScholarEngine.getTopicKeysForKhoi(student && student.khoi);
       var avgMastery = Math.round(avgMasteryKeys.reduce(function(s, k){ return s + (newMastery[k] != null ? newMastery[k] : 50); }, 0) / avgMasteryKeys.length);
       // SỬA 16/10/2026 — bỏ công thức "5 + mastery × 4,8" (số ước chừng); điểm dự đoán được tính lại ngay sau khi lưu bài
       // (applyAttemptsAndSync → computeStudentStatsFromAttempts → predictExamScore).
@@ -2542,7 +2550,7 @@
     // Tính overall mastery — THÊM 25/9/2026: như trên, trung bình trên TOÀN
     // BỘ chủ đề trong CHU_DE_MAP (nay 7, gồm 3 chuyên đề), không cộng cứng
     // đúng 4 chủ đề SGK cũ.
-    var avgMasteryKeys = Object.keys(window.PrepScholarEngine.CHU_DE_MAP);
+    var avgMasteryKeys = window.PrepScholarEngine.getTopicKeysForKhoi(student && student.khoi);
     var avgMastery = Math.round(avgMasteryKeys.reduce(function(s, k){ return s + (student.mastery[k] != null ? student.mastery[k] : 50); }, 0) / avgMasteryKeys.length);
 
     // Số đề được giao CHƯA làm — dùng để "làm nổi bật" tab Đề được giao (tab
@@ -2695,7 +2703,9 @@
           className: 'ps-tab-btn ' + (tab === 'special' ? 'active' : ''),
           title: 'Luyện đề thi học sinh giỏi cấp tỉnh/thành phố và đội tuyển Olympic — thầy mở khoá theo nhu cầu.',
           onClick: function(){ setTab('special'); setExamSession(null); }
-        }, (hasSpecial('hsg') || hasSpecial('olympic') || hasSpecial('dgnl')) ? (hasSpecial('dgnl') ? '🎯 ĐGNL · HSG' : '🏆 HSG & Olympic') : '🔒 HSG & Olympic')
+        }, (student && student.khoi && student.khoi !== 12)
+          ? (((hasSpecial('hsg') || hasSpecial('olympic')) ? '🏆 ' : '🔒 ') + 'HSG & Olympic VL' + student.khoi) // THÊM 28/10/2026 — thay chỗ ĐGNL ở khối 10/11
+          : ((hasSpecial('hsg') || hasSpecial('olympic') || hasSpecial('dgnl')) ? (hasSpecial('dgnl') ? '🎯 ĐGNL · HSG' : '🏆 HSG & Olympic') : '🔒 HSG & Olympic'))
       )
       ), // đóng div "chrome" (Hồ sơ + Chỉ số + Điều hướng, ẩn khi lockedMode)
 
@@ -3162,8 +3172,8 @@
             if(!hasNanoMap){
               return h('div', { style: { fontSize: '0.86rem', color: 'var(--muted)' } }, 'Chưa nạp được dữ liệu bản đồ kiến thức.');
             }
-            var knowledgeMap = window.PrepScholarEngine.getKnowledgeMap(student.mastery, student.nanoMastery);
-            var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5, student.nanoMastery);
+            var knowledgeMap = window.PrepScholarEngine.getKnowledgeMap(student.mastery, student.nanoMastery, student.khoi);
+            var weakest = window.PrepScholarEngine.getWeakestNanoPoints(student.mastery, 5, student.nanoMastery, student.khoi);
 
             return h('div', null,
               h('div', { style: { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: '14px', padding: '18px 20px', marginBottom: '18px' } },
@@ -3234,7 +3244,7 @@
                   // Chuyên đề yếu nhất tính TỪ DỮ LIỆU THẬT của chính em này —
                   // không còn giả định cứng "Vật lí hạt nhân luôn yếu nhất".
                   // SỬA 28/9/2026: chỉ xét chủ đề thuộc chương ĐÃ MỞ.
-                  var openKeys = Object.keys(window.PrepScholarEngine.CHU_DE_MAP).filter(function(k){ return window.PrepScholarEngine.isTopicUnlocked(k); });
+                  var openKeys = window.PrepScholarEngine.getTopicKeysForKhoi(student.khoi).filter(function(k){ return window.PrepScholarEngine.isTopicUnlocked(k); });
                   if(!openKeys.length){
                     return h('p', { style: { margin: 0, fontSize: '0.86rem', color: 'var(--ink-2)' } }, '🔒 Chưa có chương nào được mở cho bạn — chờ thầy cô mở chương để bắt đầu luyện tập.');
                   }
@@ -3272,7 +3282,7 @@
               h('p', { style: { fontSize: '0.84rem', color: 'var(--muted)', marginBottom: '16px' } }, 'Hệ thống tự động điều phối độ khó (M1 - M4) theo năng lực hiện tại của bạn:'),
 
               h('div', { className: 'ps-topic-grid' },
-                Object.keys(window.PrepScholarEngine.CHU_DE_MAP).map(function(key){
+                window.PrepScholarEngine.getTopicKeysForKhoi(student.khoi).map(function(key){
                   var t = window.PrepScholarEngine.CHU_DE_MAP[key];
                   var val = student.mastery[key] || 50;
                   var statusClass = val < 50 ? 'critical' : (val < 75 ? 'warning' : 'good');
@@ -3391,7 +3401,7 @@
                   );
                 })(),
 
-                h('div', { className: 'ps-topic-card', style: hasAllChapters ? null : { opacity: 0.7 } },
+                h('div', { className: 'ps-topic-card', style: (student.khoi && student.khoi !== 12) ? { display: 'none' } : (hasAllChapters ? null : { opacity: 0.7 }) }, // SỬA 28/10/2026 — đề chuẩn BGD chỉ dành cho khối 12
                   h('div', null,
                     h('div', { className: 'ps-topic-title' }, (hasAllChapters ? '' : '🔒 ') + '⏱️ Đề chuẩn BGD đầy đủ'),
                     h('p', { style: { fontSize: '0.86rem', color: 'var(--ink-2)', lineHeight: 1.6, marginTop: '8px' } },
