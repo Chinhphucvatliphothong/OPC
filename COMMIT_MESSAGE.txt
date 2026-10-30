@@ -1,15 +1,10 @@
-Thêm khối Vật lí 10 và 11 (SGK Kết nối tri thức) + HSG & Olympic VL10/VL11 thay chỗ ĐGNL
+Đề Tổ: nhận diện đủ câu hỏi chùm trong ngân hàng + cho phép thay chùm bằng câu rời
 
-- nano-map.js: thêm 11 chủ đề, 60 bài (VL10: 7 chương/34 bài; VL11: 4 chương/26 bài) theo đúng mục lục.
-- curriculum.js: khái niệm KHỐI 10/11/12 (mã chương: khối 12 giữ 1–4, khối 10 = 101–107,
-  khối 11 = 111–114), mở chương mặc định theo khối (settings/curriculum.defaultUnlockedByKhoi).
-- prepscholar.js: chủ đề/thứ tự/bản đồ kiến thức theo khối.
-- prepscholar-ui.js: học sinh lớp 10/11 chỉ thấy chương, bài, chủ đề của khối mình; ẩn ĐGNL và
-  đề chuẩn BGD (chỉ khối 12); mục "HSG & Olympic VL10/VL11"; lọc đề HSG/Olympic theo khối.
-- opc-live-data.js: danh sách đề HSG/Olympic trả thêm trường khoi.
-- admin.html: trường khoi cho học sinh (form thêm + cột Khối) và cho đề (form nạp đề, bộ lọc, nhãn);
-  Quản lý chương/bài/đề khoá chọn theo khối; tab HSG & Olympic hiện khối của từng em.
-- Dữ liệu cũ không có trường khoi được hiểu là khối 12 nên lớp 12 không đổi.
-- Gồm cả tính năng khoá/mở từng bài và khoá/mở đề đã làm trước đó.
+- admin-to.js: chùm nay được nhận theo cụm câu Phần III liền nhau của cùng đề (cùng groupPassage,
+  hoặc câu "dựa vào câu trên" ctxFrom/ctxOwn) — không còn bắt buộc chùm có ĐÚNG 2 câu và mọi câu
+  phải có groupPassage. Chùm 3–4 câu cho ra các cặp 2 câu liền nhau.
+- Thiếu chùm thì (mặc định bật, có ô tick) thay bằng cặp CÂU RỜI Phần III, vẫn cân 2 cơ bản + 3 vận
+  dụng + 1 VDC; nút "Đổi cặp" / "Đổi câu này" cho câu rời; checklist ghi rõ cặp câu rời thay chùm.
+- Bỏ nhãn số câu gốc ở đoạn dữ kiện chung; cảnh báo khi đề còn nhắc "câu <số>" của đề gốc.
 
 Co-Authored-By: Claude <noreply@anthropic.com>
