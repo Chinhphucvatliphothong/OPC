@@ -48,6 +48,59 @@
       })
       .replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
   }
+  // ===== THÊM 29/10/2026 — HÌNH VẼ ĐỘNG (SVG) TRONG BÀI GIẢNG: dòng  [svg: <svg …>…</svg>]  (1 dòng) =====
+  // Hình do AI vẽ (hoặc thầy dán) được LỌC AN TOÀN trước khi hiện: chỉ giữ các thẻ vẽ + hoạt hoạ SMIL (animate,
+  // animateTransform, animateMotion, set), bỏ script / foreignObject / sự kiện on* / link ngoài / ảnh ngoài.
+  var SVG_TAGS = { svg:1, g:1, defs:1, lineargradient:1, radialgradient:1, stop:1, path:1, circle:1, ellipse:1, rect:1, line:1,
+    polyline:1, polygon:1, text:1, tspan:1, marker:1, animate:1, animatetransform:1, animatemotion:1, mpath:1, set:1 };
+  var SVG_ATTRS = { viewbox:1, xmlns:1, width:1, height:1, x:1, y:1, x1:1, y1:1, x2:1, y2:1, cx:1, cy:1, r:1, rx:1, ry:1, d:1, points:1,
+    fill:1, stroke:1, 'stroke-width':1, 'stroke-linecap':1, 'stroke-linejoin':1, 'stroke-dasharray':1, 'stroke-dashoffset':1,
+    'fill-opacity':1, 'stroke-opacity':1, opacity:1, transform:1, 'text-anchor':1, 'dominant-baseline':1, 'font-size':1, 'font-weight':1,
+    'font-family':1, 'font-style':1, 'marker-end':1, 'marker-start':1, markerwidth:1, markerheight:1, refx:1, refy:1, orient:1, markerunits:1,
+    offset:1, 'stop-color':1, 'stop-opacity':1, gradientunits:1, gradienttransform:1, fx:1, fy:1, id:1, class:1, style:1, preserveaspectratio:1,
+    'stroke-miterlimit':1, 'fill-rule':1, dx:1, dy:1, 'letter-spacing':1,
+    // hoạt hoạ
+    attributename:1, attributetype:1, from:1, to:1, by:1, values:1, dur:1, begin:1, end:1, repeatcount:1, repeatdur:1, keytimes:1,
+    keysplines:1, calcmode:1, additive:1, accumulate:1, type:1, path:1, rotate:1, keypoints:1, min:1, max:1 };
+  var ANIM_TARGETS = { cx:1, cy:1, r:1, rx:1, ry:1, x:1, y:1, x1:1, y1:1, x2:1, y2:1, width:1, height:1, opacity:1, fill:1, stroke:1,
+    'stroke-width':1, 'stroke-dashoffset':1, 'stroke-dasharray':1, transform:1, points:1, d:1, offset:1, 'fill-opacity':1,
+    'stroke-opacity':1, 'font-size':1, 'stop-color':1, 'stop-opacity':1, visibility:1 };
+  var svgCache = {};
+  function sanitizeSvg(src){
+    src = String(src || '').trim();
+    if(src.length > 24000 || !/^<svg[\s>]/i.test(src)) return '';
+    if(svgCache[src] != null) return svgCache[src];
+    var out = '';
+    try{
+      var doc = new DOMParser().parseFromString('<body>' + src + '</body>', 'text/html');
+      var root = doc.body.firstElementChild, count = 0;
+      if(root && root.tagName.toLowerCase() === 'svg'){
+        (function clean(el){
+          Array.prototype.slice.call(el.children).forEach(function(ch){
+            var tag = ch.tagName.toLowerCase();
+            if(!SVG_TAGS[tag] || ++count > 500){ ch.parentNode.removeChild(ch); return; }
+            clean(ch);
+          });
+          Array.prototype.slice.call(el.attributes).forEach(function(a){
+            var n = a.name.toLowerCase(), v = String(a.value || '');
+            var ok = !!SVG_ATTRS[n] && n.indexOf('on') !== 0;
+            if(ok && /javascript:|data:|expression\s*\(|@import|<|url\s*\((?!\s*['"]?#)/i.test(v)) ok = false;
+            if(ok && n === 'attributename' && !ANIM_TARGETS[v.trim().toLowerCase()] && !ANIM_TARGETS[v.trim()]) ok = false;
+            if(ok && n === 'begin' && !/^[-+0-9.;s\s]+$/.test(v)) ok = false;
+            if(ok && n === 'end' && !/^[-+0-9.;s\s]+$/.test(v)) ok = false;
+            if(!ok) el.removeAttribute(a.name);
+          });
+          if(el.tagName.toLowerCase() === 'mpath'){ var hr = el.getAttribute('href') || el.getAttribute('xlink:href'); if(!hr || hr.charAt(0) !== '#') el.parentNode.removeChild(el); }
+        })(root);
+        root.removeAttribute('width'); root.removeAttribute('height');
+        if(!root.getAttribute('viewBox')) root.setAttribute('viewBox', '0 0 400 240');
+        root.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        out = root.outerHTML;
+      }
+    }catch(e){ out = ''; }
+    svgCache[src] = out;
+    return out;
+  }
   function youtubeId(url){
     var s = String(url || '').trim(), m;
     if(/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
@@ -81,6 +134,7 @@
       else if(/^[-•*]\s+/.test(line)) cur.items.push({ t: 'li', v: line.replace(/^[-•*]\s+/, '') });
       else if(/^!\s*/.test(line)) cur.items.push({ t: 'note', v: line.replace(/^!\s*/, '') });
       else if(/^\?\s*/.test(line)) cur.items.push({ t: 'ask', v: line.replace(/^\?\s*/, '') });
+      else if((m = line.match(/^\[(?:svg|hình|hinh|sơ đồ|so do)\s*:\s*(<svg[\s\S]*<\/svg>)\s*\]$/i))) cur.items.push({ t: 'svg', v: m[1].trim() });
       else if((m = line.match(/^\[(?:ảnh|anh|img|image)\s*:\s*([^\]]+)\]$/i))) cur.items.push({ t: 'img', v: m[1].trim() });
       else cur.items.push({ t: 'p', v: line });
     });
@@ -89,8 +143,8 @@
     scenes.forEach(function(sc, si){
       steps.push({ scene: si, upto: 0, say: sc.say || (sc.title ? sc.title + '.' : '') });
       sc.items.forEach(function(it, ii){
-        var say = it.say || (it.t === 'math' || it.t === 'img' ? '' : speakable(it.v));
-        steps.push({ scene: si, upto: ii + 1, say: say, pause: it.t === 'math' || it.t === 'img' ? 3200 : (it.t === 'ask' ? 2500 : 0) });
+        var say = it.say || (it.t === 'math' || it.t === 'img' || it.t === 'svg' ? '' : speakable(it.v));
+        steps.push({ scene: si, upto: ii + 1, say: say, pause: it.t === 'math' || it.t === 'img' || it.t === 'svg' ? 3200 : (it.t === 'ask' ? 2500 : 0) });
       });
     });
     return { scenes: scenes, steps: steps };
@@ -151,6 +205,11 @@
     '.fx-ask{background:rgba(96,165,250,.14);border-left:.22em solid #60a5fa;padding:.45em .7em;border-radius:.4em;}',
     '.fx-ask:before{content:"🤔 ";} .fx-note:before{content:"💡 ";}',
     '.fx-img{text-align:center;} .fx-img img{max-height:9em;max-width:100%;border-radius:.4em;background:#fff;}',
+    // THÊM 29/10/2026 — cảnh có HÌNH VẼ: chữ bên trái, hình (có thể chuyển động) bên phải
+    '.fx-scene.has-svg{display:grid;grid-template-columns:1.1fr .95fr;column-gap:1.2em;row-gap:0;grid-auto-rows:min-content;align-content:start;}',
+    '.fx-scene.has-svg > h2{grid-column:1/-1;} .fx-scene.has-svg > .fx-it{grid-column:1;margin-bottom:.55em;}',
+    '.fx-scene.has-svg > .fx-svg{grid-column:2;grid-row:2 / span 14;align-self:center;margin:0;padding:.35em;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);border-radius:.7em;}',
+    '.fx-svg svg{display:block;width:100%;height:auto;max-height:16em;}',
     '.fx-wm{position:absolute;right:2.2%;bottom:3%;display:flex;align-items:center;gap:.35em;font-weight:800;font-size:.8em;color:rgba(255,255,255,.75);letter-spacing:.02em;}',
     '.fx-wm img{width:1.6em;height:1.6em;} .fx-wm b{color:#c9a25f;}',
     '.fx-cap{position:absolute;left:8%;right:8%;bottom:9%;text-align:center;font-size:.86em;line-height:1.4;background:rgba(0,0,0,.55);padding:.3em .7em;border-radius:.4em;}',
@@ -291,10 +350,14 @@
       if(isTitle) stage = h('div', { className: 'fx-title' }, h('img', { src: '/logo-mark.svg', alt: '' }), h('div', { className: 'k' }, 'FARADAYAI · ÔN LÝ THUYẾT'), h('h1', null, L.title || ''), h('div', { className: 's' }, bm ? bm.name : ''));
       else if(isEnd) stage = h('div', { className: 'fx-title' }, h('img', { src: '/logo-mark.svg', alt: '' }), h('div', { className: 'k' }, 'HẾT BÀI GIẢNG'), h('h1', null, 'Giờ mình luyện vài câu nhé!'),
         h('div', { className: 's' }, 'Xem lại bất cứ lúc nào trong mục 📺 Video ôn lý thuyết.'));
-      else stage = h('div', { className: 'fx-scene' },
+      else stage = h('div', { className: 'fx-scene' + (sc.items.some(function(x){ return x.t === 'svg'; }) ? ' has-svg' : '') },
         sc.title ? h('h2', null, sc.title) : null,
         sc.items.map(function(it, i){
           var cls = 'fx-it ' + (i < upto ? 'on' : '') + (i === upto - 1 ? ' cur' : '');
+          // THÊM 29/10/2026 — hình SVG chỉ gắn vào trang khi tới bước của nó (để hoạt hoạ chạy từ đầu), giữ nguyên khi sang bước sau
+          if(it.t === 'svg') return i < upto
+            ? h('div', { key: i, className: cls + ' fx-svg', dangerouslySetInnerHTML: { __html: sanitizeSvg(it.v) } })
+            : h('div', { key: i, className: 'fx-it fx-svg', style: { visibility: 'hidden', padding: 0, border: 0 } });
           if(it.t === 'math') return h('div', { key: i, className: cls + ' fx-math', dangerouslySetInnerHTML: { __html: mathHtml(it.v, true) } });
           if(it.t === 'img') return h('div', { key: i, className: cls + ' fx-img' }, h('img', { src: it.v, alt: '' }));
           return h('div', { key: i, className: cls + ' fx-' + it.t, dangerouslySetInnerHTML: { __html: richHtml(it.v) } });
@@ -625,6 +688,6 @@
     setTracker: function(f){ trackFn = f; },
     setAudioLoader: function(f){ audioLoader = f; audioCache = {}; }, stepSays: stepSays, normSay: normSay, clearAudioCache: function(){ audioCache = {}; },
     makeCertificate: makeCertificate, downloadCertificate: downloadCertificate,
-    SEED_LESSONS: SEED_LESSONS, richHtml: richHtml
+    SEED_LESSONS: SEED_LESSONS, richHtml: richHtml, sanitizeSvg: sanitizeSvg
   };
 })(window);

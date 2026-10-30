@@ -1,0 +1,9 @@
+Bài giảng FaradayAI: thêm hình vẽ động (SVG) do AI vẽ
+
+- faraday-extras.js: trình phát hiểu dòng [svg: <svg…>] — hình hiện bên phải chữ, có chuyển động
+  (animate / animateTransform / animateMotion); hình được lọc an toàn (bỏ script, foreignObject, on*, link ngoài).
+- api/ai-lesson.js: "AI soạn nháp" nay vẽ kèm 1 hình mỗi cảnh; thêm chế độ mode:"visuals" chỉ CHÈN hình vào
+  kịch bản đã có (server kiểm tra không được sửa chữ), lọc lại SVG ở phía server.
+- admin-growth.js: nút "🎨 AI vẽ hình" trong khung soạn bài giảng; cập nhật dòng hướng dẫn cú pháp.
+
+Co-Authored-By: Claude <noreply@anthropic.com>

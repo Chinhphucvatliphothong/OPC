@@ -266,7 +266,7 @@
   }
 
   // =================================================================== 📺 VIDEO BÀI GIẢNG
-  var SCRIPT_HELP = '# Tiêu đề cảnh  ·  - Ý chính (có $công thức$)  ·  $$ công thức lớn $$  ·  ! Lưu ý  ·  ? Câu hỏi nhanh  ·  [ảnh: link]  ·  > Lời giảng đọc cho dòng ngay trên';
+  var SCRIPT_HELP = '# Tiêu đề cảnh  ·  - Ý chính (có $công thức$)  ·  $$ công thức lớn $$  ·  ! Lưu ý  ·  ? Câu hỏi nhanh  ·  [ảnh: link]  ·  [svg: <svg…>] hình vẽ động (nhờ 🎨 AI vẽ hình)  ·  > Lời giảng đọc cho dòng ngay trên';
   function LessonEdit(props){
     var NANO = window.OPC_NANO, l0 = props.lesson || {};
     var fs = React.useState(Object.assign({ kind: 'faraday', title: '', chuDeKey: '', baiKey: '', nanoIds: [], script: '# Tiêu đề cảnh\n> Lời mở đầu…\n- Ý thứ nhất\n$$ công thức $$\n> Lời giảng cho công thức\n! Lưu ý hay sai', url: '', start: '', end: '', note: '', level: 'co-ban', published: true, order: 0 }, l0));
@@ -288,6 +288,17 @@
       } else data.script = f.script || '';
       setBusy('Đang lưu…');
       OPC().lessons.save(l0.id || null, data).then(function(){ props.fireToast('Đã lưu "' + data.title + '".'); props.onClose(); }).catch(function(e){ setBusy(''); props.fireToast('Không lưu được: ' + (e && e.message), true); });
+    }
+    // THÊM 29/10/2026 — AI vẽ hình minh hoạ (SVG, có chuyển động) cho kịch bản ĐÃ CÓ: chỉ CHÈN dòng [svg: …], không đụng chữ
+    function aiVisuals(){
+      if(!(f.script || '').trim()) return props.fireToast('Chưa có kịch bản để vẽ hình.', true);
+      if(/^\[svg:/m.test(f.script) && !window.confirm('Kịch bản đã có hình vẽ. AI vẽ lại sẽ thay các hình cũ. Tiếp tục?')) return;
+      var bai = NANO && f.baiKey ? NANO.getBai(f.baiKey) : null;
+      setBusy('AI đang vẽ hình minh hoạ… (có thể mất 30–60 giây)');
+      fetch('/api/ai-lesson', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'visuals', script: f.script, title: f.title, baiName: bai ? bai.name : '', level: f.level }) })
+        .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error || 'Lỗi'); return j; }); })
+        .then(function(j){ set('script', j.script || f.script); setBusy(''); props.fireToast('AI đã vẽ ' + (j.nSvg || 0) + ' hình — bấm ▶ Xem thử để kiểm tra, sai thì bấm vẽ lại.'); })
+        .catch(function(e){ setBusy(''); props.fireToast('AI chưa vẽ được: ' + e.message, true); });
     }
     function aiDraft(){
       var bai = NANO && f.baiKey ? NANO.getBai(f.baiKey) : null;
@@ -322,7 +333,8 @@
       h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.86rem', margin: '4px 0 10px' } }, h('input', { type: 'checkbox', checked: f.published !== false, onChange: function(e){ set('published', e.target.checked); } }), 'Hiện cho học sinh'),
       h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' } },
         busy ? h('span', { style: { fontSize: '0.85rem', color: 'var(--ink-2)', marginRight: 'auto' } }, busy) : null,
-        f.kind === 'faraday' ? h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!busy, onClick: aiDraft, title: 'Gọi AI (Gemini của FaradayAI) soạn nháp theo bài/nano đã chọn' }, '✨ AI soạn nháp') : null,
+        f.kind === 'faraday' ? h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!busy, onClick: aiDraft, title: 'Gọi AI (Gemini của FaradayAI) soạn nháp (có kèm hình vẽ động) theo bài/nano đã chọn' }, '✨ AI soạn nháp') : null,
+        f.kind === 'faraday' ? h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!busy, onClick: aiVisuals, title: 'AI vẽ thêm hình minh hoạ chuyển động vào kịch bản đã viết (không sửa chữ)' }, '🎨 AI vẽ hình') : null,
         h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ window.OPC_FX.openLesson(preview); } }, '▶ Xem thử'),
         h('button', { type: 'button', className: 'btn btn-secondary', disabled: !!busy, onClick: props.onClose }, 'Huỷ'),
         h('button', { type: 'button', className: 'btn btn-primary', disabled: !!busy, onClick: save }, 'Lưu')));
