@@ -1258,6 +1258,7 @@
 <script src="/admin-to.js"></script>
 <script src="/admin-sales.js"></script>
 <script src="/admin-cleanup.js"></script>
+<script src="/admin-progress.js"></script> <!-- THÊM 29/10/2026 — 📈 Tiến bộ học sinh -->
 <script src="/exam-matrix.js"></script> <!-- THÊM 27/10/2026 — ma trận đề kiểu Bộ GD cho đề cá nhân hóa -->
 <script src="/admin-aiimport.js"></script> <!-- THÊM 26/10/2026 — nhập đề từ PDF/ảnh bằng AI --> <!-- THÊM 25/10/2026 — xoá bài làm ẩu + thùng rác --> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
@@ -12486,6 +12487,8 @@
         // THÊM 20/10/2026 — Việc hôm nay · Học phí (admin-ops.js)
         window.OPC_OPS ? h('button',{type:'button', className:cx('tab-btn', tab==='today' && 'active'), onClick:function(){ setTab('today'); }}, '📌 Việc hôm nay') : null,
         h('button',{type:'button', className:cx('tab-btn', tab==='students' && 'active'), onClick:function(){ setTab('students'); }}, 'Học sinh'),
+        // THÊM 29/10/2026 — Tiến bộ học sinh (admin-progress.js)
+        window.OPC_PROGRESS ? h('button',{type:'button', className:cx('tab-btn', tab==='progress' && 'active'), onClick:function(){ setTab('progress'); }}, '📈 Tiến bộ') : null,
         window.OPC_OPS ? h('button',{type:'button', className:cx('tab-btn', tab==='billing' && 'active'), onClick:function(){ setTab('billing'); }}, '💳 Học phí') : null,
         h('button',{type:'button', className:cx('tab-btn', tab==='prepscholar' && 'active'), onClick:function(){ setTab('prepscholar'); }}, '⚡ Giám sát thích ứng PrepScholar'),
         h('button',{type:'button', className:cx('tab-btn', tab==='exambank' && 'active'), onClick:function(){ setTab('exambank'); }}, 'Ngân hàng đề & câu hỏi'),
@@ -12511,6 +12514,7 @@
       (window.OPC_GROWTH && tab === 'mock') ? h(window.OPC_GROWTH.MockPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'lessons') ? h(window.OPC_GROWTH.LessonsPanel, {fireToast:fireToast}) :
       (window.OPC_GROWTH && tab === 'survey') ? h(window.OPC_GROWTH.SurveyPanel, {fireToast:fireToast}) :
+      (window.OPC_PROGRESS && tab === 'progress') ? h(window.OPC_PROGRESS.ProgressPanel, {fireToast:fireToast}) :
       (tab === 'today' && window.OPC_OPS) ? h(window.OPC_OPS.TodayPanel, {fireToast:fireToast}) : (tab === 'billing' && window.OPC_OPS) ? h(window.OPC_OPS.BillingPanel, {fireToast:fireToast, onGoPricing:function(){ setTab('pricing'); }}) :
       tab === 'students' ? h(StudentsPanel, {fireToast:fireToast}) : (
         tab === 'prepscholar' ? h(PrepScholarMonitoringPanel, {fireToast:fireToast, onGoToGenerator:function(){ setTab('generator'); }}) : (

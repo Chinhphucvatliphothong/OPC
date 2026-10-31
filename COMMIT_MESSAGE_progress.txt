@@ -1,0 +1,9 @@
+Thêm tab "📈 Tiến bộ" cho học sinh trong admin
+
+- admin-progress.js (mới): tổng hợp tiến bộ từ lịch sử làm bài của MỌI dạng bài; tự loại bài nghi làm ẩu bằng
+  OPC_CLEAN.suspicious (công tắc "tính cả bài nghi làm ẩu"); bảng cả lớp (đầu kỳ → cuối kỳ, xu hướng, thành thạo);
+  chi tiết từng em (biểu đồ theo thời gian/tuần, thành thạo từng chủ đề đầu kỳ → nay, lỗ hổng đã vá/còn yếu);
+  xoá bài làm ẩu tại chỗ (vào thùng rác, khôi phục được) + dọn cả lớp. Đọc TẤT CẢ lượt (qfix.listAttempts), không giới hạn 100.
+- admin.html: nạp admin-progress.js, thêm nút tab "📈 Tiến bộ".
+
+Co-Authored-By: Claude <noreply@anthropic.com>
