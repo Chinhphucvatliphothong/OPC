@@ -1006,12 +1006,20 @@
     // Ai có link /phuhuynh?t=<token> (24 ký tự ngẫu nhiên) mới đọc được — không liệt kê được (rules: chỉ "get").
     OPC.parentViews = {
       save: function(token, data){ return setDoc(doc(db, 'parent_views', token), data); },
-      remove: function(token){ return deleteDoc(doc(db, 'parent_views', token)); }
+      remove: function(token){ return deleteDoc(doc(db, 'parent_views', token)); },
+      // THÊM 29/10/2026 — thanh toán tự động: đọc 1 trang / chỉ cập nhật khối pay (không tạo doc nếu đã bị xoá)
+      get: function(token){ return getDoc(doc(db, 'parent_views', token)).then(function(s){ return s.exists() ? s.data() : null; }); },
+      patch: function(token, data){ return updateDoc(doc(db, 'parent_views', token), data); }
+    };
+    // THÊM 29/10/2026 — payments/{sepay_<id>}: SỔ GIAO DỊCH nhận tự động (do api/sepay-webhook.js ghi; admin đọc/đánh dấu)
+    OPC.payments = {
+      subscribe: function(onNext, onErr){ return onSnapshot(query(collection(db, 'payments'), orderBy('receivedAt', 'desc'), limit(80)), onNext, onErr); },
+      patch: function(id, data){ return updateDoc(doc(db, 'payments', id), data); }
     };
     // settings/billing: bảng giá 3 gói + % giảm khi đóng quý / trọn lộ trình + ngày thi (đọc công khai như các settings khác)
     OPC.billingSettings = {
       subscribe: function(onNext, onErr){ return onSnapshot(doc(db, 'settings', 'billing'), function(snap){ onNext(snap.exists() ? snap.data() : null); }, onErr); },
-      save: function(data){ return setDoc(doc(db, 'settings', 'billing'), Object.assign({}, data, { updatedAt: new Date().toISOString() })); }
+      save: function(data){ return setDoc(doc(db, 'settings', 'billing'), Object.assign({}, data, { updatedAt: new Date().toISOString() }), { merge: true }); }  // SỬA 29/10/2026: merge để không mất cấu hình cổng thanh toán
     };
 
     // ================= THÊM 23/10/2026 — THI THỬ THÁNG · VIDEO BÀI GIẢNG · KHẢO SÁT (xem admin-growth.js) =================

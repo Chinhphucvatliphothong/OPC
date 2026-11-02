@@ -126,6 +126,37 @@ function chart(scores, target){
     <div class="legend"><span style="--c:var(--ink)">Bài thi thử đủ cấu trúc 28 câu</span><span style="--c:var(--accent)">Bài luyện tập</span>${target ? '<span style="--c:var(--good)">Mục tiêu</span>' : ''}</div>`;
 }
 
+// THÊM 29/10/2026 — thẻ HỌC PHÍ: mã VietQR điền sẵn số tiền + nội dung; chuyển khoản xong hệ thống tự ghi nhận (api/sepay-webhook.js)
+function payCard(v){
+  const p = v.pay;
+  if(!p || !p.acc || !p.bank || !(p.amount > 0) || !p.content) return '';
+  const money = n => Math.round(n).toLocaleString('vi-VN') + 'đ';
+  const qr = 'https://img.vietqr.io/image/' + encodeURIComponent(p.bank) + '-' + encodeURIComponent(p.acc) + '-compact2.png?amount=' + Math.round(p.amount) +
+    '&addInfo=' + encodeURIComponent(p.content) + (p.name ? '&accountName=' + encodeURIComponent(p.name) : '');
+  const until = p.paidUntil ? vnDate(p.paidUntil) : '', trial = p.trialEnd ? vnDate(p.trialEnd) : '';
+  const heads = {
+    ok: ['✅ Học phí đã đóng tới ' + until, ''],
+    due: ['⏰ Sắp đến hạn đóng học phí (' + until + ')', 'open'],
+    overdue: ['⚠️ Học phí đã quá hạn từ ' + until, 'open'],
+    unpaid: ['Học phí chưa đóng', 'open'],
+    trial: ['Đang học thử' + (trial ? ' đến ' + trial : '') + ' — đăng ký gói để tiếp tục', 'open'],
+    trialEnd: ['Đã hết học thử' + (trial ? ' từ ' + trial : ''), 'open']
+  };
+  const hd = heads[p.status];
+  if(!hd) return '';
+  const body = `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px">
+      <img src="${esc(qr)}" alt="Mã QR chuyển khoản học phí" width="220" height="220" style="border-radius:10px;background:#fff;max-width:100%;height:auto" loading="lazy">
+      <div style="flex:1;min-width:200px;font-size:.9rem;line-height:1.7">
+        <div>Số tiền: <b>${money(p.amount)}</b>${p.cycle ? ' · ' + esc(p.cycle) : ''}</div>
+        <div>Ngân hàng: <b>${esc(p.bank)}</b> · STK <b>${esc(p.acc)}</b>${p.name ? '<br>Chủ TK: <b>' + esc(p.name) + '</b>' : ''}</div>
+        <div>Nội dung: <b style="letter-spacing:.5px">${esc(p.content)}</b></div>
+        <div class="sub" style="font-size:.78rem;margin-top:6px">Quét mã bằng app ngân hàng (số tiền và nội dung đã điền sẵn). Chuyển xong hệ thống tự ghi nhận — phụ huynh không cần báo thầy. Nếu nhập tay, vui lòng giữ nguyên nội dung.</div>
+      </div></div>`;
+  return `<section class="card"><h2>💳 Học phí</h2>` + (hd[1] === 'open'
+    ? `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${body}`
+    : `<p style="margin:0;font-weight:700">${esc(hd[0])}</p><details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Đóng kỳ tiếp theo</summary>${body}</details>`) + `</section>`;
+}
+
 function render(v){
   const p = v.predicted, target = v.target, g = v.gaps || {};
   const confCls = p ? ({ 'cao': 'cao', 'trung bình': 'tb', 'thấp': 'thap' }[p.conf] || '') : '';
@@ -179,6 +210,7 @@ function render(v){
       ${v.mistakes ? `<p class="sub" style="margin-top:10px">Sổ tay câu sai: ${v.mistakes} câu đang chờ con ôn lại theo lịch giãn cách.</p>` : ''}
     </section>
   </div>
+  ${payCard(v)}
   <div class="actions">
     ${v.zalo ? `<a class="btn zalo" href="${esc(v.zalo)}" target="_blank" rel="noopener">💬 Nhắn Zalo thầy</a>` : ''}
     <button class="btn ghost" type="button" onclick="window.print()">🖨️ In / lưu PDF</button>

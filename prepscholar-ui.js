@@ -550,6 +550,95 @@
     );
   }
 
+  // ===== THÊM 29/10/2026 — GỢI MỞ SOCRATIC khi em dừng quá lâu ở một câu (CHỈ luyện thích ứng + luyện trọng tâm) =====
+  // Sau một lúc em chưa làm xong câu (mặc định 75 giây câu phần I, 120 giây phần II/III; câu khó M3 ×1,4; M4 ×1,8) hiện lời mời
+  // "thầy gợi mở nhé?". Em đồng ý mới gọi /api/ai-socratic — AI chỉ đặt câu hỏi dẫn dắt, KHÔNG nêu đáp án (server còn lọc lại).
+  // Đặt window.OPC_SOCRATIC_IDLE_SEC = số giây để chỉnh/thử nhanh. Số lượt gợi ý của từng câu được ghi vào bài làm (trường hints).
+  var socCssDone = false;
+  function ensureSocraticCss(){
+    if(socCssDone || !document || !document.head) return; socCssDone = true;
+    var s = document.createElement('style'); s.id = 'ps-socratic-css';
+    s.textContent = [
+      '.ps-soc{margin:12px 0;border:1px solid var(--accent,#c9a25f);border-left-width:4px;border-radius:10px;padding:10px 12px;background:rgba(201,162,95,.08);font-size:.92rem;}',
+      '.ps-soc-head{display:flex;align-items:center;gap:8px;font-weight:800;margin-bottom:6px;} .ps-soc-head span.sp{flex:1;}',
+      '.ps-soc-msgs{display:flex;flex-direction:column;gap:6px;margin:6px 0;}',
+      '.ps-soc-msg{padding:7px 10px;border-radius:10px;line-height:1.5;max-width:92%;} .ps-soc-msg.ai{background:rgba(96,165,250,.12);align-self:flex-start;} .ps-soc-msg.student{background:rgba(52,211,153,.14);align-self:flex-end;}',
+      '.ps-soc-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;} .ps-soc-row input{flex:1;min-width:140px;padding:6px 8px;border-radius:8px;border:1px solid var(--line,#d1d5db);font:inherit;}',
+      '.ps-soc-note{font-size:.78rem;color:var(--muted,#6b7280);margin-top:4px;}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+  function socraticIdleMs(q){
+    if(window.OPC_SOCRATIC_IDLE_SEC != null && isFinite(Number(window.OPC_SOCRATIC_IDLE_SEC))) return Number(window.OPC_SOCRATIC_IDLE_SEC) * 1000;
+    var base = q.part === 'I' ? 75 : 120, f = q.level === 'M4' ? 1.8 : (q.level === 'M3' ? 1.4 : 1);
+    return Math.round(base * f * 1000);
+  }
+  function answerSummary(q, ans){
+    if(ans == null || ans === '' || ans === 'Chưa chọn') return '';
+    if(typeof ans === 'object') return Object.keys(ans).map(function(k){ return k + ': ' + (ans[k] ? 'Đúng' : 'Sai'); }).join(', ');
+    return String(ans);
+  }
+  var SOC_MAX_TURNS = 6;
+  function SocraticCoach(props){
+    var q = props.q, show = !!props.show;
+    var s1 = React.useState(false), idle = s1[0], setIdle = s1[1];
+    var s2 = React.useState(false), open = s2[0], setOpen = s2[1];
+    var s3 = React.useState([]), msgs = s3[0], setMsgs = s3[1];
+    var s4 = React.useState(''), input = s4[0], setInput = s4[1];
+    var s5 = React.useState(false), busy = s5[0], setBusy = s5[1];
+    var s6 = React.useState(''), err = s6[0], setErr = s6[1];
+    var timerRef = React.useRef(0);
+    var qid = q ? q.id : '';
+    React.useEffect(function(){
+      ensureSocraticCss();
+      setIdle(false); setOpen(false); setMsgs([]); setInput(''); setBusy(false); setErr('');
+      clearTimeout(timerRef.current);
+      if(show && q) timerRef.current = setTimeout(function(){ setIdle(true); }, socraticIdleMs(q));
+      return function(){ clearTimeout(timerRef.current); };
+    }, [qid, show]);
+    if(!q || !show || !idle) return null;
+    var nAi = msgs.filter(function(m){ return m.role === 'ai'; }).length;
+    function ask(text){
+      if(busy) return;
+      var next = msgs.slice(); if(text) next.push({ role: 'student', text: text });
+      var turn = nAi + 1;
+      setMsgs(next); setInput(''); setBusy(true); setErr(''); setOpen(true);
+      var body = { turn: turn, history: next.slice(-8), studentAnswer: answerSummary(q, props.answer), q: {
+        part: q.part, level: q.level, topic: q.topicName, sub: q.subtopic, stem: q.stem,
+        passage: q.groupPassage ? cleanGroupLeadUI(q.groupPassage) : '',
+        options: q.part === 'I' ? (q.options || []).map(function(o){ return { key: o.key, text: o.text }; }) : undefined,
+        statements: q.part === 'II' ? (q.statements || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; }) : undefined,
+        unit: q.unit || '', correctKey: q.correctKey || null, correctAnswer: q.correctAnswer != null ? q.correctAnswer : null,
+        tolerance: q.tolerance != null ? q.tolerance : null, solution: q.loiGiai || ''
+      } };
+      fetch('/api/ai-socratic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error || 'Lỗi'); return j; }); })
+        .then(function(j){ setMsgs(next.concat([{ role: 'ai', text: j.reply }])); setBusy(false); if(props.onUse) props.onUse(q.id, turn); })
+        .catch(function(e){ setBusy(false); setErr(e.message || 'Chưa gợi ý được — thử lại nhé.'); });
+    }
+    if(!open){
+      return h('div', { className: 'ps-soc', role: 'status' },
+        h('div', { className: 'ps-soc-head' }, '🦉 Em dừng ở câu này khá lâu rồi'),
+        h('div', null, 'Thầy có thể gợi mở từng bước để em tự tìm ra hướng giải — thầy sẽ không nói đáp án. Em muốn thử không?'),
+        h('div', { className: 'ps-soc-row' },
+          h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ ask(''); } }, '💡 Gợi mở giúp em'),
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ setIdle(false); clearTimeout(timerRef.current); timerRef.current = setTimeout(function(){ setIdle(true); }, 60000); } }, 'Em tự làm tiếp')));
+    }
+    return h('div', { className: 'ps-soc' },
+      h('div', { className: 'ps-soc-head' }, '🦉 Thầy gợi mở', h('span', { className: 'sp' }), h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.74rem', padding: '3px 8px' }, onClick: function(){ setOpen(false); setIdle(false); clearTimeout(timerRef.current); timerRef.current = setTimeout(function(){ setIdle(true); }, 60000); } }, 'Thu gọn')),
+      h('div', { className: 'ps-soc-msgs', 'aria-live': 'polite' },
+        msgs.map(function(m, i){ return h('div', { key: i, className: 'ps-soc-msg ' + m.role }, m.role === 'ai' ? renderLatexText(m.text) : m.text); }),
+        busy ? h('div', { className: 'ps-soc-msg ai' }, '… thầy đang nghĩ câu hỏi gợi mở cho em') : null),
+      err ? h('div', { className: 'ps-soc-note', style: { color: 'var(--critical,#dc2626)' } }, '⚠ ' + err + ' ', h('button', { type: 'button', className: 'sm-link-btn', onClick: function(){ ask(''); } }, 'Thử lại')) : null,
+      nAi >= SOC_MAX_TURNS
+        ? h('div', { className: 'ps-soc-note' }, 'Thầy đã gợi ý khá nhiều rồi. Em chọn/nhập đáp án rồi bấm Chấm để xem lời giải chi tiết nhé.')
+        : h('div', { className: 'ps-soc-row' },
+            h('input', { type: 'text', value: input, placeholder: 'Em nghĩ thế nào? (không bắt buộc)', disabled: busy, onChange: function(e){ setInput(e.target.value); }, onKeyDown: function(e){ if(e.key === 'Enter' && input.trim()) ask(input.trim()); } }),
+            h('button', { type: 'button', className: 'btn btn-primary', disabled: busy || !input.trim(), onClick: function(){ ask(input.trim()); } }, 'Gửi'),
+            h('button', { type: 'button', className: 'btn btn-secondary', disabled: busy || !nAi, onClick: function(){ ask(''); } }, '💡 Gợi ý thêm')),
+      h('div', { className: 'ps-soc-note' }, 'Thầy chỉ gợi mở, không nêu đáp án. Lượt gợi ý được ghi lại để thầy biết câu nào em hay vướng.'));
+  }
+
   function PrepScholarApp(){
     // Lưới an toàn: nếu vì lý do gì đó (mạng chậm, script bị chặn...) KaTeX
     // chưa sẵn sàng ngay lần render đầu, tự động re-render lại khi nó đã load
@@ -1413,6 +1502,15 @@
     }, [examSession]);
     // Chống nộp 2 lần (bấm đúp, hoặc hết giờ đúng lúc đang bấm) → khỏi lưu trùng lượt.
     var submittedSessionRef = React.useRef(null);
+    // THÊM 29/10/2026 — số lượt gợi mở Socratic theo từng câu của phiên hiện tại (ghi vào bài làm, trường hints)
+    var socraticHintsRef = React.useRef({ key: '', map: {} });
+    function socraticKey(){ return examSession ? ((examSession.clientId || '') + '|' + (examSession.title || '')) : ''; }
+    function noteSocratic(qId, turns){
+      var k = socraticKey();
+      if(socraticHintsRef.current.key !== k) socraticHintsRef.current = { key: k, map: {} };
+      socraticHintsRef.current.map[qId] = turns;
+    }
+    function socraticHintsOf(){ return socraticHintsRef.current.key === socraticKey() ? Object.assign({}, socraticHintsRef.current.map) : {}; }
     // THÊM 1/10/2026 — nếu lưu kết quả lên máy chủ thất bại (mất mạng, lỗi quyền...)
     // trước đây em KHÔNG hề biết, kết quả mất âm thầm. Nay hiện cảnh báo + nút "Lưu lại".
     var saveNoticeState = React.useState(null); // null | { studentId, record, busy }
@@ -2137,7 +2235,8 @@
         wrongQuestions: lists.wrongQuestions,
         rightQuestions: lists.rightQuestions,
         answers: answersNow,
-        questionIds: sessQuestions.map(function(q){ return q.id; })
+        questionIds: sessQuestions.map(function(q){ return q.id; }),
+        hints: socraticHintsOf() // THÊM 29/10/2026 — lượt gợi mở Socratic theo câu
       };
       var firstOfSession = sessQuestions.length === 1;
       window.OPC_LIVE.saveAttempt(student.id, rec).then(function(r){
@@ -2453,6 +2552,7 @@
           // tự; trang admin dùng mảng này để dựng lại lịch sử theo đúng thứ tự khi xem lại bài làm. Lượt làm
           // trước ngày này không có trường này -> admin sắp theo đề gốc và ghi chú rõ.
           questionIds: sessQuestions.map(function(q){ return q.id; }),
+          hints: socraticHintsOf(), // THÊM 29/10/2026 — lượt gợi mở Socratic theo câu
           timeAllocatedSec: (examSession.initialTimeSec != null) ? examSession.initialTimeSec : null,
           timeUsedSec: (examSession.initialTimeSec != null) ? Math.max(0, examSession.initialTimeSec - timeLeft) : null
         };
@@ -2932,6 +3032,8 @@
                 // THÊM 16/10/2026 — bút dạ quang tô dữ kiện + máy tính nổi (study-tools.js)
                 studyWrap(examSession, curQ, [renderGroupPassage(curQ), h('div', { key: 'stem', className: 'ps-q-stem' }, renderLatexText(curQ.stem))]),
                 renderQuestionImages(curQ),
+                // THÊM 29/10/2026 — gợi mở Socratic khi em dừng lâu (ẩn sau khi đã chấm câu)
+                h(SocraticCoach, { key: 'soc-' + curQ.id, q: curQ, show: !adaptiveChecked, answer: userAnswers[curQ.id], onUse: noteSocratic }),
 
                 curQ.part === 'I' ? (
                   h('div', { className: 'ps-choice-list' },
@@ -3073,6 +3175,8 @@
                 // THÊM 16/10/2026 — bút dạ quang tô dữ kiện + máy tính nổi (study-tools.js)
                 studyWrap(examSession, curQ, [renderGroupPassage(curQ), h('div', { key: 'stem', className: 'ps-q-stem' }, renderLatexText(curQ.stem))]),
                 renderQuestionImages(curQ),
+                // THÊM 29/10/2026 — gợi mở Socratic CHỈ ở luyện trọng tâm (type 'drill'), không dùng cho thi thử / đề giao / kiểm tra
+                (examSession.type === 'drill') ? h(SocraticCoach, { key: 'soc-' + curQ.id, q: curQ, show: !examSession.isSubmitted, answer: userAnswers[curQ.id], onUse: noteSocratic }) : null,
 
                 // Choice logic based on Part
                 curQ.part === 'I' ? (

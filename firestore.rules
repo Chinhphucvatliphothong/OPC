@@ -227,6 +227,12 @@ service cloud.firestore {
       allow write: if isOpcAdmin();
     }
 
+    // THÊM 29/10/2026 — SỔ GIAO DỊCH nhận học phí tự động (api/sepay-webhook.js ghi bằng Firebase Admin, bỏ qua rules).
+    // Chỉ admin được xem/đánh dấu xử lý; học sinh và phụ huynh KHÔNG đọc được.
+    match /payments/{paymentId} {
+      allow read, write: if isOpcAdmin();
+    }
+
     // Số liệu học tập THẬT (mastery/điểm dự đoán/sổ câu sai) — snapshot mới
     // nhất do CHÍNH trang luyện tập của học sinh tự ghi sau mỗi lần nộp bài.
     // Từ 25/9/2026: ghi CHỈ đúng em đó (không ai giả mạo điểm cho bạn khác

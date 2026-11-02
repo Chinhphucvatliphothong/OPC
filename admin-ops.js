@@ -90,6 +90,8 @@
     var attempts = await OPC.attempts.loadForStudent(stu.id);
     var snap = buildParentSnapshot(stu, attempts);
     var t = (!opts.newToken && stu.parentViewToken) || token();
+    // THÊM 29/10/2026 — giữ khối thanh toán (QR + trạng thái học phí) khi làm mới số liệu (save ghi đè cả trang)
+    try{ var oldView = (!opts.newToken && stu.parentViewToken && OPC.parentViews.get) ? await OPC.parentViews.get(stu.parentViewToken) : null; if(oldView && oldView.pay) snap.pay = oldView.pay; }catch(e){}
     if(opts.zaloLink) snap.zalo = opts.zaloLink;
     await OPC.parentViews.save(t, snap);
     var patch = { parentViewToken: t, parentViewUpdatedAt: snap.updatedAt };
@@ -201,13 +203,59 @@
     if(d <= (Number(cfg.remindDays) || 5)) return { k: 'due', t: 'Đến hạn sau ' + d + ' ngày', c: 'var(--warning)', d: d };
     return { k: 'ok', t: 'Đã đóng tới ' + vnDate(b.paidUntil), c: 'var(--good)', d: d };
   }
+  // ===== THÊM 29/10/2026 — THANH TOÁN TỰ ĐỘNG: VietQR + SePay (xem api/sepay-webhook.js) =====
+  // Mỗi học sinh có payCode "FDY"+5 ký tự (đặt trong NỘI DUNG chuyển khoản). Khi tiền vào tài khoản, SePay gọi webhook → hệ thống tự
+  // khớp mã, gia hạn "đã đóng tới ngày…", ghi sổ payments và cập nhật trang phụ huynh. Số tiền kỳ tới (billing.pay) do trang này tự
+  // tính theo bảng giá và ghi sẵn cho webhook dùng.
+  var BANK_CODES = [['MB', 'MB Bank'], ['VCB', 'Vietcombank'], ['TCB', 'Techcombank'], ['ACB', 'ACB'], ['VPB', 'VPBank'], ['TPB', 'TPBank'], ['BIDV', 'BIDV'], ['ICB', 'VietinBank'], ['STB', 'Sacombank'], ['VBA', 'Agribank'], ['OCB', 'OCB'], ['MSB', 'MSB'], ['HDB', 'HDBank'], ['SHB', 'SHB'], ['VIB', 'VIB'], ['SEAB', 'SeABank'], ['LPB', 'LPBank'], ['EIB', 'Eximbank']];
+  function gwOn(cfg){ var g = cfg && cfg.gateway; return !!(g && g.enabled && g.bank && g.acc); }
+  function genPayCode(used){
+    var A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for(var guard = 0; guard < 200; guard++){
+      var a = new Uint8Array(5); (window.crypto || window.msCrypto).getRandomValues(a);
+      var c = 'FDY' + Array.prototype.map.call(a, function(x){ return A[x % 32]; }).join('');
+      if(!used[c]) return c;
+    }
+    return 'FDY' + Date.now().toString(36).toUpperCase().slice(-5);
+  }
+  // Số tiền & kỳ đóng KỲ TỚI của 1 em (null = chưa thiết lập gói / miễn phí)
+  function payInfoFor(cfg, s){
+    var b = s.billing || {};
+    if(!b.plan || b.cycle === 'free') return null;
+    var cyc = (b.cycle === 'trial' || !b.cycle) ? 'month' : b.cycle;
+    var fee = cycleFee(cfg, Object.assign({}, b, { cycle: cyc }));
+    if(!(fee > 0)) return null;
+    var o = { amount: fee, cycle: cyc };
+    if(cyc === 'full') o.fixedUntil = cfg.examDate; else o.months = cycleMonths(cfg, cyc);
+    return o;
+  }
+  function samePay(a, b){ return JSON.stringify(a || null) === JSON.stringify(b || null); }
+  function qrUrl(cfg, code, amount){
+    var g = cfg.gateway || {};
+    return 'https://img.vietqr.io/image/' + encodeURIComponent(g.bank) + '-' + encodeURIComponent(g.acc) + '-compact2.png?amount=' + Math.round(Number(amount) || 0) +
+      '&addInfo=' + encodeURIComponent(code) + (g.name ? '&accountName=' + encodeURIComponent(g.name) : '');
+  }
+  function payBlock(cfg, s, pay, code){
+    var g = cfg.gateway || {}, b = s.billing || {}, st = billingStatus(cfg, b);
+    return { bank: g.bank, acc: g.acc, name: g.name || '', amount: pay.amount, content: code, cycle: CYCLES[pay.cycle] || '', status: st.k, paidUntil: b.paidUntil || '', trialEnd: b.trialEnd || '' };
+  }
+  function payLines(cfg, stu, fee){
+    var b = stu.billing || {}, pay = payInfoFor(cfg, stu);
+    if(gwOn(cfg) && stu.payCode && pay){
+      var g = cfg.gateway;
+      return '\nCách đóng nhanh: phụ huynh mở mã QR (đã điền sẵn số tiền & nội dung) tại: ' + qrUrl(cfg, stu.payCode, pay.amount) +
+        '\nHoặc chuyển khoản: ' + g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ', số tiền ' + vnd(pay.amount) + ', NỘI DUNG: ' + stu.payCode +
+        ' (giữ nguyên nội dung để hệ thống tự ghi nhận, không cần báo thầy).';
+    }
+    return cfg.bankInfo ? '\nThông tin chuyển khoản: ' + cfg.bankInfo + '\nNội dung CK: ' + (stu.name || '') + ' - FaradayAI' : '';
+  }
   function billingMsg(cfg, stu){
     var b = stu.billing || {}, p = planOf(cfg, b.plan), fee = cycleFee(cfg, b);
     var st = billingStatus(cfg, b);
     var when = b.cycle === 'trial' ? ('kết thúc học thử ngày ' + vnDate(b.trialEnd)) : ('hạn đóng ngày ' + vnDate(b.paidUntil));
     return 'Kính gửi phụ huynh em ' + (stu.name || '') + ',\nThầy xin nhắc học phí FaradayAI kỳ tới của con' + (p ? ' (gói ' + p.name + ', ' + (CYCLES[b.cycle === 'trial' ? 'month' : b.cycle] || '').toLowerCase() + ')' : '') +
       ' là ' + vnd(fee || (p ? p.monthly : 0)) + ', ' + when + (st.k === 'overdue' ? ' (đã quá hạn ' + (-st.d) + ' ngày)' : '') + '.' +
-      (cfg.bankInfo ? '\nThông tin chuyển khoản: ' + cfg.bankInfo + '\nNội dung CK: ' + (stu.name || '') + ' - FaradayAI' : '') +
+      payLines(cfg, stu, fee) +
       (stu.parentViewToken ? '\nTiến độ học của con: ' + parentUrl(stu.parentViewToken) : '') + '\nThầy cảm ơn phụ huynh!';
   }
 
@@ -246,7 +294,8 @@
   function PayModal(props){
     var cfg = props.cfg, stu = props.student, b = stu.billing || {};
     var cyc = (b.cycle === 'trial' || b.cycle === 'free' || !b.cycle) ? 'month' : b.cycle;
-    var st = React.useState({ cycle: cyc, months: cycleMonths(cfg, cyc), amount: cycleFee(cfg, Object.assign({}, b, { cycle: cyc })) || '', date: ymd(), note: '' });
+    var ini = props.initial || {};
+    var st = React.useState({ cycle: cyc, months: cycleMonths(cfg, cyc), amount: ini.amount != null ? ini.amount : (cycleFee(cfg, Object.assign({}, b, { cycle: cyc })) || ''), date: ymd(), note: ini.note || '' });
     var f = st[0], setF = st[1];
     function set(k, v){ setF(function(p){ var n = Object.assign({}, p); n[k] = v; return n; }); }
     var from = (b.paidUntil && daysFromToday(b.paidUntil) >= 0) ? b.paidUntil : f.date;
@@ -266,9 +315,34 @@
           if(amt <= 0 && !window.confirm('Số tiền bằng 0 — vẫn ghi nhận?')) return;
           var pays = (b.payments || []).concat([{ date: f.date, amount: amt, months: f.cycle === 'full' ? monthsUntil(cfg.examDate) : Number(f.months) || 1, cycle: f.cycle, note: String(f.note || '').slice(0, 120) }]).slice(-60);
           var nb = Object.assign({}, b, { plan: b.plan || ((cfg.plans || [])[0] || {}).key || '', cycle: f.cycle, paidUntil: until, payments: pays, startDate: b.startDate || f.date });
-          window.OPC.students.update(stu.id, { billing: nb }).then(function(){ props.fireToast('Đã ghi nhận ' + vnd(amt) + ' của ' + stu.name + ' — đóng tới ' + vnDate(until) + '.'); props.onClose(); })
+          window.OPC.students.update(stu.id, { billing: nb }).then(function(){ if(props.onRecorded) props.onRecorded(); props.fireToast('Đã ghi nhận ' + vnd(amt) + ' của ' + stu.name + ' — đóng tới ' + vnDate(until) + '.'); props.onClose(); })
             .catch(function(e){ props.fireToast('Không lưu được: ' + (e && e.message), true); });
         } }, 'Ghi nhận')));
+  }
+
+  // THÊM 29/10/2026 — mã QR thanh toán của 1 em
+  function QrModal(props){
+    var cfg = props.cfg, s = props.student, pay = payInfoFor(cfg, s), g = cfg.gateway || {};
+    var url = pay && s.payCode ? qrUrl(cfg, s.payCode, pay.amount) : '';
+    return h(Modal, { title: '📱 Mã QR thu học phí — ' + s.name, onClose: props.onClose },
+      !url ? h('p', null, 'Em này chưa có gói/số tiền kỳ tới — bấm "Gói" để thiết lập trước.') : h('div', { style: { textAlign: 'center' } },
+        h('img', { src: url, alt: 'Mã QR chuyển khoản học phí', style: { maxWidth: '100%', width: '300px', borderRadius: '10px', background: '#fff' } }),
+        h('p', { style: { margin: '6px 0 2px', fontWeight: 800, fontSize: '1.1rem' } }, vnd(pay.amount) + ' · ' + (CYCLES[pay.cycle] || '')),
+        h('p', { style: { margin: '0 0 8px', fontSize: '0.86rem', color: 'var(--ink-2)' } }, g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ' · Nội dung: ', h('b', null, s.payCode)),
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' } },
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(url).then(function(){ props.fireToast('Đã chép link mã QR.'); }); } }, '📋 Chép link QR'),
+          s.parentPhone ? h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ copy(billingMsg(cfg, s)).then(function(){ props.fireToast('Đã chép tin nhắn kèm QR — dán vào Zalo.'); window.open(zalo(s.parentPhone), '_blank'); }); } }, '💬 Gửi Zalo phụ huynh') : null),
+        h('p', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '10px' } }, 'Phụ huynh quét mã bằng app ngân hàng: số tiền và nội dung đã điền sẵn. Tiền vào là hệ thống tự ghi nhận, thầy không cần làm gì.')));
+  }
+  function AssignModal(props){
+    var st = React.useState(''); var sid = st[0], setSid = st[1];
+    var tx = props.tx;
+    return h(Modal, { title: 'Gán giao dịch cho học sinh', onClose: props.onClose },
+      h('p', { style: { fontSize: '0.86rem' } }, vnd(tx.amount) + ' · "' + String(tx.content || '').slice(0, 80) + '"'),
+      Field('Học sinh', h('select', { value: sid, onChange: function(e){ setSid(e.target.value); } }, h('option', { value: '' }, '— chọn —'), (props.students || []).map(function(s){ return h('option', { key: s.id, value: s.id }, s.name + (s.lop ? ' · ' + s.lop : '')); }))),
+      h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
+        h('button', { type: 'button', className: 'btn btn-secondary', onClick: props.onClose }, 'Huỷ'),
+        h('button', { type: 'button', className: 'btn btn-primary', disabled: !sid, onClick: function(){ props.onPick(sid); } }, 'Tiếp: ghi nhận học phí')));
   }
 
   function useStudents(){
@@ -290,7 +364,39 @@
     var draftState = React.useState(null); var draft = draftState[0], setDraft = draftState[1];
     var filterState = React.useState('all'); var filter = filterState[0], setFilter = filterState[1];
     var showSetState = React.useState(false); var showSet = showSetState[0], setShowSet = showSetState[1];
-    React.useEffect(function(){ if(cfg && !draft) setDraft({ bankInfo: cfg.bankInfo || '', remindDays: cfg.remindDays || 5 }); }, [cfg]);
+    // THÊM 29/10/2026 — thanh toán tự động
+    var qrState = React.useState(null); var qrStu = qrState[0], setQrStu = qrState[1];
+    var ledState = React.useState([]); var ledger = ledState[0], setLedger = ledState[1];
+    var asState = React.useState(null); var assignTx = asState[0], setAssignTx = asState[1];
+    var payTxState = React.useState(null); var payTx = payTxState[0], setPayTx = payTxState[1]; // { tx, student }
+    var syncRef = React.useRef('');
+    React.useEffect(function(){ if(cfg && !draft) setDraft({ bankInfo: cfg.bankInfo || '', remindDays: cfg.remindDays || 5, gw: Object.assign({ enabled: false, bank: 'MB', acc: '', name: '' }, cfg.gateway || {}) }); }, [cfg]);
+    React.useEffect(function(){
+      var OPC = window.OPC; if(!OPC || !OPC.payments) return;
+      return OPC.payments.subscribe(function(snap){ setLedger(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })); }, function(){});
+    }, []);
+    // Tự cấp mã thanh toán + ghi số tiền kỳ tới cho webhook + cập nhật khối thanh toán trên trang phụ huynh (chỉ ghi khi có thay đổi)
+    React.useEffect(function(){
+      if(!cfg || !S.list || !gwOn(cfg)) return;
+      var OPC = window.OPC; if(!OPC) return;
+      var used = {}; S.list.forEach(function(s){ if(s.payCode) used[s.payCode] = 1; });
+      var jobs = [], sig = [];
+      S.list.filter(function(s){ return s.status !== 'inactive'; }).forEach(function(s){
+        var upd = {}, b = s.billing || {}, code = s.payCode;
+        if(!code){ code = genPayCode(used); used[code] = 1; upd.payCode = code; }
+        var pay = payInfoFor(cfg, s);
+        if(b.plan && !samePay(b.pay, pay)) upd['billing.pay'] = pay;
+        if(s.parentViewToken){
+          var blk = pay ? payBlock(cfg, s, pay, code) : null, hs = blk ? JSON.stringify(blk) : '';
+          if(hs !== (s.parentPayHash || '')){ upd.parentPayHash = hs; jobs.push(OPC.parentViews.patch(s.parentViewToken, { pay: blk }).catch(function(){})); }
+        }
+        if(Object.keys(upd).length){ sig.push(s.id + JSON.stringify(upd)); jobs.push(OPC.students.update(s.id, upd)); }
+      });
+      var key = sig.join('|');
+      if(!key || key === syncRef.current) return;
+      syncRef.current = key;
+      Promise.all(jobs).catch(function(e){ console.error('Đồng bộ thanh toán:', e); });
+    }, [cfg, S.list]);
     if(!cfg || !S.list) return h('div', { className: 'card' }, h('p', { style: { color: 'var(--ink-2)' } }, 'Đang tải…'));
     var rows = S.list.filter(function(s){ return s.status !== 'inactive'; }).map(function(s){ return { s: s, st: billingStatus(cfg, s.billing) }; });
     var order = { overdue: 0, trialEnd: 1, unpaid: 2, due: 3, trial: 4, ok: 5, none: 6, free: 7 };
@@ -329,8 +435,23 @@
           h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '10px', marginTop: '10px' } },
             Field('Nhắc trước hạn (ngày)', h('input', { type: 'number', min: 1, max: 15, value: draft.remindDays, onChange: function(e){ setD('remindDays', Number(e.target.value) || 5); } }))),
           Field('Thông tin chuyển khoản (đưa vào tin nhắn nhắc học phí)', h('input', { value: draft.bankInfo, placeholder: 'Vd: Vietcombank 0123456789 — NGUYEN VAN A', onChange: function(e){ setD('bankInfo', e.target.value); } })),
+          // THÊM 29/10/2026 — cài đặt thanh toán tự động
+          h('div', { style: { border: '1px solid var(--line)', borderRadius: '10px', padding: '12px', margin: '10px 0' } },
+            h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', fontWeight: 800 } }, h('input', { type: 'checkbox', checked: !!(draft.gw && draft.gw.enabled), onChange: function(e){ setD('gw', Object.assign({}, draft.gw, { enabled: e.target.checked })); } }), '⚡ Thu học phí tự động (VietQR + SePay)'),
+            h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)', margin: '6px 0 8px' } }, 'Phụ huynh quét mã QR → tiền vào tài khoản → hệ thống tự ghi nhận & gia hạn, không cần thầy đối chiếu tay.'),
+            h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '10px' } },
+              Field('Ngân hàng (mã VietQR)', h('div', null, h('input', { list: 'fx-bank-codes', value: (draft.gw && draft.gw.bank) || '', onChange: function(e){ setD('gw', Object.assign({}, draft.gw, { bank: e.target.value.trim().toUpperCase() })); } }), h('datalist', { id: 'fx-bank-codes' }, BANK_CODES.map(function(b){ return h('option', { key: b[0], value: b[0] }, b[1]); })))),
+              Field('Số tài khoản', h('input', { value: (draft.gw && draft.gw.acc) || '', inputMode: 'numeric', onChange: function(e){ setD('gw', Object.assign({}, draft.gw, { acc: e.target.value.replace(/\s/g, '') })); } })),
+              Field('Tên chủ tài khoản (không dấu)', h('input', { value: (draft.gw && draft.gw.name) || '', onChange: function(e){ setD('gw', Object.assign({}, draft.gw, { name: e.target.value.toUpperCase() })); } }))),
+            h('details', { style: { fontSize: '0.82rem', marginTop: '6px' } }, h('summary', { style: { cursor: 'pointer', fontWeight: 700 } }, 'Cách kết nối SePay (làm 1 lần, ~10 phút)'),
+              h('ol', { style: { margin: '6px 0 0 18px', lineHeight: 1.6 } },
+                h('li', null, 'Đăng ký my.sepay.vn → "Thêm tài khoản ngân hàng" và liên kết tài khoản nhận học phí ở trên.'),
+                h('li', null, 'Vào "Cấu hình công ty → Cấu trúc mã thanh toán": tiền tố ', h('b', null, 'FDY'), ', hậu tố 5 ký tự chữ + số, in hoa.'),
+                h('li', null, 'Vào "Tích hợp Webhooks → Thêm webhook": URL ', h('code', null, (location.origin && location.origin !== 'null' ? location.origin : 'https://faradayai.vn') + '/api/sepay-webhook'), ', kiểu chứng thực "Apikey", tự đặt 1 khoá bí mật; chỉ gửi khi "có tiền vào".'),
+                h('li', null, 'Trên Vercel → Settings → Environment Variables thêm ', h('code', null, 'SEPAY_API_KEY'), ' (đúng khoá vừa đặt ở SePay), rồi Redeploy. (Khoá dịch vụ Firebase đã có sẵn từ chức năng đăng nhập học sinh.)'),
+                h('li', null, 'Tick ô trên, bấm Lưu. Thử chuyển 10.000đ với nội dung là mã của 1 em để kiểm tra.')))),
           h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-2)' } }, 'Em vào học giữa năm hoặc được giá riêng: bấm nút "Gói" của em đó và sửa "Học phí mỗi kỳ".'),
-          h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ window.OPC.billingSettings.save({ bankInfo: draft.bankInfo || '', remindDays: Number(draft.remindDays) || 5 }).then(function(){ fire('Đã lưu bảng giá.'); setShowSet(false); }).catch(function(e){ fire('Không lưu được: ' + (e && e.message), true); }); } }, '💾 Lưu bảng giá')) : null,
+          h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ window.OPC.billingSettings.save({ bankInfo: draft.bankInfo || '', remindDays: Number(draft.remindDays) || 5, gateway: { enabled: !!(draft.gw && draft.gw.enabled), bank: (draft.gw && draft.gw.bank) || '', acc: (draft.gw && draft.gw.acc) || '', name: (draft.gw && draft.gw.name) || '' } }).then(function(){ fire('Đã lưu bảng giá.'); setShowSet(false); }).catch(function(e){ fire('Không lưu được: ' + (e && e.message), true); }); } }, '💾 Lưu bảng giá')) : null,
         h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' } },
           stat('Đang đóng phí', payingCount + ' em', cnt('trial') + ' em học thử'),
           stat('Đã thu tháng ' + month.slice(5) + '/' + month.slice(0, 4), vnd(collected)),
@@ -353,12 +474,36 @@
               h('td', null, last ? vnDate(last.date) + ' · ' + vnd(last.amount) : '—'),
               h('td', { style: { whiteSpace: 'nowrap' } },
                 h('button', { type: 'button', className: 'btn btn-success', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ setPay(s); } }, '💵 Đóng tiền'), ' ',
+                (gwOn(cfg) && s.payCode && payInfoFor(cfg, s)) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, title: 'Mã QR thu học phí của em này', onClick: function(){ setQrStu(s); } }, '📱 QR') : null, ' ',
                 h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ setEdit(s); } }, 'Gói'), ' ',
                 (s.parentPhone && ['overdue', 'due', 'trialEnd', 'unpaid'].indexOf(r.st.k) > -1) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, title: 'Chép tin nhắn nhắc học phí rồi mở Zalo phụ huynh',
                   onClick: function(){ copy(billingMsg(cfg, s)).then(function(){ fire('Đã chép tin nhắn — dán vào Zalo.'); window.open(zalo(s.parentPhone), '_blank'); }); } }, '💬 Nhắc') : null));
           }))))),
+      // ---- THÊM 29/10/2026: sổ giao dịch nhận tự động ----
+      (gwOn(cfg) || ledger.length) ? h('div', { className: 'card', style: { marginTop: '12px' } },
+        h('h3', { style: { margin: '0 0 4px' } }, '💸 Giao dịch nhận tự động'),
+        h('p', { className: 'sm-sub', style: { margin: '0 0 8px' } }, (function(){ var n = ledger.filter(function(x){ return x.status === 'applied' && String(x.receivedAt || '').slice(0, 7) === month; }); return 'Tháng này: ' + n.length + ' giao dịch đã tự ghi nhận · ' + vnd(n.reduce(function(s, x){ return s + (Number(x.amount) || 0); }, 0)) + '. Giao dịch không khớp học sinh hoặc đóng thiếu hiện ở đây để thầy xử lý.'; })()),
+        !ledger.length ? h('p', { style: { color: 'var(--muted)', fontSize: '0.84rem' } }, 'Chưa có giao dịch nào. Sau khi kết nối SePay, tiền phụ huynh chuyển sẽ hiện ở đây.') :
+        h('div', { className: 'sm-table-wrap', style: { marginTop: 0 } }, h('table', { className: 'sm-table' },
+          h('thead', null, h('tr', null, ['Thời gian', 'Số tiền', 'Nội dung', 'Học sinh', 'Kết quả', ''].map(function(t){ return h('th', { key: t }, t); }))),
+          h('tbody', null, ledger.slice(0, 40).map(function(x){
+            var SM = { applied: ['✅ Đã ghi nhận', 'var(--good)'], partial: ['🟡 Đóng thiếu', 'var(--warning)'], unmatched: ['❓ Chưa khớp', 'var(--critical)'], ambiguous: ['❓ Mã trùng', 'var(--critical)'], needs_setup: ['⚠️ Chưa có gói', 'var(--warning)'], manual: ['✍️ Đã ghi tay', 'var(--ink-2)'], ignored: ['— Bỏ qua', 'var(--muted)'] }[x.status] || [x.status, 'var(--muted)'];
+            var needs = ['unmatched', 'ambiguous', 'needs_setup', 'partial'].indexOf(x.status) > -1;
+            return h('tr', { key: x.id },
+              h('td', { style: { whiteSpace: 'nowrap', fontSize: '0.8rem' } }, x.receivedAt ? vnDate(x.receivedAt) + ' ' + String(x.receivedAt).slice(11, 16) : '—'),
+              h('td', null, h('b', null, vnd(x.amount))),
+              h('td', { style: { fontSize: '0.78rem', maxWidth: '220px' } }, String(x.content || '').slice(0, 90)),
+              h('td', null, x.studentName || '—'),
+              h('td', null, h('span', { style: { fontWeight: 700, color: SM[1] } }, SM[0]), x.message ? h('div', { style: { fontSize: '0.72rem', color: 'var(--muted)' } }, x.message) : null),
+              h('td', { style: { whiteSpace: 'nowrap' } }, needs ? [
+                h('button', { key: 'a', type: 'button', className: 'btn btn-success', style: { fontSize: '0.72rem', padding: '3px 8px' }, onClick: function(){ if(x.studentId){ var st0 = S.list.filter(function(s){ return s.id === x.studentId; })[0]; if(st0) setPayTx({ tx: x, student: st0 }); } else setAssignTx(x); } }, 'Ghi nhận tay'), ' ',
+                h('button', { key: 'b', type: 'button', className: 'sm-link-btn', onClick: function(){ window.OPC.payments.patch(x.id, { status: 'ignored' }); } }, 'Bỏ qua')] : null));
+          }))))) : null,
       edit ? h(PlanModal, { cfg: cfg, student: edit, fireToast: fire, onClose: function(){ setEdit(null); } }) : null,
-      pay ? h(PayModal, { cfg: cfg, student: pay, fireToast: fire, onClose: function(){ setPay(null); } }) : null);
+      pay ? h(PayModal, { cfg: cfg, student: pay, fireToast: fire, onClose: function(){ setPay(null); } }) : null,
+      qrStu ? h(QrModal, { cfg: cfg, student: qrStu, fireToast: fire, onClose: function(){ setQrStu(null); } }) : null,
+      assignTx ? h(AssignModal, { tx: assignTx, students: S.list, onClose: function(){ setAssignTx(null); }, onPick: function(id){ var st1 = S.list.filter(function(s){ return s.id === id; })[0]; setPayTx({ tx: assignTx, student: st1 }); setAssignTx(null); } }) : null,
+      payTx ? h(PayModal, { cfg: cfg, student: payTx.student, fireToast: fire, initial: { amount: payTx.tx.amount, note: 'SePay #' + (payTx.tx.sepayId || payTx.tx.id) }, onRecorded: function(){ window.OPC.payments.patch(payTx.tx.id, { status: 'manual', studentId: payTx.student.id, studentName: payTx.student.name }); }, onClose: function(){ setPayTx(null); } }) : null);
   }
 
   // ------------------------------------------------------------------ 3) việc hôm nay

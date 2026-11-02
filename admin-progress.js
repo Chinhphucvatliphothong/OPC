@@ -217,7 +217,8 @@
               CL ? h('td', null, h('input', { type: 'checkbox', checked: !!pick[a.id], onChange: function(e){ var p = Object.assign({}, pick); if(e.target.checked) p[a.id] = true; else delete p[a.id]; setPick(p); } })) : null,
               h('td', null, fmtDT(x.t)), h('td', null, TYPE_LABEL[a.type] || a.type || '—'),
               h('td', null, k ? k.c + '/' + k.t : '—'), h('td', null, a.partial ? '—' : (typeof a.scaledScore10 === 'number' ? a.scaledScore10.toFixed(2) : '—')),
-              h('td', { style: { fontSize: '0.74rem', color: x.sus.length ? 'var(--warning)' : 'var(--muted)' } }, x.sus.length ? '⚠ ' + x.sus.join(' · ') + (out ? ' — đã loại' : ' — vẫn tính') : (a.partial ? 'làm dở' : '')));
+              h('td', { style: { fontSize: '0.74rem', color: x.sus.length ? 'var(--warning)' : 'var(--muted)' } }, x.sus.length ? '⚠ ' + x.sus.join(' · ') + (out ? ' — đã loại' : ' — vẫn tính') : (a.partial ? 'làm dở' : ''),
+                (a.hints && Object.keys(a.hints).length) ? h('div', { style: { color: 'var(--ink-2)' } }, '💡 gợi mở Socratic ' + Object.keys(a.hints).length + ' câu') : null));
           }))),
         rows.length > showN ? h('button', { type: 'button', className: 'sm-link-btn', style: { marginTop: 8 }, onClick: function(){ setShowN(showN + 40); } }, 'Xem thêm ' + Math.min(40, rows.length - showN) + ' lượt') : null),
       (trashOpen && CL) ? h(CL.TrashModal, { student: st, fireToast: fire, onClose: function(){ setTrashOpen(false); props.onChanged(); } }) : null);

@@ -1,0 +1,17 @@
+AI Socratic gợi mở khi em dừng lâu + Thu học phí tự động (VietQR + SePay)
+
+Socratic:
+- api/ai-socratic.js (mới): AI chỉ đặt câu hỏi dẫn dắt, không nêu đáp án; server lọc lại nếu lộ đáp án.
+- prepscholar-ui.js: component SocraticCoach — chỉ ở luyện thích ứng và luyện trọng tâm; em dừng quá lâu ở một câu
+  thì được mời gợi mở; số lượt gợi mở theo từng câu ghi vào bài làm (trường hints).
+- admin-progress.js: hiện số câu cần gợi mở ở từng lượt làm bài.
+
+Thanh toán tự động:
+- api/sepay-webhook.js + lib/payment.js + lib/firebase-admin.js (mới): nhận webhook SePay, khớp học sinh theo mã
+  FDYxxxxx trong nội dung chuyển khoản, tự gia hạn học phí, ghi sổ payments (chống ghi trùng).
+- admin-ops.js: cài đặt cổng thanh toán, mã QR từng học sinh, sổ giao dịch + ghi nhận tay giao dịch không khớp.
+- admin.html: API payments/parentViews, billingSettings.save dùng merge.
+- phuhuynh.html: thẻ "Học phí" có mã QR điền sẵn số tiền + nội dung.
+- firestore.rules: thêm payments (chỉ admin).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
