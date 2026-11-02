@@ -1,0 +1,6 @@
+Sửa lỗi deploy Vercel: gộp sepay-webhook thành 1 file (không dùng thư mục lib/)
+
+- api/sepay-webhook.js: gộp logic thanh toán + khởi tạo Firebase Admin vào cùng 1 file.
+- Xoá api/payment.js và api/firebase-admin.js (đưa nhầm vào api/, bị Vercel coi là hàm serverless).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
