@@ -1,0 +1,9 @@
+Ưu đãi giới thiệu: thêm quà tặng bằng chữ (vd. "Tặng gói luyện ĐGNL V-ACT") cho học sinh mới và người giới thiệu
+
+- admin.html: 2 ô nhập chữ trong thẻ "Ưu đãi giới thiệu"; duyệt đăng ký có mã giới thiệu hợp lệ thì ghi quà cho học sinh mới
+  (referralGift) và cho người giới thiệu (referralGifts); danh sách "Quà tặng chờ trao" có nút "Đã trao"; hộp thoại duyệt và tin
+  nhắn gửi phụ huynh có dòng quà tặng.
+- opc-live-data.js: loadReferralSettings trả thêm giftNew / giftReferrer.
+- index.html: gợi ý dưới ô "Mã giới thiệu" hiện thêm "🎁 Tặng thêm: …".
+
+Co-Authored-By: Claude <noreply@anthropic.com>
