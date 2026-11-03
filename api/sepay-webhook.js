@@ -65,6 +65,16 @@ function planPayment(billing, amount, today){
   return { status: 'applied', periods: n, months: months, cycle: pay.cycle || 'month', until: until, leftover: Math.max(0, total - n * per) };
 }
 
+// Số tiền khớp "ưu đãi" gói nào (trong sai số tol) → trả ưu đãi sát nhất
+function matchOffer(offers, total, tol){
+  var best = null, bd = 1e18;
+  (Array.isArray(offers) ? offers : []).forEach(function(o){
+    var d = Math.abs(Number(o && o.amount) - total);
+    if(o && Number(o.amount) > 0 && d <= tol && d < bd){ best = o; bd = d; }
+  });
+  return best;
+}
+
 function safeEqual(a, b){
   a = String(a || ''); b = String(b || '');
   if(a.length !== b.length) return false;
@@ -106,8 +116,21 @@ async function handle(req, res, db, FV, nowMs){
         return { status: 'unmatched' };
       }
       var sref = stuDocs[0].ref, ssnap = await tx.get(sref), s = ssnap.data() || {}, b = s.billing || {};
-      var plan = planPayment(b, amount, today);
       var common = Object.assign({}, base, { studentId: ssnap.id, studentName: String(s.name || '').slice(0, 80) });
+      // THÊM 2/11/2026 — phụ huynh chọn GÓI trên trang phụ huynh: số tiền khớp ưu đãi nào thì kích hoạt gói đó (trọn khóa / nâng cấp)
+      var credit0 = Math.max(0, Number(b.credit) || 0), offer = matchOffer(b.offers, amount + credit0, 1000);
+      if(offer){
+        var until = String(offer.fixedUntil || '').slice(0, 10);
+        if(!until || until < today) until = addMonths(today, 12);
+        if(b.paidUntil && String(b.paidUntil).slice(0, 10) > until) until = String(b.paidUntil).slice(0, 10);
+        var pays0 = (Array.isArray(b.payments) ? b.payments : []).concat([{ date: today, amount: amount, months: 0, cycle: 'full', note: ('Tự động · ' + (offer.upgrade ? 'Nâng cấp lên ' : 'Chọn ') + String(offer.name || offer.plan).slice(0, 60) + ' · SePay #' + sid).slice(0, 120), auto: true }]).slice(-60);
+        var upd0 = { 'billing.plan': offer.plan, 'billing.cycle': 'full', 'billing.paidUntil': until, 'billing.payments': pays0, 'billing.credit': Math.max(0, amount + credit0 - Number(offer.amount)), 'billing.offers': [], 'billing.lastAutoAt': base.receivedAt };
+        if(!b.startDate) upd0['billing.startDate'] = today;
+        tx.update(sref, upd0);
+        tx.set(ledgerRef, Object.assign({}, common, { status: 'applied', plan: offer.plan, paidUntil: until, message: (offer.upgrade ? 'Nâng cấp lên ' : 'Kích hoạt ') + (offer.name || offer.plan) + ' tới ' + until }));
+        return { status: 'applied', token: s.parentViewToken || '', until: until, offerApplied: true };
+      }
+      var plan = planPayment(b, amount, today);
       if(plan.status === 'applied'){
         var pays = (Array.isArray(b.payments) ? b.payments : []).concat([{ date: today, amount: amount, months: plan.months || (b.pay && b.pay.months) || 1, cycle: plan.cycle, note: ('Tự động · SePay #' + sid + (base.gateway ? ' · ' + base.gateway : '')).slice(0, 120), auto: true }]).slice(-60);
         var upd = { 'billing.paidUntil': plan.until, 'billing.cycle': plan.cycle, 'billing.payments': pays, 'billing.credit': plan.leftover, 'billing.lastAutoAt': base.receivedAt };
@@ -125,7 +148,7 @@ async function handle(req, res, db, FV, nowMs){
       return { status: 'needs_setup' };
     });
     if(out && out.status === 'applied' && out.token){
-      try{ await db.collection('parent_views').doc(out.token).update({ 'pay.status': 'ok', 'pay.paidUntil': out.until, 'pay.paidAt': today }); }catch(e){ console.error('parent_views:', e); }
+      try{ await db.collection('parent_views').doc(out.token).update({ 'pay.status': 'ok', 'pay.paidUntil': out.until, 'pay.paidAt': today, 'pay.offers': [] }); }catch(e){ console.error('parent_views:', e); }
     }
     res.status(200).json({ success: true, result: (out && (out.dup ? 'duplicate' : out.status)) || 'ok' });
   }catch(err){
