@@ -1,0 +1,9 @@
+Đề Tổ: xuất đủ hình (kể cả TikZ, bảng, hình trong phương án) + công thức giống MathType 7
+
+- admin-to.js: lấy MỌI hình của câu (trước đây chỉ hình đầu); hình TikZ được vẽ thành ảnh PNG (tikz-lite.js → canvas); bảng
+  \begin{tabular} thành bảng Word thật; hình trong phương án A–D nằm trong dòng; ảnh tải 1 lần mỗi đề, so tên bỏ thư mục + đuôi;
+  đơn vị siunitx (\SI, \si) đổi thành chữ thường; câu có TikZ dựng được không còn bị loại khỏi tự chọn; ô "Font công thức".
+- to-docx.js: font công thức chọn được (Times New Roman = giống MathType 7, hoặc Cambria Math); giữ dấu · × ° trong đơn vị
+  \mathrm{J/(mol\cdot K)}; ảnh nằm trong dòng ([[IMG:…]]); bảng Word; đuôi ảnh theo nội dung thật (JPEG/PNG).
+
+Co-Authored-By: Claude <noreply@anthropic.com>

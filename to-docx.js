@@ -64,7 +64,7 @@
     }
     function argRaw(){ // đọc nội dung chữ thuần của {..}
       var t = peek(), out = '';
-      if(t && t.k === '{'){ p++; var depth = 1; while(p < toks.length && depth){ var x = toks[p++]; if(x.k === '{') depth++; else if(x.k === '}'){ depth--; if(!depth) break; } else out += (x.v != null ? (x.k === 'cmd' ? (SPACES[x.v] ? ' ' : '') : x.v) : ''); } }
+      if(t && t.k === '{'){ p++; var depth = 1; while(p < toks.length && depth){ var x = toks[p++]; if(x.k === '{') depth++; else if(x.k === '}'){ depth--; if(!depth) break; } else out += (x.v != null ? (x.k === 'cmd' ? (SPACES[x.v] ? ' ' : (OPS[x.v] || GREEK[x.v] || (x.v === 'circ' ? '°' : (x.v === '%' ? '%' : '')))) : x.v) : ''); } }   // SỬA 3/11/2026: giữ dấu · × ° Ω … trong \mathrm{J/(mol\cdot K)} (trước đây mất)
       else if(t){ p++; out = t.v || ''; }
       return out;
     }
@@ -170,12 +170,15 @@
     // kí hiệu hạt nhân dạng "_{Z}^{A}\mathrm{X}" đã thành sPre ở prescript(); chữ trong sPre.e viết đứng (nor)
     body = body.replace(/(<m:sPre>(?:<m:sub>.*?<\/m:sub>)(?:<m:sup>.*?<\/m:sup>)<m:e>)(.*?)(<\/m:e><\/m:sPre>)/g, function(_, a, e, b){ return a + e.replace(/<m:rPr>/g, '<m:rPr><m:nor/>').replace(/<m:r><m:t /g, '<m:r><m:rPr><m:nor/></m:rPr><m:t ') + b; });
     // thêm font Cambria Math cho mọi run công thức (như build_de.py)
-    var mr = '<w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>';
+    // SỬA 3/11/2026 — font công thức chọn được: 'Times New Roman' = giống MathType 7 (biến nghiêng, số/đơn vị/hàm đứng, Times New Roman 12pt),
+    // 'Cambria Math' = mặc định của Word. Khi thầy dùng MathType → Convert Equations thì kiểu chữ cũng giữ nguyên.
+    var mr = '<w:rPr><w:rFonts w:ascii="' + MATH_FONT + '" w:hAnsi="' + MATH_FONT + '" w:cs="' + MATH_FONT + '"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>';
     body = body.replace(/(<m:r>(?:<m:rPr>.*?<\/m:rPr>)?)/g, function(_, g){ return g + mr; });
     return '<m:oMath>' + body + '</m:oMath>';
   }
 
   // ------------------------------------------------------------------ chạy chữ (run) / đoạn văn
+ var MATH_FONT = 'Cambria Math', CUR_IMGS = null;   // đặt lại ở đầu buildAll / buildBody
   var RPR = '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>{extra}<w:sz w:val="24"/><w:szCs w:val="24"/>';
   var TABS4 = '<w:tabs><w:tab w:val="left" w:pos="283"/><w:tab w:val="left" w:pos="2835"/><w:tab w:val="left" w:pos="5386"/><w:tab w:val="left" w:pos="7937"/></w:tabs>';
   var TABS2 = '<w:tabs><w:tab w:val="left" w:pos="283"/><w:tab w:val="left" w:pos="4820"/></w:tabs>';
@@ -205,6 +208,15 @@
 
   // rich: "$..$" công thức, "**..**" đậm, "*..*" nghiêng
   function rich(text, o, warnings){
+    var out = [];
+    String(text).split(/(\[\[IMG:[^\]]+\]\])/).forEach(function(part){
+      var m = part.match(/^\[\[IMG:([^|\]]+)(?:\|([\d.]+))?\]\]$/);
+      if(m){ out.push(CUR_IMGS ? CUR_IMGS.inline({ file: m[1], width_cm: m[2] }) : ''); return; }
+      out.push(richText(part, o, warnings));
+    });
+    return out.join('');
+  }
+  function richText(text, o, warnings){
     var out = [];
     String(text).split(/(\$[^$]+\$)/).forEach(function(seg){
       if(!seg) return;
@@ -246,6 +258,13 @@
     }
     return { w: 4, h: 3 };
   }
+  function sniffExt(b){
+    if(!b || b.length < 4) return '';
+    if(b[0] === 0x89 && b[1] === 0x50) return 'png';
+    if(b[0] === 0xFF && b[1] === 0xD8) return 'jpg';
+    if(b[0] === 0x47 && b[1] === 0x49) return 'gif';
+    return '';
+  }
   function ImageBank(images){ this.images = images || {}; this.files = []; this.missing = []; }
   ImageBank.prototype.anchor = function(spec){
     var im = this.images[spec.file];
@@ -253,7 +272,7 @@
     var sz = imageSize(im.bytes), wcm = Number(spec.width_cm || 5.0);
     var cx = Math.round(wcm * 360000), cy = Math.round(cx * sz.h / sz.w);
     var n = this.files.length + 1, rid = 'rIdImg' + n;
-    var ext = (/\.(png|jpe?g|gif)$/i.exec(spec.file) || ['', 'png'])[1].toLowerCase().replace('jpeg', 'jpg');
+    var ext = sniffExt(im.bytes) || (/\.(png|jpe?g|gif)$/i.exec(spec.file) || ['', 'png'])[1].toLowerCase().replace('jpeg', 'jpg');   // SỬA 3/11/2026: đuôi theo nội dung thật (ảnh JPEG đặt tên .png vẫn đúng)
     this.files.push({ rid: rid, bytes: im.bytes, target: 'media/hinh' + n + '.' + ext });
     var graphic = '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
       + '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + n + '" name="hinh' + n + '"/><pic:cNvPicPr/></pic:nvPicPr>'
@@ -263,6 +282,37 @@
       + '<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="margin"><wp:align>right</wp:align></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
       + '<wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapSquare wrapText="bothSides"/><wp:docPr id="' + (5000 + n) + '" name="hinh' + n + '"/><wp:cNvGraphicFramePr/>' + graphic + '</wp:anchor></w:drawing></w:r>';
   };
+
+  // THÊM 3/11/2026 — ảnh NẰM TRONG DÒNG (cho phương án có hình, ảnh thứ 2 trở đi của câu): token [[IMG:file|rộng_cm]] trong chữ
+  ImageBank.prototype.inline = function(spec){
+    var im = this.images[spec.file];
+    if(!im){ this.missing.push(spec.file); return run('[thiếu hình]', { red: true }); }
+    var sz = imageSize(im.bytes), wcm = Math.max(1, Math.min(14, Number(spec.width_cm || 5.0)));
+    var cx = Math.round(wcm * 360000), cy = Math.round(cx * sz.h / sz.w);
+    var n = this.files.length + 1, rid = 'rIdImg' + n;
+    var ext = sniffExt(im.bytes) || (/\.(png|jpe?g|gif)$/i.exec(spec.file) || ['', 'png'])[1].toLowerCase().replace('jpeg', 'jpg');
+    this.files.push({ rid: rid, bytes: im.bytes, target: 'media/hinh' + n + '.' + ext });
+    var graphic = '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+      + '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + n + '" name="hinh' + n + '"/><pic:cNvPicPr/></pic:nvPicPr>'
+      + '<pic:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+      + '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>';
+    return '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="' + (6000 + n) + '" name="hinh' + n + '"/><wp:cNvGraphicFramePr/>' + graphic + '</wp:inline></w:drawing></w:r>';
+  };
+
+  // THÊM 3/11/2026 — BẢNG số liệu thành bảng Word thật (sửa được, công thức trong ô vẫn là phương trình): rows = [[ô, ô, …], …]
+  function tableXml(rows, W){
+    if(!rows || !rows.length) return '';
+    var ncol = Math.max.apply(null, rows.map(function(r){ return r.length; })) || 1, total = 7600, wc = Math.floor(total / ncol);
+    var b = '<w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>';
+    var grid = '', i;
+    for(i = 0; i < ncol; i++) grid += '<w:gridCol w:w="' + wc + '"/>';
+    var trs = rows.map(function(r){
+      var cells = '';
+      for(var c = 0; c < ncol; c++) cells += '<w:tc><w:tcPr><w:tcW w:w="' + wc + '" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/><w:ind w:firstLine="0"/><w:jc w:val="center"/></w:pPr>' + rich(r[c] == null ? '' : r[c], null, W) + '</w:p></w:tc>';
+      return '<w:tr>' + cells + '</w:tr>';
+    });
+    return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:jc w:val="center"/><w:tblBorders>' + b + '</w:tblBorders><w:tblLook w:val="04A0"/></w:tblPr><w:tblGrid>' + grid + '</w:tblGrid>' + trs.join('') + '</w:tbl>' + para('', { after: false });
+  }
 
   // ------------------------------------------------------------------ đoạn / câu hỏi
   function para(content, o){
@@ -298,14 +348,16 @@
   function isTrue(d){ return d === true || d === 'Đ' || d === 'Đúng' || d === 1; }
 
   function buildBody(de, show, imgs, W){
+    CUR_IMGS = imgs;
     var out = [], P1 = de.phan1, P2 = de.phan2, P3 = de.phan3;
     var n1 = P1.length, n2 = P2.length, n3 = P3.reduce(function(a, g){ return a + g.cau.length; }, 0);
     out.push(para(run('PHẦN I. Thí sinh trả lời từ câu 1 đến câu ' + n1 + '. Mỗi câu hỏi thí sinh chỉ chọn một phương án', { b: true }), { keepNext: true }));
-    P1.forEach(function(q, k){ out.push(qPara(k + 1, q.de, q.hinh ? imgs.anchor(q.hinh) : '', W)); out.push(optionsBlock(q.pa, q.da, show, W)); });
+    P1.forEach(function(q, k){ out.push(qPara(k + 1, q.de, q.hinh ? imgs.anchor(q.hinh) : '', W)); if(q.bang) out.push(tableXml(q.bang, W)); out.push(optionsBlock(q.pa, q.da, show, W)); });
     out.push(para('', { after: false }));
     out.push(para(run('PHẦN II. Thí sinh trả lời từ câu 1 đến ' + n2 + '. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chọn đúng hoặc sai', { b: true }), { keepNext: true }));
     P2.forEach(function(q, k){
       out.push(qPara(k + 1, q.de, q.hinh ? imgs.anchor(q.hinh) : '', W));
+      if(q.bang) out.push(tableXml(q.bang, W));
       q.y.forEach(function(y, j){
         var c = run('abcd'[j] + ')', { b: true }) + run(' ') + rich(y, null, W);
         if(show) c += run(' (' + (isTrue(q.da[j]) ? 'Đúng' : 'Sai') + ')', { b: true, red: true, hl: true });
@@ -320,10 +372,12 @@
       if(g.chung){
         var lab = 'Nội dung câu ' + (nums.length <= 2 ? nums.join(' và ') : nums.slice(0, -1).join(', ') + ' và ' + nums[nums.length - 1]) + ':';
         out.push(para((g.hinh ? imgs.anchor(g.hinh) : '') + run(lab, { i: true }) + run(' ') + rich(g.chung, null, W), { keepNext: true }));
+        if(g.bang) out.push(tableXml(g.bang, W));
       }
       g.cau.forEach(function(q){
         k++;
         out.push(qPara(k, q.de, q.hinh ? imgs.anchor(q.hinh) : '', W));
+        if(q.bang) out.push(tableXml(q.bang, W));
         if(show) out.push(answerBox(q.da));
       });
     });
@@ -434,6 +488,7 @@
     opts = opts || {};
     var JSZip = opts.JSZip || root.JSZip;
     if(!JSZip) throw new Error('Thiếu JSZip');
+    MATH_FONT = opts.mathFont || 'Cambria Math';   // THÊM 3/11/2026 — 'Times New Roman' = giống MathType 7
     var tplBytes = opts.templateBytes ? toU8(opts.templateBytes) : b64ToU8(opts.templateB64 || root.OPC_TO_TEMPLATE_B64 || '');
     if(!tplBytes.length) throw new Error('Thiếu file mẫu mau_to.docx');
     var v = validate(de);

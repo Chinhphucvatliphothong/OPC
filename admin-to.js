@@ -23,18 +23,42 @@
   }
   // LaTeX của ngân hàng → quy ước de.json của Tổ ($...$ cho công thức, **đậm**, *nghiêng*)
   function texToRich(s, warns){
-    var imgs = [];
+    var imgs = [], tikz = [], tables = [];
     var t = stripMeta(s);
     t = t.replace(/\\begin\{center\}\s*\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}\s*\\end\{center\}/g, function(_, n){ imgs.push(n); return ''; });
     t = t.replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g, function(_, n){ imgs.push(n); return ''; });
-    if(/\\begin\{tabular\}|\\begin\{tikzpicture\}/.test(t)){ if(warns) warns.push('có bảng/hình vẽ TikZ — cần chỉnh tay trong Word'); t = t.replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '[BẢNG — chỉnh tay]').replace(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g, '[HÌNH VẼ — chỉnh tay]'); }
+    // SỬA 3/11/2026 — hình TikZ được VẼ THÀNH ẢNH khi xuất (tikz-lite.js → PNG) và bảng số liệu thành BẢNG WORD thật,
+    // thay vì để lại dòng "[HÌNH VẼ — chỉnh tay]". Chỉ khi không dựng được mới để dòng nhắc chỉnh tay.
+    t = t.replace(/\\begin\{tikzpicture\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{tikzpicture\}/g, function(_, code){ tikz.push(code); return ''; });
+    t = t.replace(/\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}/g, function(_, body){
+      var rows = tabularRows(body);
+      if(rows.length){ tables.push(rows); return ''; }
+      if(warns) warns.push('có bảng không đọc được — cần chỉnh tay trong Word');
+      return '[BẢNG — chỉnh tay]';
+    });
+    t = t.replace(/\\begin\{center\}|\\end\{center\}|\\centering/g, ' ');
     t = t.replace(/\\textbf\{([^{}]*)\}/g, '**$1**').replace(/\\(?:textit|emph)\{([^{}]*)\}/g, '*$1*');
-    t = t.replace(/\\SI\{([^{}]*)\}\{([^{}]*)\}/g, function(_, a, b){ return a.replace('.', ',') + ' ' + b.replace(/\\mathrm|[\\{}]/g, ''); });
+    t = t.replace(/\\SI\{([^{}]*)\}\{([^{}]*)\}/g, function(_, a, b){ return a.replace('.', ',') + ' ' + siUnit(b); });
+    t = t.replace(/\\si\{([^{}]*)\}/g, function(_, b){ return siUnit(b); }).replace(/\\num\{([^{}]*)\}/g, function(_, a){ return a.replace('.', ','); });
     t = t.replace(/\\ang\{([^{}]*)\}/g, '$1°').replace(/\\%/g, '%').replace(/\\&/g, '&').replace(/\\\\(\[[^\]]*\])?/g, ' ').replace(/\\newline/g, ' ');
     t = t.replace(/~/g, ' ').replace(/\\[,;: ]/g, ' ').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, ' ').trim();
     var left = t.replace(/\$[^$]*\$/g, '').match(/\\[a-zA-Z]+/g);
     if(left && warns) warns.push('còn lệnh LaTeX ngoài công thức: ' + left.slice(0, 3).join(' '));
-    return { text: t, imgs: imgs };
+    return { text: t, imgs: imgs, tikz: tikz, tables: tables };
+  }
+  // THÊM 3/11/2026 — đơn vị siunitx (\SI{300}{\kelvin}, \si{\meter\per\second}) → chữ thường, không để lọt lệnh LaTeX vào Word
+  var SIU = { kelvin: 'K', meter: 'm', metre: 'm', second: 's', kilogram: 'kg', gram: 'g', joule: 'J', newton: 'N', pascal: 'Pa', watt: 'W', volt: 'V', ampere: 'A', ohm: 'Ω', hertz: 'Hz', coulomb: 'C', tesla: 'T', weber: 'Wb', henry: 'H', farad: 'F', mole: 'mol', degreeCelsius: '°C', celsius: '°C', litre: 'L', liter: 'L', kilo: 'k', milli: 'm', micro: 'μ', nano: 'n', centi: 'c', mega: 'M', giga: 'G', per: '/', squared: '²', cubed: '³', cdot: '·' };
+  function siUnit(b){ return String(b).replace(/\\([a-zA-Z]+)/g, function(_, k){ return SIU[k] != null ? SIU[k] : ''; }).replace(/[{}]/g, '').replace(/\^2/g, '²').replace(/\^3/g, '³').trim(); }
+  // \begin{tabular}…\end{tabular} → mảng hàng × ô (mỗi ô là chữ + công thức $..$)
+  function tabularRows(body){
+    var b = String(body).replace(/\\hline|\\cline\{[^}]*\}|\\toprule|\\midrule|\\bottomrule/g, '');
+    return b.split(/\\\\/).map(function(r){ return r.trim(); }).filter(Boolean).map(function(r){
+      return r.replace(/\\&/g, '\u0001').split('&').map(function(c){
+        c = c.replace(/\u0001/g, '&').trim().replace(/\\multicolumn\{\d+\}\{[^}]*\}\{([\s\S]*)\}/, '$1');
+        var tx = texToRich(c, null).text;
+        return tx.indexOf('$') < 0 ? tx.replace(/(\d)\{,\}(\d)/g, '$1,$2') : tx;   // số thập phân trong ô chữ thường
+      });
+    });
   }
   function plain(s){ return stripMeta(s).replace(/\$[^$]*\$/g, ' … ').replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?/g, '').replace(/[{}]/g, '').replace(/\s+/g, ' ').trim(); }
   function summary(s){ var w = plain(s).split(' '); return w.slice(0, 15).join(' ') + (w.length > 15 ? '…' : ''); }
@@ -63,37 +87,107 @@
     if(/ứng dụng|thiết bị|bếp|nhà máy|y học|công nghiệp|lò phản ứng|máy phát|máy biến|loa|phanh|đồng hồ|tàu|pin/i.test(all)) loai.push('thực tế');
     if(hasImg) loai.push('hình');
     if(!loai.length) loai.push('bình thường');
-    // lí thuyết hay tính toán?
+    // SỬA 2/11/2026 — chấm ĐIỂM "lí thuyết" (0–1) từ nhiều tín hiệu thay vì đoán 1 chiều: tên dạng bài (LT/BT), mức độ (Biết/Hiểu
+    // thường là lí thuyết; Vận dụng/VD cao thì không), từ khoá tính toán + số liệu trong đề, phương án là số.
+    var ts = theoryScore(q);
+    return { loai: loai, theory: ts >= 0.5, theoryScore: ts, hasImg: !!hasImg };
+  }
+  function theoryScore(q){
+    var db = String(q.dangBai || ''), s = 0.5, stem = plain(q.stem);
+    if(/lý thuyết|lí thuyết|\bLT\b|khái niệm|nhận biết/i.test(db)) s += 0.35;
+    if(/bài tập|tính toán|\bBT\b|vận dụng/i.test(db)) s -= 0.4;
+    if(q.level === 'M1') s += 0.2; else if(q.level === 'M2') s += 0.1; else if(q.level === 'M3') s -= 0.25; else if(q.level === 'M4') s -= 0.5;
+    var nums = (stem.match(/\d+(?:[.,]\d+)?/g) || []).length;
+    var calcWords = /tính|bao nhiêu|xác định (?:độ lớn|giá trị)|có độ lớn|là bao/i.test(stem);
+    if(calcWords && nums >= 2) s -= 0.35; else if(calcWords && nums >= 1) s -= 0.15;
     var numOpts = (q.options || []).filter(function(o){ return /\d/.test(plain(o.text)) && !/^\s*\$?\\?[a-zA-Z]/.test(o.text); }).length;
-    var calc = /tính|bao nhiêu|giá trị|xác định độ lớn|có độ lớn|là bao/i.test(stem) && (/\d/.test(stem.replace(/[A-Za-z]+\s*\d/g, '')) || numOpts >= 3);
-    var db = String(q.dangBai || ''), theory = !calc;
-    if(/lý thuyết|lí thuyết|\bLT\b/i.test(db)) theory = true;
-    if(/bài tập|tính toán|\bBT\b|vận dụng cao/i.test(db)) theory = false;
-    return { loai: loai, theory: theory, hasImg: !!hasImg };
+    if(numOpts >= 3) s -= 0.2;
+    return Math.max(0, Math.min(1, s));
+  }
+  function hasUnsupportedFigure(raw){
+    var m = String(raw).match(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/g);
+    if(!m) return false;
+    var T = window.OPC_TIKZ;
+    if(!T || !T.render) return true;
+    return m.some(function(b){
+      var code = b.replace(/^\\begin\{tikzpicture\}(?:\[[^\]]*\])?/, '').replace(/\\end\{tikzpicture\}$/, '');
+      try{ return !T.render(code); }catch(e){ return true; }
+    });
+  }
+  // Câu có ĐỨNG ĐỘC LẬP được không (không cần dữ kiện chung / không nhắc câu trước) và có cần chỉnh tay khi xuất Word không
+  function qFlags(q){
+    var E = window.PrepScholarEngine, raw = String(q.stem || '') + ' ' + (q.options || []).map(function(o){ return o.text; }).join(' ') + ' ' + String(q.groupPassage || '');
+    return {
+      manual: hasUnsupportedFigure(raw),   // chỉ khi có hình TikZ mà tikz-lite không dựng được
+      dep: !!(q.groupPassage || q.ctxFrom != null || q.ctxOwn || (E && E.refersPrevQuestion && E.refersPrevQuestion(q.stem))),
+      ai: !!q.aiSolved, aiCheck: !!q.aiCheck
+    };
+  }
+  // Hai câu giống nhau (≥ 60% từ NỘI DUNG trùng) → coi là trùng lặp, không đưa cùng vào 1 đề.
+  // Từ xuất hiện ở > 15% số câu của kho (khung câu hỏi như "nhận định nào đúng khi xét…") bị bỏ qua, nên chỉ so phần nội dung riêng của từng câu.
+  var SIM = { df: {}, n: 0 };
+  var SIM_STOP = ' phat bieu nao sau day dung sai khi noi ve cau nhat cac cua la co mot nhung duoc trong voi khong so thi nen nguoi ta cho biet xet tinh huong hien tuong thuc hien cho bang hai ba boi tai tu den ';
+  function simRaw(it){
+    if(it.__t) return it.__t;
+    var o = {}; norm(plain(it.q.stem)).split(' ').forEach(function(w){ if(w.length > 2 && SIM_STOP.indexOf(' ' + w + ' ') < 0 && !/^\d+$/.test(w)) o[w] = 1; });
+    return (it.__t = o);
+  }
+  function simPrep(items){
+    var df = {};
+    items.forEach(function(it){ var t = simRaw(it); for(var k in t) df[k] = (df[k] || 0) + 1; it.__c = null; });
+    SIM = { df: df, n: items.length };
+  }
+  function simContent(it){
+    if(it.__c) return it.__c;
+    var t = simRaw(it), o = {};
+    for(var k in t){ if(SIM.n >= 30 && (SIM.df[k] || 0) / SIM.n > 0.15) continue; o[k] = 1; }
+    return (it.__c = o);
+  }
+  function similar(a, b){
+    var A = simContent(a), B = simContent(b), inter = 0, na = 0, nb = 0, k;
+    for(k in A){ na++; if(B[k]) inter++; } for(k in B) nb++;
+    if(na < 3 || nb < 3) return false;            // quá ít từ nội dung → không đủ cơ sở kết luận là trùng
+    return inter / (na + nb - inter || 1) >= 0.6;
   }
 
   // ------------------------------------------------------------------ dựng kho + chọn câu
-  function buildItems(exams, rows){
+  // SỬA 2/11/2026 — chủ đề của câu nhận bằng MÃ CHƯƠNG (tag nano/bài/chủ đề, giống phần học sinh) trước, rồi mới đối chiếu tên chủ đề;
+  // trước đây chỉ khớp đúng tên chữ nên câu gắn tag hơi khác tên (hoặc đề "tổng hợp") bị bỏ sót.
+  var ROW_BY_CHUONG = { 1: 'Vật lí nhiệt', 2: 'Khí lí tưởng', 3: 'Từ trường', 4: 'Vật lí hạt nhân' };
+  function rowOf(q, ex, rows){
+    var CUR = window.OPC_CURRICULUM;
+    if(CUR && CUR.inferChuong){
+      var c = CUR.inferChuong(Object.assign({}, q, { chuDeLon: q.chuDeLon || ex.chuDe }));
+      if(c && ROW_BY_CHUONG[c] && rows.indexOf(ROW_BY_CHUONG[c]) > -1) return ROW_BY_CHUONG[c];
+    }
+    var a = norm(q.chuDeLon || ex.chuDe), rname = null;
+    rows.forEach(function(r){ if(norm(r) === a) rname = r; });
+    return rname;
+  }
+  function buildItems(exams, rows, opt){
+    opt = opt || {};
     var items = [];
-    exams.filter(function(e){ return e.examKind !== 'soTruong'; }).forEach(function(ex){
+    exams.filter(function(e){ return e.examKind !== 'soTruong' && (Number(e.khoi) || 12) === 12; }).forEach(function(ex){
       (ex.questions || []).forEach(function(q){
-        var rname = null, a = norm(q.chuDeLon || ex.chuDe);
-        rows.forEach(function(r){ if(norm(r) === a) rname = r; });
+        var rname = rowOf(q, ex, rows);
         if(!rname) return;
+        var fl = qFlags(q);
+        if(fl.aiCheck) return;                         // AI còn nghi ngờ đáp án → không bao giờ tự chọn cho đề Tổ
+        if(opt.excludeAiSolved && fl.ai) return;       // tuỳ chọn: loại cả câu đáp án do AI tự giải
         var c = classify(q, ex);
-        items.push({ q: q, ex: ex, uid: ex.id + '_q' + q.index, row: rname, cls: c, level: q.level });
+        items.push({ q: q, ex: ex, uid: ex.id + '_q' + q.index, row: rname, cls: c, level: q.level, fl: fl });
       });
     });
     return items;
   }
-  function p1Ok(it){ var q = it.q; return q.part === 'I' && q.type === 'choice' && (q.options || []).length === 4 && (q.options || []).filter(function(o){ return o.isTrue; }).length === 1 && it.cls.theory && !/\\tabular/.test(q.stem || ''); }
-  function p2Ok(it){ var q = it.q; return q.part === 'II' && q.type === 'choiceTF' && (q.options || []).length === 4; }
+  function p1Ok(it){ var q = it.q; return q.part === 'I' && q.type === 'choice' && (q.options || []).length === 4 && (q.options || []).filter(function(o){ return o.isTrue; }).length === 1 && (q.options || []).every(function(o){ return String(o.text || '').trim(); }) && it.cls.theory && !it.fl.dep && !it.fl.manual; }
+  function p2Ok(it){ var q = it.q, t = (q.options || []).filter(function(o){ return o.isTrue; }).length; return q.part === 'II' && q.type === 'choiceTF' && (q.options || []).length === 4 && t >= 1 && t <= 3 && !it.fl.dep && !it.fl.manual; }
   // SỬA 28/10/2026 — NHẬN DIỆN CHÙM ĐÚNG NHƯ NGÂN HÀNG LƯU. Trước đây chỉ nhận chùm có ĐÚNG 2 câu và mọi câu đều phải có
   // groupPassage → bỏ sót chùm 3–4 câu và chùm kiểu "dựa vào câu trên" (câu đầu không có groupPassage, câu sau mang ctxFrom).
   // Nay: gom các câu Phần III (trả lời ngắn, có đáp án) LIỀN NHAU của cùng 1 đề thành "cụm" theo cùng quy tắc với bộ tạo đề
   // cá nhân hoá (cùng groupPassage · ctxFrom = index câu trước · ctxOwn). Cụm ≥ 2 câu là chùm; mỗi chùm cho ra các CẶP 2 câu
   // liền nhau (đủ dữ kiện vì câu sau luôn mang ngữ cảnh của câu trước). Câu không thuộc chùm nào và không có dữ kiện chung là CÂU RỜI.
-  function p3Eligible(it){ var q = it.q; return q.part === 'III' && q.type === 'shortans' && q.shortans != null && String(q.shortans).trim() !== ''; }
+  function p3Eligible(it){ var q = it.q; if(!(q.part === 'III' && q.type === 'shortans' && q.shortans != null && String(q.shortans).trim() !== '')) return false; var da = shortansClean(q.shortans); return /^-?[0-9,]{1,4}$/.test(da) && da.replace('-', '').length <= 4; }   // SỬA 2/11/2026: đáp án phải vừa 4 ô của phiếu
   function p3Runs(items){
     var byEx = {};
     items.filter(p3Eligible).forEach(function(it){ (byEx[it.ex.id] = byEx[it.ex.id] || []).push(it); });
@@ -152,31 +246,44 @@
 
   function pickPlan(exams, cfg, usedSet){
     var rows = cfg.rows, w = cfg.w, used = usedSet || {};
-    var items = buildItems(exams, rows).filter(function(it){ return !used[it.uid]; });
+    var items = buildItems(exams, rows, { excludeAiSolved: !!cfg.excludeAiSolved }).filter(function(it){ return !used[it.uid]; });
     var rep = { notes: [] };
+    simPrep(items);   // thống kê từ "khung" của kho để so trùng nội dung chính xác hơn
     var quota = window.OPC_MATRIX.apportion(18, rows.map(function(r){ return Number(w[r]) || 0; }));
     var left = {}; rows.forEach(function(r, i){ left[r] = quota[i]; });
-    var p1pool = shuffle(items.filter(p1Ok)), chosen = [], seenDang = {};
-    function take(it){ chosen.push(it); left[it.row] = Math.max(0, (left[it.row] || 0) - 1); seenDang[it.row + '|' + norm(it.q.dangBai)] = 1; p1pool = p1pool.filter(function(x){ return x !== it; }); }
+    // SỬA 2/11/2026 — chọn Phần I có ĐA DẠNG: tối đa 3 câu cùng một đề gốc, không có 2 câu giống nhau (≥ 60% từ trùng), ưu tiên
+    // dạng bài chưa chọn và mức Biết/Hiểu (câu lí thuyết). Hết lựa chọn "tốt" mới nới lỏng.
+    var p1pool = shuffle(items.filter(p1Ok)), chosen = [], seenDang = {}, examCnt = {}, relaxedNote = false;
+    function dkey(it){ return it.row + '|' + norm(it.q.dangBai); }
+    function strict(it){ return (examCnt[it.ex.id] || 0) < 3 && !chosen.some(function(c){ return similar(c, it); }); }
+    function take(it){ chosen.push(it); examCnt[it.ex.id] = (examCnt[it.ex.id] || 0) + 1; left[it.row] = Math.max(0, (left[it.row] || 0) - 1); seenDang[dkey(it)] = 1; p1pool = p1pool.filter(function(x){ return x !== it; }); }
+    function rank(it){ return (seenDang[dkey(it)] ? 2 : 0) + ((it.level === 'M3' || it.level === 'M4') ? 1 : 0); }
     // bắt buộc có đủ loại: đơn vị ×2, tên đại lượng ×1, công thức ×2, có hình ×1
     [['đơn vị', 2], ['tên đại lượng', 1], ['công thức', 2], ['hình', 1]].forEach(function(r){
       for(var n = 0; n < r[1]; n++){
-        var c = p1pool.filter(function(it){ return it.cls.loai.indexOf(r[0]) > -1 && (left[it.row] || 0) > 0 && !seenDang[it.row + '|' + norm(it.q.dangBai)]; })[0]
-          || p1pool.filter(function(it){ return it.cls.loai.indexOf(r[0]) > -1 && chosen.length < 18; })[0];
+        var hasLoai = function(it){ return it.cls.loai.indexOf(r[0]) > -1; };
+        var c = p1pool.filter(function(it){ return hasLoai(it) && (left[it.row] || 0) > 0 && !seenDang[dkey(it)] && strict(it); })[0]
+          || p1pool.filter(function(it){ return hasLoai(it) && chosen.length < 18 && strict(it); })[0]
+          || p1pool.filter(function(it){ return hasLoai(it) && chosen.length < 18; })[0];
         if(c) take(c);
       }
     });
     rows.forEach(function(r){
-      var cand = p1pool.filter(function(it){ return it.row === r; });
-      cand.sort(function(a, b){ return (seenDang[a.row + '|' + norm(a.q.dangBai)] ? 1 : 0) - (seenDang[b.row + '|' + norm(b.q.dangBai)] ? 1 : 0); });
-      while((left[r] || 0) > 0 && cand.length && chosen.length < 18){ var it = cand.shift(); if(p1pool.indexOf(it) < 0) continue; take(it); cand.sort(function(a, b){ return (seenDang[a.row + '|' + norm(a.q.dangBai)] ? 1 : 0) - (seenDang[b.row + '|' + norm(b.q.dangBai)] ? 1 : 0); }); }
+      while((left[r] || 0) > 0 && chosen.length < 18){
+        var cand = p1pool.filter(function(it){ return it.row === r && strict(it); });
+        if(!cand.length) break;
+        cand.sort(function(a, b){ return rank(a) - rank(b); });
+        take(cand[0]);
+      }
     });
-    while(chosen.length < 18 && p1pool.length){ take(p1pool[0]); rep.notes.push('Phần I thiếu câu lí thuyết ở một số chủ đề → bù từ chủ đề khác'); }
+    while(chosen.length < 18 && p1pool.length){ take(p1pool.filter(strict)[0] || p1pool[0]); if(!relaxedNote){ relaxedNote = true; rep.notes.push('Phần I thiếu câu lí thuyết ở một số chủ đề (hoặc phải nới lỏng điều kiện đa dạng) → bù từ chủ đề/đề khác'); } }
     if(chosen.length < 18) rep.notes.push('Ngân hàng chỉ có ' + chosen.length + '/18 câu Phần I phù hợp — nạp thêm đề.');
     var p1 = chosen.map(slotOf); balanceP1(p1);
 
     // Phần II: 4 câu, mỗi chủ đề 1 câu nếu được; ưu tiên có câu thực nghiệm, thực tế
-    var p2pool = shuffle(items.filter(p2Ok)), p2 = [], rowsShuf = shuffle(rows);
+    var p2cnt = {}, p2pool = shuffle(items.filter(p2Ok)).filter(function(it){ return !chosen.some(function(c){ return similar(c, it); }); }), p2 = [], rowsShuf = shuffle(rows);
+    // Phần II: tránh lấy quá 2 câu từ cùng một đề gốc
+    p2pool = p2pool.filter(function(it){ p2cnt[it.ex.id] = (p2cnt[it.ex.id] || 0) + 1; return p2cnt[it.ex.id] <= 2; });
     ['thực nghiệm', 'thực tế'].forEach(function(k){ var c = p2pool.filter(function(it){ return it.cls.loai.indexOf(k) > -1; })[0]; if(c){ p2.push(c); p2pool = p2pool.filter(function(x){ return x !== c; }); } });
     rowsShuf.forEach(function(r){ if(p2.length >= 4) return; var c = p2pool.filter(function(it){ return it.row === r && !p2.some(function(x){ return x.row === r; }); })[0]; if(c){ p2.push(c); p2pool = p2pool.filter(function(x){ return x !== c; }); } });
     while(p2.length < 4 && p2pool.length){ p2.push(p2pool.shift()); }
@@ -251,56 +358,105 @@
 
   // ------------------------------------------------------------------ plan → de.json
   function planToDe(plan, cfg, ctx){
-    var W = [], imgFiles = {}; // imgFiles: tên mới → { exId, name }
+    var W = [], imgFiles = {}, specs = {}; // imgFiles: tên mới → { exId, name } hoặc { tikz: mã }; specs: tên mới → đối tượng {file,width_cm} để chỉnh rộng sau khi biết kích thước ảnh
     function rich(txt, imgNames, ex, tag){
       var w = []; var r = texToRich(txt, w); w.forEach(function(x){ W.push(tag + ': ' + x); });
       var names = (imgNames || []).concat(r.imgs).filter(function(n, i, a){ return a.indexOf(n) === i; });
-      return { text: r.text, imgs: names };
+      return { text: r.text, imgs: names, tikz: r.tikz || [], tables: r.tables || [] };
     }
-    function hinhOf(names, ex, tag){
-      if(!names.length) return null;
-      var nm = names[0], newName = 'hinh_' + (Object.keys(imgFiles).length + 1) + '.png';
-      imgFiles[newName] = { exId: ex.id, name: nm };
-      return { file: newName, width_cm: 5 };
+    // SỬA 3/11/2026 — MỌI hình của 1 đoạn (ảnh đính kèm + hình TikZ) đều được đưa vào Word: hình đầu nổi bên phải (hinh), các hình
+    // sau nằm trong dòng ([[IMG:…]]). Trước đây chỉ lấy hình đầu và bỏ hẳn hình trong phương án.
+    function figSpecs(r, ex){
+      var out = [];
+      r.imgs.forEach(function(n){ var nn = 'hinh_' + (Object.keys(imgFiles).length + 1) + '.png'; imgFiles[nn] = { exId: ex.id, name: n }; var sp = { file: nn, width_cm: 5 }; specs[nn] = sp; out.push(sp); });
+      r.tikz.forEach(function(code){ var nn = 'hinh_' + (Object.keys(imgFiles).length + 1) + '.png'; imgFiles[nn] = { tikz: code }; var sp = { file: nn, width_cm: 5.5 }; specs[nn] = sp; out.push(sp); });
+      return out;
+    }
+    function tok(sp){ return '[[IMG:' + sp.file + '|' + '@' + sp.file + ']]'; }   // độ rộng điền sau (xem fillTokens)
+    // gắn hình/bảng của đoạn r vào đối tượng o (o.de hoặc o.chung là trường chữ chính)
+    function attach(o, field, r, ex, tag){
+      var figs = figSpecs(r, ex);
+      if(figs.length){ o.hinh = figs[0]; for(var i = 1; i < figs.length; i++) o[field] += ' ' + tok(figs[i]); }
+      if(r.tables.length){ o.bang = r.tables[0]; if(r.tables.length > 1) W.push(tag + ': có ' + r.tables.length + ' bảng — chỉ chèn bảng đầu, kiểm tra trong Word'); }
+    }
+    function optText(t, ex, tag){
+      var r = rich(t, [], ex, tag), text = r.text;
+      figSpecs(r, ex).forEach(function(sp){ text += ' ' + tok(sp); });
+      if(r.tables.length) W.push(tag + ': phương án có bảng — chỉnh tay trong Word');
+      return text;
     }
     var de = { meta: {}, phan1: [], phan2: [], phan3: [] };
     plan.p1.forEach(function(s, i){
-      var q = s.it.q, r = rich(q.stem, q.images, s.it.ex, 'P1 câu ' + (i + 1));
-      var o = { de: r.text, pa: s.pa.map(function(t){ return rich(t, [], s.it.ex, 'P1 câu ' + (i + 1)).text; }), da: s.da, chu_de: s.it.row, loai: s.it.cls.loai.join(', '), nguon: s.it.ex.title + ' · câu ' + q.index };
-      var hh = hinhOf(r.imgs, s.it.ex); if(hh) o.hinh = hh; de.phan1.push(o);
+      var q = s.it.q, tag = 'P1 câu ' + (i + 1), r = rich(q.stem, q.images, s.it.ex, tag);
+      var o = { de: r.text, pa: s.pa.map(function(t){ return optText(t, s.it.ex, tag); }), da: s.da, chu_de: s.it.row, loai: s.it.cls.loai.join(', '), nguon: s.it.ex.title + ' · câu ' + q.index };
+      attach(o, 'de', r, s.it.ex, tag); de.phan1.push(o);
     });
     plan.p2.forEach(function(s, i){
-      var q = s.it.q, r = rich(q.stem, q.images, s.it.ex, 'P2 câu ' + (i + 1));
-      var o = { de: r.text, y: q.options.map(function(op){ return rich(op.text, [], s.it.ex, 'P2 câu ' + (i + 1)).text; }), da: q.options.map(function(op){ return op.isTrue ? 'Đ' : 'S'; }), chu_de: s.it.row, loai: s.it.cls.loai.join(', '), nguon: s.it.ex.title + ' · câu ' + q.index };
-      var hh = hinhOf(r.imgs, s.it.ex); if(hh) o.hinh = hh; de.phan2.push(o);
+      var q = s.it.q, tag = 'P2 câu ' + (i + 1), r = rich(q.stem, q.images, s.it.ex, tag);
+      var o = { de: r.text, y: q.options.map(function(op){ return optText(op.text, s.it.ex, tag); }), da: q.options.map(function(op){ return op.isTrue ? 'Đ' : 'S'; }), chu_de: s.it.row, loai: s.it.cls.loai.join(', '), nguon: s.it.ex.title + ' · câu ' + q.index };
+      attach(o, 'de', r, s.it.ex, tag); de.phan2.push(o);
     });
     plan.p3.forEach(function(g, i){
-      var first = g[0], pass = (!g.loose && first.q.groupPassage) ? rich(stripLead(first.q.groupPassage), first.q.groupImages, first.ex, 'Chùm ' + (i + 1)) : { text: '', imgs: [] }; // SỬA 28/10/2026 — bỏ nhãn số câu gốc; cặp câu rời không có đoạn chung
+      var first = g[0], gtag = 'Chùm ' + (i + 1);
+      var pass = (!g.loose && first.q.groupPassage) ? rich(stripLead(first.q.groupPassage), first.q.groupImages, first.ex, gtag) : { text: '', imgs: [], tikz: [], tables: [] }; // cặp câu rời không có đoạn chung
       var grp = { chung: pass.text, loai: g.map(function(it){ return it.cls.loai.join(', '); }).join('; '), cau: g.map(function(it, k){
-        var r = rich(it.q.stem, it.q.images, it.ex, 'Chùm ' + (i + 1) + ' câu ' + (k + 1)), da = shortansClean(it.q.shortans);
-        if(!/^-?[0-9,]{1,4}$/.test(da) || da.replace('-', '').length > 4) W.push('Chùm ' + (i + 1) + ' câu ' + (k + 1) + ': đáp án "' + da + '" không vừa 4 ô (≤ 4 ký tự) — sửa trong bảng duyệt/nguồn');
-        if(/(^|[^\p{L}])câu\s+(số\s+)?\d+/iu.test(plain(it.q.stem))) W.push('Chùm ' + (i + 1) + ' câu ' + (k + 1) + ': đề có nhắc "câu <số>" của đề gốc — kiểm tra/sửa lại số câu cho khớp đề Tổ');
+        var tag = gtag + ' câu ' + (k + 1), r = rich(it.q.stem, it.q.images, it.ex, tag), da = shortansClean(it.q.shortans);
+        if(!/^-?[0-9,]{1,4}$/.test(da) || da.replace('-', '').length > 4) W.push(tag + ': đáp án "' + da + '" không vừa 4 ô (≤ 4 ký tự) — sửa trong bảng duyệt/nguồn');
+        if(/(^|[^\p{L}])câu\s+(số\s+)?\d+/iu.test(plain(it.q.stem))) W.push(tag + ': đề có nhắc "câu <số>" của đề gốc — kiểm tra/sửa lại số câu cho khớp đề Tổ');
         var o = { de: r.text, da: da, muc: MUC[it.q.level] || 'vận dụng', nguon: it.ex.title + ' · câu ' + it.q.index };
-        var hh = hinhOf(r.imgs, it.ex); if(hh) o.hinh = hh; return o; }) };
-      var gh = hinhOf(pass.imgs, first.ex); if(gh) grp.hinh = gh;
+        attach(o, 'de', r, it.ex, tag); return o; }) };
+      if(g.loose !== true) attach(grp, 'chung', pass, first.ex, gtag);
       de.phan3.push(grp);
     });
+    // Điền độ rộng cho token ảnh trong dòng: [[IMG:file|@file]] → [[IMG:file|rộng_cm]] (rộng_cm lấy từ specs, cập nhật sau khi vẽ TikZ)
+    function fillTokens(){
+      var f = function(t){ return String(t == null ? '' : t).replace(/\[\[IMG:([^|\]]+)\|[^\]]*\]\]/g, function(_, file){ return '[[IMG:' + file + '|' + ((specs[file] && specs[file].width_cm) || 5) + ']]'; }); };
+      de.phan1.forEach(function(q){ q.de = f(q.de); q.pa = q.pa.map(f); });
+      de.phan2.forEach(function(q){ q.de = f(q.de); q.y = q.y.map(f); });
+      de.phan3.forEach(function(g){ g.chung = f(g.chung); g.cau.forEach(function(q){ q.de = f(q.de); }); });
+    }
     var n = (String(cfg.ten_de).match(/\d+/) || ['1'])[0], last = String(cfg.gv_ra_de || '').trim().split(/\s+/).pop() || 'GV';
     de.meta = { ten_file: last + '_Đề ' + n, ten_folder: (cfg.gv_ra_de || 'GV') + '_Đề ' + n, ma_de: cfg.ma_de, ten_de: cfg.ten_de, gv_ra_de: cfg.gv_ra_de, gv_phan_bien: cfg.gv_phan_bien };
     if(cfg.truong) de.meta.truong = cfg.truong;
-    return { de: de, imgFiles: imgFiles, warns: W };
+    fillTokens();
+    return { de: de, imgFiles: imgFiles, warns: W, specs: specs, refill: fillTokens };
   }
 
   // ------------------------------------------------------------------ ảnh
   function dataUrlToU8(u){ var b = atob(u.split(',')[1]), a = new Uint8Array(b.length); for(var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
+  // SỬA 3/11/2026 — tên ảnh so khớp bỏ thư mục + đuôi (giống phần học sinh), tải ảnh của mỗi đề 1 lần (đệm), hình TikZ vẽ thành PNG
+  var imgCache = {};
+  function nimg(n){ return String(n || '').trim().toLowerCase().replace(/^.*[\\/]/, '').replace(/\.[a-z0-9]+$/i, ''); }
   async function loadImageBytes(ex, name){
-    var imgs = await OPC().examBank.loadExamImages(ex.id, ex.images || []);
-    var base = String(name).replace(/\.[a-z0-9]+$/i, '').toLowerCase();
-    var im = (imgs || []).filter(function(x){ var n = String(x.name || x.id || '').toLowerCase(); return n === String(name).toLowerCase() || n.replace(/\.[a-z0-9]+$/i, '') === base; })[0];
+    var imgs = imgCache[ex.id];
+    if(!imgs){ imgs = (await OPC().examBank.loadExamImages(ex.id, ex.images || [])) || []; imgCache[ex.id] = imgs; }
+    var key = nimg(name);
+    var im = imgs.filter(function(x){ return nimg(x.name || x.id) === key; })[0];
     if(!im) return null;
     var url = im.dataUrl || im.url; if(!url) return null;
     if(url.indexOf('data:') === 0) return dataUrlToU8(url);
     var r = await fetch(url); if(!r.ok) return null; return new Uint8Array(await r.arrayBuffer());
+  }
+
+  // Mã TikZ → ảnh PNG (dùng tikz-lite.js dựng SVG rồi vẽ lên canvas, nền trắng, độ nét ×3). 1 cm TikZ = 44px; rộng cm lấy theo kích thước thật (3–7,5 cm).
+  async function tikzToPng(code){
+    var T = window.OPC_TIKZ; if(!T || !T.render) return null;
+    var svg = T.render(code); if(!svg) return null;
+    svg = svg.replace(/currentColor/g, '#000000').replace('max-width:100%;height:auto;', '');
+    var vb = (svg.match(/viewBox="([-\d.\s]+)"/) || [])[1], x = 0, y = 0;
+    var w = Number((svg.match(/\swidth="([\d.]+)"/) || [])[1]) || 200, h = Number((svg.match(/\sheight="([\d.]+)"/) || [])[1]) || 150;
+    if(vb){ var p = vb.trim().split(/\s+/).map(Number); if(p.length === 4 && p.every(isFinite)){ x = p[0]; y = p[1]; w = p[2]; h = p[3]; } }
+    var pad = 8, W2 = w + 2 * pad, H2 = h + 2 * pad, scale = 3;
+    svg = svg.replace(/viewBox="[^"]*"/, 'viewBox="' + (x - pad) + ' ' + (y - pad) + ' ' + W2 + ' ' + H2 + '"').replace(/\swidth="[^"]*"/, ' width="' + W2 + '"').replace(/\sheight="[^"]*"/, ' height="' + H2 + '"');
+    var url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+    try{
+      var img = await new Promise(function(res, rej){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ rej(new Error('Không nạp được SVG')); }; im.src = url; });
+      var cv = document.createElement('canvas'); cv.width = Math.round(W2 * scale); cv.height = Math.round(H2 * scale);
+      var cx = cv.getContext('2d'); cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0, cv.width, cv.height);
+      var blob = await new Promise(function(res){ cv.toBlob(res, 'image/png'); });
+      if(!blob) return null;
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), wcm: Math.max(3, Math.min(7.5, W2 / 44)) };
+    } finally { URL.revokeObjectURL(url); }
   }
 
   // ------------------------------------------------------------------ lưu cấu hình nhẹ trên máy
@@ -318,6 +474,8 @@
     var us = React.useState(lsGet('faraday-to-used', {})); var used = us[0], setUsed = us[1];
     var eu = React.useState(true); var excludeUsed = eu[0], setExcludeUsed = eu[1];
     var al = React.useState(lsGet('faraday-to-loose', true)); var allowLoose = al[0], setAllowLoose = al[1]; // THÊM 28/10/2026 — thiếu chùm thì bù câu rời
+    var xa = React.useState(lsGet('faraday-to-xai', false)); var excludeAi = xa[0], setExcludeAi = xa[1];
+    var mf = React.useState(lsGet('faraday-to-mfont', 'Times New Roman')); var mathFont = mf[0], setMathFont = mf[1];   // THÊM 3/11/2026 — font công thức giống MathType   // THÊM 2/11/2026 — loại câu đáp án do AI tự giải
     var ps = React.useState(null); var plan = ps[0], setPlan = ps[1];
     var bs = React.useState(''); var busy = bs[0], setBusy = bs[1];
     var vs = React.useState(null); var view = vs[0], setView = vs[1];
@@ -334,15 +492,16 @@
       return Object.keys(s);
     }, [exams]);
     var stats = React.useMemo(function(){
-      var items = buildItems(exams, rowsSel), c = { p1: 0, p2: 0, p3: 0 };
-      items.forEach(function(it){ if(used[it.uid] && excludeUsed) return; if(p1Ok(it)) c.p1++; else if(p2Ok(it)) c.p2++; });
+      var items = buildItems(exams, rowsSel, { excludeAiSolved: excludeAi }), c = { p1: 0, p2: 0, p3: 0 };
+      c.byRow = {};
+      items.forEach(function(it){ if(used[it.uid] && excludeUsed) return; if(p1Ok(it)){ c.p1++; c.byRow[it.row] = (c.byRow[it.row] || 0) + 1; } else if(p2Ok(it)) c.p2++; });
       var free = items.filter(function(it){ return !(used[it.uid] && excludeUsed); });
       c.p3 = p3Runs(free).filter(function(r){ return r.length >= 2; }).length; // số chùm (cụm ≥ 2 câu)
       c.p3l = looseOf(free).length;                                              // số câu rời
       return c;
-    }, [exams, rowsSel, used, excludeUsed]);
+    }, [exams, rowsSel, used, excludeUsed, excludeAi]);
 
-    function cfgFull(){ return Object.assign({}, cfgBase, { rows: rowsSel, w: w, allowLoose: allowLoose }); }
+    function cfgFull(){ return Object.assign({}, cfgBase, { rows: rowsSel, w: w, allowLoose: allowLoose, excludeAiSolved: excludeAi }); }
     function generate(){
       if(!window.OPC_MATRIX){ props.fireToast && props.fireToast('Thiếu exam-matrix.js'); return; }
       if(!rowsSel.length){ props.fireToast && props.fireToast('Chọn ít nhất 1 chủ đề.'); return; }
@@ -372,7 +531,9 @@
         np.p3 = plan.p3.slice(); np.p3[idx] = pickG;
       } else {
         var ok = sec === 'p1' ? p1Ok : p2Ok, curIt = cur.it;
-        var cand2 = shuffle(items.filter(function(it){ return ok(it) && !inPlan[it.uid]; }));
+        // SỬA 2/11/2026 — câu thay thế không được trùng ý với các câu còn lại trong đề (≥ 60% từ trùng)
+        var restItems = plan.p1.concat(plan.p2).map(function(s){ return s.it; }).filter(function(x){ return x !== curIt; });
+        var cand2 = shuffle(items.filter(function(it){ return ok(it) && !inPlan[it.uid] && !restItems.some(function(r){ return similar(r, it); }); }));
         var pick = cand2.filter(function(it){ return it.row === curIt.row && it.cls.loai[0] === curIt.cls.loai[0]; })[0] || cand2.filter(function(it){ return it.row === curIt.row; })[0] || cand2[0];
         if(!pick){ props.fireToast && props.fireToast('Không còn câu phù hợp để đổi.'); return; }
         np[sec] = plan[sec].slice();
@@ -417,6 +578,7 @@
         ['(4) Có bài đọc thiết bị/ứng dụng thực tế', has('thực tế')], ['(5) Có câu thực nghiệm (cách xác định đại lượng, thao tác, dụng cụ)', has('thực nghiệm')],
         ['(6) Câu hỏi chùm (Phần III)' + (plan.p3.some(function(g){ return g.loose; }) ? ' — có ' + plan.p3.filter(function(g){ return g.loose; }).length + ' cặp câu rời thay chùm' : ''), plan.p3.length === 3 && plan.p3.every(function(g){ return !g.loose; })], ['(7) Có hình vẽ/đồ thị/bảng số liệu', has('hình')],
         ['Phủ đủ các chủ đề đã chọn', rowsSel.every(function(r){ return rowsHit[r]; })],
+        ['Không có câu mà đáp án do AI tự giải (thầy chưa xác nhận)', !all.some(function(it){ return it.q.aiSolved; })],
         ['Đáp án Phần I phân bố đều (mỗi chữ 3–6 lần)', distOk],
         ['Phần III: 2 cơ bản + 3 vận dụng + 1 VDC', lv.b === 2 && lv.v === 3 && lv.d === 1]], dist: dist, rowsHit: rowsHit, lv: lv };
     }, [plan, rowsSel]);
@@ -429,13 +591,22 @@
       setBusy('Đang dựng 3 file Word…');
       try{
         var conv = planToDe(plan, cfgFull());
-        var images = {};
+        var images = {}, nTikz = 0;
+        imgCache = {};
         for(var nn of Object.keys(conv.imgFiles)){
-          var ref = conv.imgFiles[nn], ex = exams.filter(function(e){ return e.id === ref.exId; })[0];
+          var ref = conv.imgFiles[nn];
+          if(ref.tikz){   // hình TikZ → vẽ thành ảnh
+            var tp = await tikzToPng(ref.tikz).catch(function(){ return null; });
+            if(tp){ images[nn] = { bytes: tp.bytes }; if(conv.specs[nn]) conv.specs[nn].width_cm = Math.round(tp.wcm * 10) / 10; nTikz++; }
+            else conv.warns.push('Không vẽ được 1 hình TikZ (' + nn + ') — chèn/vẽ lại hình trong Word.');
+            continue;
+          }
+          var ex = exams.filter(function(e){ return e.id === ref.exId; })[0];
           var bytes = ex ? await loadImageBytes(ex, ref.name).catch(function(){ return null; }) : null;
           if(bytes) images[nn] = { bytes: bytes }; else conv.warns.push('Không lấy được ảnh "' + ref.name + '" — câu đó sẽ thiếu hình, chèn tay trong Word.');
         }
-        var res = await window.OPC_TODOCX.buildAll(conv.de, { images: images, pages: Number(cfgBase.pages) || 0 || undefined });
+        conv.refill();   // cập nhật độ rộng của ảnh nằm trong dòng theo kích thước thật
+        var res = await window.OPC_TODOCX.buildAll(conv.de, { images: images, mathFont: mathFont, pages: Number(cfgBase.pages) || 0 || undefined });
         var zip = new window.JSZip(), folder = zip.folder(conv.de.meta.ten_folder), nm = conv.de.meta.ten_file;
         folder.file(nm + '.docx', res.de); folder.file(nm + '_ĐÁP ÁN.docx', res.dapan); folder.file(nm + '_BẢNG ĐÁP ÁN.docx', res.bang);
         folder.file('de.json', JSON.stringify(conv.de, null, 1));
@@ -466,7 +637,7 @@
         h('td', { style: { fontSize: '0.74rem' } }, it.cls.loai.join(', ')),
         h('td', null, LV[q.level] || q.level || '—'),
         h('td', null, h('b', null, kind === 'p1' ? s.da : kind === 'p2' ? q.options.map(function(o){ return o.isTrue ? 'Đ' : 'S'; }).join('') : shortansClean(q.shortans))),
-        h('td', { style: { fontSize: '0.72rem', color: 'var(--ink-2)' } }, it.ex.title + ' · câu ' + q.index, q.aiCheck ? h('div', { style: { color: '#b91c1c', fontWeight: 700 } }, '⚠ AI cần kiểm tra') : null),
+        h('td', { style: { fontSize: '0.72rem', color: 'var(--ink-2)' } }, it.ex.title + ' · câu ' + q.index, q.aiCheck ? h('div', { style: { color: '#b91c1c', fontWeight: 700 } }, '⚠ AI cần kiểm tra') : null, (q.aiSolved && !q.aiCheck) ? h('div', { style: { color: '#b45309', fontWeight: 700 } }, '🤖 đáp án do AI tự giải — thầy xác nhận') : null),
         h('td', { style: { whiteSpace: 'nowrap' } }, h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.74rem', padding: '3px 8px' }, onClick: function(){ setView({ s: s, kind: kind }); } }, '👁'), ' ', h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.74rem', padding: '3px 8px' }, onClick: function(){ swap(kind, idx); } }, kind === 'p3' && plan.p3[idx] && plan.p3[idx].loose ? '⇄ Đổi cặp' : '⇄ Đổi'),
           (kind === 'p3' && plan.p3[idx] && plan.p3[idx].loose) ? [' ', h('button', { key: 'q', type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.74rem', padding: '3px 8px' }, onClick: function(){ swapLoose(idx, sub); } }, '⇄ Đổi câu này')] : null)));
     }
@@ -489,7 +660,9 @@
           h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, h('input', { type: 'checkbox', checked: excludeUsed, onChange: function(e){ setExcludeUsed(e.target.checked); } }), 'Không dùng lại câu đã ra cho Tổ (' + usedCount + ' câu đã ghi nhận trên máy này)'),
           usedCount ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.74rem', padding: '3px 8px' }, onClick: function(){ if(window.confirm('Xoá lịch sử ' + usedCount + ' câu đã dùng?')){ setUsed({}); lsSet('faraday-to-used', {}); } } }, 'Xoá lịch sử') : null,
           h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, h('input', { type: 'checkbox', checked: allowLoose, onChange: function(e){ setAllowLoose(e.target.checked); lsSet('faraday-to-loose', e.target.checked); } }), 'Thiếu chùm thì cho phép thay bằng câu rời (Phần III)'),
-          h('span', { style: { color: 'var(--ink-2)' } }, 'Kho còn dùng được: Phần I ' + stats.p1 + ' câu lí thuyết · Phần II ' + stats.p2 + ' · Phần III ' + stats.p3 + ' chùm' + (stats.p3l ? ' + ' + stats.p3l + ' câu rời' : ''))),
+          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, h('input', { type: 'checkbox', checked: excludeAi, onChange: function(e){ setExcludeAi(e.target.checked); lsSet('faraday-to-xai', e.target.checked); } }), 'Loại câu có đáp án do AI tự giải'),
+          h('label', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, 'Font công thức:', h('select', { value: mathFont, onChange: function(e){ setMathFont(e.target.value); lsSet('faraday-to-mfont', e.target.value); } }, h('option', { value: 'Times New Roman' }, 'Times New Roman (giống MathType 7)'), h('option', { value: 'Cambria Math' }, 'Cambria Math (mặc định Word)'))),
+          h('span', { style: { color: 'var(--ink-2)' } }, 'Kho còn dùng được: Phần I ' + stats.p1 + ' câu lí thuyết' + (stats.byRow ? ' (' + Object.keys(stats.byRow).map(function(r){ return r + ' ' + stats.byRow[r]; }).join(' · ') + ')' : '') + ' · Phần II ' + stats.p2 + ' · Phần III ' + stats.p3 + ' chùm' + (stats.p3l ? ' + ' + stats.p3l + ' câu rời' : ''))),
         h('div', { style: { marginTop: '10px' } }, h('button', { type: 'button', className: 'btn btn-primary', disabled: !!busy || !exams.length, onClick: generate }, plan ? '🔄 Lập lại bảng duyệt' : '✨ Lập bảng duyệt'))),
       busy ? h('div', { className: 'banner info', style: { margin: '8px 0' } }, '⏳ ' + busy) : null,
       msgs.length ? h('div', { style: { margin: '8px 0', padding: '10px 12px', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.4)', borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.6 } }, msgs.map(function(m, i){ return h('div', { key: i }, '• ' + m); })) : null,
