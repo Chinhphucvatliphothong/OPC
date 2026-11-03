@@ -525,6 +525,17 @@
   .price-list{ list-style:none; margin:18px 0 0; padding:0; display:flex; flex-direction:column; gap:10px; flex:1; }
   .price-list li{ font-size:0.86rem; line-height:1.5; color: var(--ink-2); padding-left:20px; position:relative; }
   .price-list li::before{ content:"✓"; position:absolute; left:0; color: var(--accent-strong); font-weight:700; }
+  /* THÊM 2/11/2026 — lưới gói theo SỐ GÓI đang hiện (1, 2, 3+) + nút đăng ký trên từng gói */
+  .pricing-grid.n1{ grid-template-columns: minmax(0,420px); justify-content:center; }
+  .pricing-grid.n2{ grid-template-columns: repeat(2, minmax(0,1fr)); max-width:840px; margin-left:auto; margin-right:auto; }
+  .pricing-grid.nm{ grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); }
+  @media (max-width: 860px){ .pricing-grid.n1, .pricing-grid.n2, .pricing-grid.nm{ grid-template-columns: 1fr; max-width:none; } }
+  .price-cta{ display:block; margin-top:22px; text-align:center; text-decoration:none; }
+  .dk-plan-note{ font-size:0.8rem; color: var(--accent); font-weight:600; }
+  .signup-field select{
+    font-family:"Be Vietnam Pro",sans-serif; font-size:0.92rem; background: var(--navy); color: var(--on-navy);
+    border:1px solid var(--navy-line); border-radius:8px; padding:9px 11px;
+  }
 
   /* closing */
   .closing{ background: var(--navy); color: var(--on-navy); }
@@ -1182,9 +1193,9 @@
 
 <section id="goi-dich-vu" style="background:var(--surface-2); border-block:1px solid var(--line);">
   <div class="wrap">
-    <div class="kicker">Gói dịch vụ</div>
-    <h2 class="section-title">Ba mức đồng hành, cùng một lộ trình gốc</h2>
-    <p class="section-sub">Cả ba gói đều dùng chung một bản đồ năng lực và lộ trình tự động — khác nhau ở mức hỗ trợ đi kèm.</p>
+    <div class="kicker" id="pricingKicker">Gói dịch vụ</div>
+    <h2 class="section-title" id="pricingTitle">Ba mức đồng hành, cùng một lộ trình gốc</h2>
+    <p class="section-sub" id="pricingSub">Cả ba gói đều dùng chung một bản đồ năng lực và lộ trình tự động — khác nhau ở mức hỗ trợ đi kèm.</p>
     <div class="pricing-grid" id="pricingGrid">
       <div class="price-card">
         <h3>Luyện đề</h3>
@@ -1251,6 +1262,11 @@
               <input type="tel" id="dk-parent-zalo" name="dk-parent-zalo" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
               <div class="signup-hint">Để gửi báo cáo tiến độ hằng tuần và thông tin đăng nhập.</div>
               <div class="signup-error" id="dk-parent-zalo-err"></div>
+            </div>
+            <div class="signup-field full" id="dk-plan-wrap" style="display:none;">
+              <label for="dk-plan">Gói đăng ký</label>
+              <select id="dk-plan" name="dk-plan"><option value="">Chưa chọn — nhờ thầy tư vấn</option></select>
+              <div class="dk-plan-note" id="dk-plan-note"></div>
             </div>
             <div class="signup-field full">
               <label for="dk-referral">Mã giới thiệu (nếu có)</label>
@@ -1505,7 +1521,9 @@
       else if(!isValidVNPhone(zalo)){ setError('dk-parent-zalo', 'Số điện thoại không hợp lệ.'); ok = false; }
       else setError('dk-parent-zalo', '');
 
-      return ok ? { name: name, gmail: gmail, phone: phone, zalo: zalo, referral: referral } : null;
+      var psel = document.getElementById('dk-plan'), popt = psel && psel.selectedIndex >= 0 ? psel.options[psel.selectedIndex] : null;
+      var plan = (psel && psel.value) || '', planName = (plan && popt) ? (popt.getAttribute('data-name') || '') : '';
+      return ok ? { name: name, gmail: gmail, phone: phone, zalo: zalo, referral: referral, plan: plan, planName: planName } : null;
     }
 
     // Gửi mail dự phòng — CHỈ dùng khi không ghi được thẳng vào Firestore
@@ -1518,6 +1536,7 @@
         'SĐT học sinh: ' + data.phone,
         'SĐT Zalo phụ huynh: ' + data.zalo,
         'Mã giới thiệu: ' + (data.referral || '(không có)'),
+        'Gói đăng ký: ' + (data.planName || '(chưa chọn)'),
         '',
         '(Gửi dự phòng từ trang giới thiệu FaradayAI — hệ thống đăng ký trực tuyến không phản hồi kịp)'
       ].join('\n');
@@ -1559,6 +1578,8 @@
       var d = Number(cfg.discountVnd) || 0;
       if(d > 0) hint.textContent = 'Nhập mã giới thiệu của bạn bè để được giảm ' + d.toLocaleString('vi-VN') + 'đ học phí khi đăng ký được xác nhận.';
       else hint.textContent = 'Mã giới thiệu (nếu có) giúp thầy ghi nhận người giới thiệu bạn — không bắt buộc.';
+      // THÊM 2/11/2026 — quà tặng bằng chữ thầy nhập ở admin › Ưu đãi giới thiệu
+      if(cfg.giftNew) hint.textContent += ' 🎁 Tặng thêm: ' + cfg.giftNew + '.';
     }).catch(function(){});
 
     form.addEventListener('submit', function(e){
@@ -1578,7 +1599,7 @@
 
       waitForLive().then(function(live){
         if(live && live.submitRegistration){
-          return live.submitRegistration({ name: data.name, gmail: data.gmail, phone: data.phone, parentZalo: data.zalo, referralCode: data.referral });
+          return live.submitRegistration({ name: data.name, gmail: data.gmail, phone: data.phone, parentZalo: data.zalo, referralCode: data.referral, plan: data.plan, planName: data.planName });
         }
         return { ok: false, error: 'opc-live-unavailable' };
       }).then(function(res){
@@ -1626,12 +1647,47 @@
       var save = price * m - full;
       return '<div class="price-full">hoặc <b>' + fmtVNDPrice(full) + '</b> trọn khóa đến kỳ thi' + (save > 0 ? '<span class="price-save">Tiết kiệm ' + fmtVNDPrice(save) + '</span>' : '') + '</div>';
     }
+    // THÊM 2/11/2026 — tiêu đề/mô tả mục Gói tự theo số gói, hoặc theo chữ thầy tự nhập ở admin › 💰 Gói dịch vụ
+    function applyPricingCopy(n, opt){
+      opt = opt || {};
+      var w = ['', 'Một', 'Hai', 'Ba', 'Bốn', 'Năm'][n] || String(n);
+      var set = function(id, txt){ var el = document.getElementById(id); if(el) el.textContent = txt; };
+      set('pricingKicker', (opt.sectionKicker || '').trim() || 'Gói dịch vụ');
+      set('pricingTitle', (opt.sectionTitle || '').trim() || (w + ' mức đồng hành, cùng một lộ trình gốc'));
+      set('pricingSub', (opt.sectionSub || '').trim() || (n > 1
+        ? 'Cả ' + w.toLowerCase() + ' gói đều dùng chung một bản đồ năng lực và lộ trình tự động — khác nhau ở mức hỗ trợ đi kèm.'
+        : 'Bản đồ năng lực và lộ trình tự động, cập nhật hằng tuần theo đúng kết quả của từng em.'));
+    }
+    function tierId(t, i){ return String((t && t.id) || ('g' + (i + 1))).replace(/[^A-Za-z0-9_-]/g, ''); }
+    function priceText(t){ return fmtVNDPrice(t.price) + String(t.unit || '/tháng'); }
+    // Chọn gói trong ô "Gói đăng ký" của form và hiện ghi chú
+    function choosePlan(id){
+      var sel = document.getElementById('dk-plan'), note = document.getElementById('dk-plan-note');
+      if(!sel) return;
+      sel.value = id || '';
+      var o = sel.options[sel.selectedIndex];
+      if(note) note.textContent = (sel.value && o) ? 'Gói đã chọn: ' + o.getAttribute('data-name') + ' — ' + o.getAttribute('data-price') : '';
+    }
     function renderPricingTiers(tiers, opt){
       var grid = document.getElementById('pricingGrid');
       if(!grid) return;
       var visible = (tiers || []).filter(function(t){ return t && t.visible !== false; });
       if(!visible.length) return; // không có gói nào để hiện -> giữ nguyên giá mặc định đã in sẵn
-      grid.innerHTML = visible.map(function(t){
+      applyPricingCopy(visible.length, opt);
+      grid.className = 'pricing-grid ' + (visible.length === 1 ? 'n1' : (visible.length === 2 ? 'n2' : (visible.length === 3 ? '' : 'nm')));
+      var ctaOn = !opt || opt.ctaEnabled !== false;
+      var ctaText = ((opt && opt.ctaText) || '').trim() || 'Đăng ký gói này';
+      // ô chọn gói trong form đăng ký
+      var sel = document.getElementById('dk-plan'), wrap = document.getElementById('dk-plan-wrap');
+      if(sel){
+        sel.innerHTML = '<option value="">Chưa chọn — nhờ thầy tư vấn</option>' + visible.map(function(t, i){
+          return '<option value="' + escHtml(tierId(t, i)) + '" data-name="' + escHtml(t.name) + '" data-price="' + escHtml(priceText(t)) + '">' + escHtml(t.name) + ' — ' + escHtml(priceText(t)) + '</option>';
+        }).join('');
+        if(wrap) wrap.style.display = ctaOn ? '' : 'none';
+        sel.onchange = function(){ choosePlan(sel.value); };
+        try{ var qp = new URLSearchParams(location.search).get('goi'); if(qp) choosePlan(qp); }catch(e){}
+      }
+      grid.innerHTML = visible.map(function(t, i){
         var badge = t.badge ? '<div class="price-badge">' + escHtml(t.badge) + '</div>' : '';
         // SỬA 20/10/2026: bỏ "(8 tháng)" sau trọn khóa; bỏ dấu •/-/✓ thầy gõ đầu dòng (trang đã có ✓ sẵn)
         var features = (t.features || []).map(function(f){ return String(f).replace(/^\s*[•·\-–—*✓✔]+\s*/, ''); }).filter(Boolean).map(function(f){ return '<li>' + escHtml(f) + '</li>'; }).join('');
@@ -1639,9 +1695,24 @@
           '<h3>' + escHtml(t.name) + '</h3>' +
           '<div class="price-value">' + fmtVNDPrice(t.price) + '<span class="price-unit">' + escHtml(t.unit || '/tháng') + '</span></div>' +
           fullLine(t, opt) +
-          '<ul class="price-list">' + features + '</ul></div>';
+          '<ul class="price-list">' + features + '</ul>' +
+          (ctaOn ? '<a class="btn btn-primary price-cta" href="#lien-he" data-plan="' + escHtml(tierId(t, i)) + '">' + escHtml(ctaText) + '</a>' : '') + '</div>';
       }).join('');
     }
+    // Bấm nút trên gói: chọn gói trong form rồi cuộn xuống form đăng ký
+    (function(){
+      var g = document.getElementById('pricingGrid');
+      if(!g) return;
+      g.addEventListener('click', function(e){
+        var a = e.target && e.target.closest ? e.target.closest('.price-cta') : null;
+        if(!a) return;
+        e.preventDefault();
+        choosePlan(a.getAttribute('data-plan'));
+        var target = document.getElementById('lien-he');
+        if(target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setTimeout(function(){ var n = document.getElementById('dk-name'); if(n && n.focus) n.focus({ preventScroll: true }); }, 700);
+      });
+    })();
 
     // Chờ tối đa ~4s cho module opc-live-data.js nạp xong (đang defer),
     // giống hệt cơ chế chờ của form đăng ký ở trên (nhưng viết riêng vì 2

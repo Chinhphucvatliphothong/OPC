@@ -154,7 +154,7 @@
   var CYCLES = { month: 'Theo tháng', full: 'Trọn khóa (đến kỳ thi)', quarter: 'Theo quý (3 tháng)', trial: 'Học thử', free: 'Miễn phí' };
   function tiersToPlans(tiers){
     var idf = window.OPC_pricingTierId || function(t, i){ return (t && t.id) || ('g' + (i + 1)); };
-    return (tiers || []).map(function(t, i){ return { key: idf(t, i), name: t.name || ('Gói ' + (i + 1)), monthly: Number(t.price) || 0, full: Number(t.fullPrice) || 0, visible: t.visible !== false }; });
+    return (tiers || []).map(function(t, i){ return { key: idf(t, i), name: t.name || ('Gói ' + (i + 1)), monthly: Number(t.price) || 0, full: Number(t.fullPrice) || 0, visible: t.visible !== false, courseOnly: !/th[aá]ng/i.test(String(t.unit || '/tháng')), features: (Array.isArray(t.features) ? t.features : []).slice(0, 6), badge: t.badge || '', featured: !!t.featured }; });
   }
   function mergeBilling(bill, pricing){
     var pr = pricing || {}, tiers = (Array.isArray(pr.tiers) && pr.tiers.length) ? pr.tiers : (window.OPC_defaultPricingTiers ? window.OPC_defaultPricingTiers() : []);
@@ -184,6 +184,8 @@
     if(!b || !b.plan) return 0;
     if(b.customFee) return Number(b.customFee) || 0;
     var p = planOf(cfg, b.plan); var base = p ? Number(p.monthly) || 0 : 0;
+    // THÊM 2/11/2026 — gói bán THEO KHÓA (đơn vị giá không phải "/tháng", vd "/khóa"): chỉ có 1 mức giá trọn khóa
+    if(p && p.courseOnly) return Number(p.full) > 0 ? Number(p.full) : base;
     var m = cycleMonths(cfg, b.cycle);
     if(b.cycle === 'full' && p && Number(p.full) > 0) return Number(p.full);   // giá trọn khóa cố định của gói
     var off = b.cycle === 'quarter' ? cfg.quarterOff : (b.cycle === 'full' ? cfg.fullOff : 0);
@@ -223,6 +225,7 @@
     var b = s.billing || {};
     if(!b.plan || b.cycle === 'free') return null;
     var cyc = (b.cycle === 'trial' || !b.cycle) ? 'month' : b.cycle;
+    var pl0 = planOf(cfg, b.plan); if(pl0 && pl0.courseOnly) cyc = 'full';   // gói theo khóa: chỉ đóng trọn khóa
     var fee = cycleFee(cfg, Object.assign({}, b, { cycle: cyc }));
     if(!(fee > 0)) return null;
     var o = { amount: fee, cycle: cyc };
@@ -230,6 +233,29 @@
     return o;
   }
   function samePay(a, b){ return JSON.stringify(a || null) === JSON.stringify(b || null); }
+  // THÊM 2/11/2026 — CHỌN GÓI NGAY TRÊN LINK PHỤ HUYNH: mỗi gói hiển thị (tối đa 3) là một "ưu đãi" trọn khóa có mã QR riêng.
+  // Webhook (api/sepay-webhook.js) thấy số tiền khớp gói nào thì tự kích hoạt gói đó. Em đang đóng đủ trọn khóa → chỉ hiện
+  // các gói CAO HƠN với số tiền = chênh lệch (nâng cấp). Em chưa có gói (billing.plan trống) thì không có ưu đãi.
+  function offersFor(cfg, s){
+    var b = s.billing || {};
+    if(!b.plan || b.cycle === 'free') return [];
+    var plans = (cfg.plans || []).filter(function(p){ return p.visible !== false; }).slice(0, 3);
+    if(!plans.length) return [];
+    var st = billingStatus(cfg, b).k;
+    var paidFull = (b.cycle === 'full' && (st === 'ok' || st === 'due'));
+    var curFee = paidFull ? cycleFee(cfg, { plan: b.plan, cycle: 'full' }) : 0;
+    var out = [];
+    plans.forEach(function(p){
+      var fee = cycleFee(cfg, { plan: p.key, cycle: 'full' });
+      if(!(fee > 0)) return;
+      if(paidFull){ if(p.key === b.plan || fee <= curFee) return; fee = fee - curFee; }
+      out.push({ plan: p.key, name: p.name, amount: fee, cycle: 'full', fixedUntil: cfg.examDate, upgrade: paidFull });
+    });
+    return out;
+  }
+  function offersRich(cfg, offers){
+    return offers.map(function(o){ var p = planOf(cfg, o.plan) || {}; return Object.assign({}, o, { features: p.features || [], badge: p.badge || '', featured: !!p.featured }); });
+  }
   function qrUrl(cfg, code, amount){
     var g = cfg.gateway || {};
     return 'https://img.vietqr.io/image/' + encodeURIComponent(g.bank) + '-' + encodeURIComponent(g.acc) + '-compact2.png?amount=' + Math.round(Number(amount) || 0) +
@@ -237,7 +263,9 @@
   }
   function payBlock(cfg, s, pay, code){
     var g = cfg.gateway || {}, b = s.billing || {}, st = billingStatus(cfg, b);
-    return { bank: g.bank, acc: g.acc, name: g.name || '', amount: pay.amount, content: code, cycle: CYCLES[pay.cycle] || '', status: st.k, paidUntil: b.paidUntil || '', trialEnd: b.trialEnd || '' };
+    var offers = offersRich(cfg, offersFor(cfg, s));
+    var showBase = pay && !(pay.cycle === 'full' && st.k === 'ok');   // đã đóng trọn khóa thì không mời "đóng kỳ tiếp theo"
+    return { bank: g.bank, acc: g.acc, name: g.name || '', amount: showBase ? pay.amount : 0, content: code, cycle: showBase ? (CYCLES[pay.cycle] || '') : '', status: st.k, paidUntil: b.paidUntil || '', trialEnd: b.trialEnd || '', offers: offers };
   }
   function payLines(cfg, stu, fee){
     var b = stu.billing || {}, pay = payInfoFor(cfg, stu);
@@ -386,8 +414,10 @@
         if(!code){ code = genPayCode(used); used[code] = 1; upd.payCode = code; }
         var pay = payInfoFor(cfg, s);
         if(b.plan && !samePay(b.pay, pay)) upd['billing.pay'] = pay;
+        var offs = offersFor(cfg, s);
+        if(b.plan && !samePay(b.offers || [], offs)) upd['billing.offers'] = offs;   // webhook dùng để nhận ra khách chọn gói nào
         if(s.parentViewToken){
-          var blk = pay ? payBlock(cfg, s, pay, code) : null, hs = blk ? JSON.stringify(blk) : '';
+          var blk = (pay || offs.length) ? payBlock(cfg, s, pay, code) : null, hs = blk ? JSON.stringify(blk) : '';
           if(hs !== (s.parentPayHash || '')){ upd.parentPayHash = hs; jobs.push(OPC.parentViews.patch(s.parentViewToken, { pay: blk }).catch(function(){})); }
         }
         if(Object.keys(upd).length){ sig.push(s.id + JSON.stringify(upd)); jobs.push(OPC.students.update(s.id, upd)); }

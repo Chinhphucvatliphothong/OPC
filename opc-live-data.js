@@ -335,13 +335,15 @@ function normalizeReferralCode(v){
 // discountVnd: giảm cho học sinh mới nhập mã hợp lệ; commissionVnd: cộng cho người giới thiệu.
 // Chưa cấu hình/lỗi mạng -> mặc định 100.000đ (đúng mức cũ).
 async function loadReferralSettings(){
-  var out = { discountVnd: 100000, commissionVnd: 100000 };
+  var out = { discountVnd: 100000, commissionVnd: 100000, giftNew: '', giftReferrer: '' };
   try{
     var snap = await getDoc(doc(db, 'settings', 'referral'));
     if(snap.exists()){
       var d = snap.data() || {};
       if(isFinite(Number(d.discountVnd)) && Number(d.discountVnd) >= 0) out.discountVnd = Number(d.discountVnd);
       if(isFinite(Number(d.commissionVnd)) && Number(d.commissionVnd) >= 0) out.commissionVnd = Number(d.commissionVnd);
+      out.giftNew = String(d.giftNew || '').slice(0, 160);            // THÊM 2/11/2026 — quà tặng bằng chữ (vd. "Tặng gói luyện ĐGNL V-ACT")
+      out.giftReferrer = String(d.giftReferrer || '').slice(0, 160);
     }
   }catch(e){ console.warn('Lỗi tải ưu đãi giới thiệu:', e); }
   return out;
@@ -376,7 +378,9 @@ async function submitRegistration(data){
       referralCode: normalizeReferralCode((data && data.referralCode) || '').slice(0, 29),
       status: 'pending',
       createdAt: new Date().toISOString(),
-      source: 'landing_page'
+      // THÊM 2/11/2026 — gói khách chọn trên trang chủ đi kèm trong "source" (landing_page:<mã gói>:<tên gói>) nên KHÔNG cần đổi
+      // quy tắc Firestore; admin đọc lại để gán gói + mở học thử khi duyệt.
+      source: 'landing_page' + (data && data.plan ? ':' + String(data.plan).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24) + ':' + String((data && data.planName) || '').replace(/[:\n\r]/g, ' ').slice(0, 60) : '')
     });
     return { ok: true, id: ref.id };
   }catch(e){

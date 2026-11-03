@@ -129,32 +129,50 @@ function chart(scores, target){
 // THÊM 29/10/2026 — thẻ HỌC PHÍ: mã VietQR điền sẵn số tiền + nội dung; chuyển khoản xong hệ thống tự ghi nhận (api/sepay-webhook.js)
 function payCard(v){
   const p = v.pay;
-  if(!p || !p.acc || !p.bank || !(p.amount > 0) || !p.content) return '';
+  if(!p || !p.acc || !p.bank || !p.content) return '';
   const money = n => Math.round(n).toLocaleString('vi-VN') + 'đ';
-  const qr = 'https://img.vietqr.io/image/' + encodeURIComponent(p.bank) + '-' + encodeURIComponent(p.acc) + '-compact2.png?amount=' + Math.round(p.amount) +
+  const qrOf = amt => 'https://img.vietqr.io/image/' + encodeURIComponent(p.bank) + '-' + encodeURIComponent(p.acc) + '-compact2.png?amount=' + Math.round(amt) +
     '&addInfo=' + encodeURIComponent(p.content) + (p.name ? '&accountName=' + encodeURIComponent(p.name) : '');
+  const offers = (Array.isArray(p.offers) ? p.offers : []).filter(o => o && o.amount > 0);
+  const hasBase = p.amount > 0;
+  if(!hasBase && !offers.length) return '';
   const until = p.paidUntil ? vnDate(p.paidUntil) : '', trial = p.trialEnd ? vnDate(p.trialEnd) : '';
+  const left = p.trialEnd ? Math.ceil((new Date(p.trialEnd + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000) : null;
+  const choose = offers.length && ['trial', 'trialEnd', 'unpaid'].includes(p.status);
   const heads = {
     ok: ['✅ Học phí đã đóng tới ' + until, ''],
     due: ['⏰ Sắp đến hạn đóng học phí (' + until + ')', 'open'],
     overdue: ['⚠️ Học phí đã quá hạn từ ' + until, 'open'],
-    unpaid: ['Học phí chưa đóng', 'open'],
-    trial: ['Đang học thử' + (trial ? ' đến ' + trial : '') + ' — đăng ký gói để tiếp tục', 'open'],
-    trialEnd: ['Đã hết học thử' + (trial ? ' từ ' + trial : ''), 'open']
+    unpaid: ['Chọn gói để em bắt đầu học', 'open'],
+    trial: [left != null && left >= 0 ? 'Em đang học thử — còn ' + left + ' ngày. Chọn gói để học tiếp không gián đoạn' : 'Em đang học thử — chọn gói để học tiếp', 'open'],
+    trialEnd: ['Đã hết học thử' + (trial ? ' (' + trial + ')' : '') + ' — chọn gói để em học tiếp', 'open']
   };
   const hd = heads[p.status];
   if(!hd) return '';
-  const body = `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px">
-      <img src="${esc(qr)}" alt="Mã QR chuyển khoản học phí" width="220" height="220" style="border-radius:10px;background:#fff;max-width:100%;height:auto" loading="lazy">
+  const feat = f => (Array.isArray(f) && f.length) ? '<ul style="padding-left:18px;margin:6px 0 8px;font-size:.86rem;line-height:1.55">' + f.slice(0, 6).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
+  const offerCard = o => `<div style="flex:1 1 240px;max-width:340px;border:${o.featured ? '2px solid var(--accent)' : '1px solid var(--line,#d1d5db)'};border-radius:14px;padding:12px 14px;position:relative;background:var(--card,transparent)">
+      ${o.badge ? `<span style="position:absolute;top:-10px;right:12px;background:var(--accent);color:#fff;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:99px">${esc(o.badge)}</span>` : ''}
+      <div style="font-weight:800">${esc(o.name || o.plan)}</div>
+      <div style="font-size:1.45rem;font-weight:800;margin:2px 0">${money(o.amount)} <span class="sub" style="font-size:.78rem;font-weight:600">${o.upgrade ? 'nâng cấp (phần chênh lệch)' : 'trọn khóa'}${o.fixedUntil ? ' · dùng đến ' + esc(vnDate(o.fixedUntil)) : ''}</span></div>
+      ${feat(o.features)}
+      <img src="${esc(qrOf(o.amount))}" alt="Mã QR đóng ${esc(o.name || '')}" width="180" height="180" style="border-radius:10px;background:#fff;max-width:100%;height:auto;display:block;margin:4px auto" loading="lazy">
+      <div class="sub" style="font-size:.76rem;text-align:center">Quét mã bằng app ngân hàng — chuyển xong gói tự kích hoạt trong vài giây</div>
+    </div>`;
+  const offersHtml = offers.length ? `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">${offers.map(offerCard).join('')}</div>
+    <div class="sub" style="font-size:.78rem;margin-top:8px">Nội dung chuyển khoản <b>${esc(p.content)}</b> đã điền sẵn trong mã QR — nếu nhập tay, vui lòng giữ nguyên.${v.zalo ? ` Cần tư vấn chọn gói? <a href="${esc(v.zalo)}" target="_blank" rel="noopener">💬 Nhắn thầy qua Zalo</a>` : ''}</div>` : '';
+  const baseBody = hasBase ? `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px">
+      <img src="${esc(qrOf(p.amount))}" alt="Mã QR chuyển khoản học phí" width="220" height="220" style="border-radius:10px;background:#fff;max-width:100%;height:auto" loading="lazy">
       <div style="flex:1;min-width:200px;font-size:.9rem;line-height:1.7">
         <div>Số tiền: <b>${money(p.amount)}</b>${p.cycle ? ' · ' + esc(p.cycle) : ''}</div>
         <div>Ngân hàng: <b>${esc(p.bank)}</b> · STK <b>${esc(p.acc)}</b>${p.name ? '<br>Chủ TK: <b>' + esc(p.name) + '</b>' : ''}</div>
         <div>Nội dung: <b style="letter-spacing:.5px">${esc(p.content)}</b></div>
-        <div class="sub" style="font-size:.78rem;margin-top:6px">Quét mã bằng app ngân hàng (số tiền và nội dung đã điền sẵn). Chuyển xong hệ thống tự ghi nhận — phụ huynh không cần báo thầy. Nếu nhập tay, vui lòng giữ nguyên nội dung.</div>
-      </div></div>`;
-  return `<section class="card"><h2>💳 Học phí</h2>` + (hd[1] === 'open'
-    ? `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${body}`
-    : `<p style="margin:0;font-weight:700">${esc(hd[0])}</p><details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Đóng kỳ tiếp theo</summary>${body}</details>`) + `</section>`;
+        <div class="sub" style="font-size:.78rem;margin-top:6px">Quét mã bằng app ngân hàng (số tiền và nội dung đã điền sẵn). Chuyển xong hệ thống tự ghi nhận — phụ huynh không cần báo thầy.</div>
+      </div></div>` : '';
+  let body;
+  if(choose) body = `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${offersHtml}`;
+  else if(hd[1] === 'open') body = `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${baseBody}${offersHtml ? `<details style="margin-top:10px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Hoặc đóng trọn khóa / nâng cấp gói</summary>${offersHtml}</details>` : ''}`;
+  else body = `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${baseBody ? `<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Đóng kỳ tiếp theo</summary>${baseBody}</details>` : ''}${offersHtml ? `<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Nâng cấp gói</summary>${offersHtml}</details>` : ''}`;
+  return `<section class="card"><h2>💳 ${choose ? 'Chọn gói học' : 'Học phí'}</h2>${body}</section>`;
 }
 
 function render(v){

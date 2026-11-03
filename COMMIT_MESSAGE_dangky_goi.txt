@@ -1,0 +1,9 @@
+Trang chủ: nút "Đăng ký gói này" trên từng gói + tiêu đề mục Gói tùy chỉnh theo số gói
+
+- index.html: mỗi gói có nút đăng ký (bấm → cuộn xuống form, đã chọn sẵn gói); ô "Gói đăng ký" trong form (hỗ trợ ?goi=<mã gói>);
+  tiêu đề/mô tả mục Gói tự đổi theo số gói đang hiện (vd. "Hai mức đồng hành…") hoặc theo chữ thầy nhập; lưới 1/2/3+ gói.
+- opc-live-data.js: gói khách chọn lưu trong trường source của đăng ký (không cần đổi firestore.rules).
+- admin.html: ô chỉnh chữ mục Gói + nút đăng ký (💰 Gói dịch vụ); danh sách đăng ký hiện gói khách chọn; duyệt đăng ký
+  tự gán gói + mở học thử 7 ngày.
+
+Co-Authored-By: Claude <noreply@anthropic.com>

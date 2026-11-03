@@ -5843,6 +5843,7 @@
       var unsub = OPCref.referral.subscribe(function(d){ setReferralCfg(d || {}); }, function(){ setReferralCfg({}); });
       return function(){ unsub(); };
     }, []);
+    function refGift(key){ var v = referralCfg ? String(referralCfg[key] || '').trim() : ''; return v.slice(0, 160); }   // THÊM 2/11/2026 — quà tặng bằng chữ
     function refAmount(key){
       var v = referralCfg ? Number(referralCfg[key]) : NaN;
       return (isFinite(v) && v >= 0) ? v : DEFAULT_REFERRAL_VND;
@@ -5888,22 +5889,34 @@
         parentName: 'Chưa cập nhật', parentPhone: reg.parentZalo || '', parentEmail: '',
         referralCode: code, commissionBalance: 0
       };
+      // THÊM 2/11/2026 — khách đã chọn gói trên trang chủ: gán gói + mở HỌC THỬ 7 ngày để thẻ "Chọn gói" trên trang phụ huynh chạy luôn
+      var regPlan = regPlanOf(reg);
+      if(regPlan){
+        var pad2 = function(n){ return (n < 10 ? '0' : '') + n; }, d0 = new Date(), d7 = new Date(Date.now() + 7 * 86400000);
+        var ymdOf = function(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+        newStu.billing = { plan: regPlan.id, cycle: 'trial', startDate: ymdOf(d0), trialEnd: ymdOf(d7), payments: [] };
+      }
+      var giftNewTxt = referrer ? refGift('giftNew') : '', giftRefTxt = referrer ? refGift('giftReferrer') : '';
       if(referrer){
         newStu.referredByCode = referrer.referralCode || normCode(refTyped);
         newStu.referredById = referrer.id;
         newStu.referralDiscountVnd = discountVnd;
+        if(giftNewTxt){ newStu.referralGift = giftNewTxt; newStu.referralGiftDone = false; }
       }
       OPCref.students.add(newStu).then(function(newRef){
         var jobs = [OPCref.registrations.setStatus(reg.id, { status: 'converted', convertedStudentId: newRef.id, convertedAt: new Date().toISOString() })];
-        if(referrer && commissionVnd > 0){
-          jobs.push(OPCref.students.update(referrer.id, { commissionBalance: (Number(referrer.commissionBalance) || 0) + commissionVnd }));
+        if(referrer && (commissionVnd > 0 || giftRefTxt)){
+          var refPatch = {};
+          if(commissionVnd > 0) refPatch.commissionBalance = (Number(referrer.commissionBalance) || 0) + commissionVnd;
+          if(giftRefTxt) refPatch.referralGifts = (Array.isArray(referrer.referralGifts) ? referrer.referralGifts : []).concat([{ text: giftRefTxt, from: newStu.name, at: new Date().toISOString(), done: false }]);
+          jobs.push(OPCref.students.update(referrer.id, refPatch));
         }
         return Promise.all(jobs);
       }).then(function(){
         props.fireToast('Đã tạo tài khoản cho ' + newStu.name + '.');
         setJustApproved({
           name: newStu.name, username: username, password: password, parentPhone: reg.parentZalo || '',
-          discountVnd: discountVnd, referrerName: referrer ? referrer.name : '',
+          discountVnd: discountVnd, referrerName: referrer ? referrer.name : '', giftNew: giftNewTxt, giftReferrer: giftRefTxt,
           codeNotFound: !!(refTyped && !referrer), typedCode: refTyped
         });
       }).catch(function(err){
@@ -6312,6 +6325,7 @@
               h('div', { className: 'sm-alert-row-name' }, reg.name),
               h('div', { className: 'sm-alert-row-reasons' },
                 reg.gmail + ' · SĐT ' + reg.phone + ' · Zalo PH ' + reg.parentZalo +
+                (regPlanOf(reg) ? ' · 📦 Gói: ' + regPlanOf(reg).name : '') +
                 regRefLabel(reg) +
                 (createdLabel ? ' · Gửi ' + createdLabel : '') +
                 regWarnLabel(reg)
@@ -6339,6 +6353,8 @@
           h('p', null, h('b', null, 'Mật khẩu: '), h('span', { className: 'sm-mono-pill' }, justApproved.password)),
           justApproved.referrerName && justApproved.discountVnd > 0
             ? h('p', null, h('b', null, '🎁 Giảm học phí: '), fmtVND(justApproved.discountVnd) + ' (mã của ' + justApproved.referrerName + ') — nhớ trừ khi thu học phí.') : null,
+          justApproved.giftNew ? h('p', null, h('b', null, '🎁 Quà tặng học sinh mới: '), justApproved.giftNew + ' — nhớ trao/kích hoạt.') : null,
+          (justApproved.giftReferrer && justApproved.referrerName) ? h('p', null, h('b', null, '🎀 Quà cho người giới thiệu (' + justApproved.referrerName + '): '), justApproved.giftReferrer + ' — đã ghi vào danh sách chờ trao (mục Ưu đãi giới thiệu).') : null,
           justApproved.codeNotFound
             ? h('p', { style: { color: 'var(--danger, #b3261e)' } }, '⚠ Mã giới thiệu "' + justApproved.typedCode + '" không khớp học sinh nào — chưa áp ưu đãi. Kiểm tra lại với phụ huynh.') : null
         ),
@@ -6346,7 +6362,7 @@
           h('button', {
             type: 'button', className: 'btn btn-secondary', style: { flex: 1, justifyContent: 'center' },
             onClick: function(){
-              copyToClipboard('Tài khoản luyện tập FaradayAI của ' + justApproved.name + '\nTên đăng nhập: ' + justApproved.username + '\nMật khẩu: ' + justApproved.password + (justApproved.referrerName && justApproved.discountVnd > 0 ? '\nƯu đãi giới thiệu: giảm ' + fmtVND(justApproved.discountVnd) + ' học phí' : '') + '\nVào luyện tại: https://faradayai.vn')
+              copyToClipboard('Tài khoản luyện tập FaradayAI của ' + justApproved.name + '\nTên đăng nhập: ' + justApproved.username + '\nMật khẩu: ' + justApproved.password + (justApproved.referrerName && justApproved.discountVnd > 0 ? '\nƯu đãi giới thiệu: giảm ' + fmtVND(justApproved.discountVnd) + ' học phí' : '') + (justApproved.giftNew ? '\nQuà tặng: ' + justApproved.giftNew : '') + '\nVào luyện tại: https://faradayai.vn')
                 .then(function(){ props.fireToast('Đã sao chép — dán vào Zalo để gửi.'); });
             }
           }, '📋 Sao chép'),
@@ -7321,6 +7337,14 @@
     var discState = React.useState('100000'); var disc = discState[0], setDisc = discState[1];
     var commState = React.useState('100000'); var comm = commState[0], setComm = commState[1];
     var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
+    // THÊM 2/11/2026 — quà tặng bằng CHỮ (không phải tiền): vd "Tặng gói luyện ĐGNL V-ACT" cho học sinh mới nhập mã / cho người giới thiệu
+    var giftNewState = React.useState(''); var giftNew = giftNewState[0], setGiftNew = giftNewState[1];
+    var giftRefState = React.useState(''); var giftRef = giftRefState[0], setGiftRef = giftRefState[1];
+    var stuListState = React.useState([]); var stuList = stuListState[0], setStuList = stuListState[1];
+    React.useEffect(function(){
+      if(!OPCref || !OPCref.students) return;
+      return OPCref.students.subscribe(function(snap){ setStuList(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })); }, function(){});
+    }, []);
     var initedRef = React.useRef(false);
     React.useEffect(function(){
       if(!OPCref || !OPCref.referral){ setLoaded(true); return; }
@@ -7331,6 +7355,8 @@
         if(d){
           if(d.discountVnd != null) setDisc(String(d.discountVnd));
           if(d.commissionVnd != null) setComm(String(d.commissionVnd));
+          if(d.giftNew) setGiftNew(String(d.giftNew));
+          if(d.giftReferrer) setGiftRef(String(d.giftReferrer));
         }
       }, function(){ setLoaded(true); });
       return function(){ unsub(); };
@@ -7342,7 +7368,7 @@
         props.fireToast('Số tiền không hợp lệ — nhập số từ 0 trở lên (0 = không áp ưu đãi).', true); return;
       }
       setSaving(true);
-      OPCref.referral.save({ discountVnd: d, commissionVnd: c })
+      OPCref.referral.save({ discountVnd: d, commissionVnd: c, giftNew: String(giftNew || '').trim().slice(0, 160), giftReferrer: String(giftRef || '').trim().slice(0, 160) })
         .then(function(){ setDisc(String(d)); setComm(String(c)); props.fireToast('Đã lưu ưu đãi giới thiệu — trang đăng ký cập nhật ngay.'); })
         .catch(function(err){ console.error('Lỗi lưu ưu đãi giới thiệu:', err); props.fireToast('Không lưu được — thử lại.', true); })
         .finally(function(){ setSaving(false); });
@@ -7352,7 +7378,7 @@
     return h('div', { className: 'card', style: { marginBottom: '16px' } },
       h('div', { className: 'sm-toolbar' },
         h('div', null, h('h3', null, '🎁 Ưu đãi giới thiệu'),
-          h('p', { className: 'sm-sub' }, 'Học sinh mới nhập mã giới thiệu hợp lệ được giảm học phí; người giới thiệu được cộng vào số dư hoa hồng. Đặt 0 để tắt.')),
+          h('p', { className: 'sm-sub' }, 'Học sinh mới nhập mã giới thiệu hợp lệ được giảm học phí; người giới thiệu được cộng vào số dư hoa hồng. Đặt 0 để tắt. Có thể tặng thêm quà bằng chữ (vd. một gói luyện ĐGNL) cho cả hai bên.')),
         h('div', { className: 'sm-actions' },
           h('button', { type: 'button', className: 'btn btn-primary', disabled: saving, onClick: handleSave }, saving ? 'Đang lưu…' : '💾 Lưu ưu đãi')
         )
@@ -7364,7 +7390,36 @@
         h('label', { style: { display: 'block', fontSize: '0.85rem' } }, 'Hoa hồng cho người giới thiệu (đ)',
           h('input', { type: 'text', inputMode: 'numeric', value: comm, style: inputStyle, onChange: function(e){ setComm(e.target.value); } }),
           h('span', { style: { color: 'var(--ink-2)' } }, 'Hiện tại: ' + (isNaN(parseVnd(comm)) ? '—' : fmtVND(parseVnd(comm)))))
-      )
+      ),
+      // THÊM 2/11/2026 — quà tặng bằng chữ
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px', marginTop: '12px' } },
+        h('label', { style: { display: 'block', fontSize: '0.85rem' } }, '🎁 Quà tặng cho học sinh mới nhập mã (chữ, không bắt buộc)',
+          h('input', { type: 'text', maxLength: 160, value: giftNew, placeholder: 'Vd: Tặng gói luyện ĐGNL V-ACT', style: inputStyle, onChange: function(e){ setGiftNew(e.target.value); } }),
+          h('span', { style: { color: 'var(--ink-2)' } }, 'Hiện ở form đăng ký và trong tin nhắn gửi phụ huynh khi duyệt.')),
+        h('label', { style: { display: 'block', fontSize: '0.85rem' } }, '🎀 Quà tặng cho người giới thiệu (chữ, không bắt buộc)',
+          h('input', { type: 'text', maxLength: 160, value: giftRef, placeholder: 'Vd: Tặng gói luyện ĐGNL V-ACT', style: inputStyle, onChange: function(e){ setGiftRef(e.target.value); } }),
+          h('span', { style: { color: 'var(--ink-2)' } }, 'Mỗi lần có bạn đăng ký bằng mã của em, quà vào danh sách "chờ trao" bên dưới.'))
+      ),
+      // Danh sách quà đang chờ trao (học sinh mới + người giới thiệu)
+      (function(){
+        var pending = [];
+        stuList.forEach(function(s){
+          if(s.referralGift && !s.referralGiftDone) pending.push({ key: s.id + ':new', who: s.name, text: s.referralGift, note: 'Học sinh mới nhập mã giới thiệu',
+            done: function(){ return OPCref.students.update(s.id, { referralGiftDone: true }); } });
+          (Array.isArray(s.referralGifts) ? s.referralGifts : []).forEach(function(g, i){
+            if(g && !g.done) pending.push({ key: s.id + ':r' + i, who: s.name, text: g.text, note: 'Giới thiệu thành công: ' + (g.from || 'bạn mới'),
+              done: function(){ return OPCref.students.update(s.id, { referralGifts: s.referralGifts.map(function(x, j){ return j === i ? Object.assign({}, x, { done: true, doneAt: new Date().toISOString() }) : x; }) }); } });
+          });
+        });
+        if(!pending.length) return null;
+        return h('div', { style: { marginTop: '14px', borderTop: '1px solid var(--line, #e5e7eb)', paddingTop: '10px' } },
+          h('div', { style: { fontWeight: 800, fontSize: '0.88rem', marginBottom: '6px' } }, '🎀 Quà tặng chờ trao (' + pending.length + ')'),
+          pending.map(function(p){
+            return h('div', { key: p.key, style: { display: 'flex', gap: '10px', alignItems: 'center', padding: '6px 0', borderTop: '1px dashed var(--line, #e5e7eb)', fontSize: '0.86rem' } },
+              h('div', { style: { flex: 1 } }, h('b', null, p.who), ' — ' + p.text, h('div', { style: { fontSize: '0.74rem', color: 'var(--muted)' } }, p.note)),
+              h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.74rem', padding: '3px 9px' }, onClick: function(){ p.done().then(function(){ props.fireToast('Đã đánh dấu trao quà cho ' + p.who + '.'); }).catch(function(){ props.fireToast('Không lưu được — thử lại.', true); }); } }, '✔ Đã trao'));
+          }));
+      })()
     );
   }
 
@@ -8193,6 +8248,11 @@
     );
   }
 
+  // THÊM 2/11/2026 — gói khách chọn lúc đăng ký trên trang chủ nằm trong reg.source = "landing_page:<mã gói>:<tên gói>"
+  function regPlanOf(reg){
+    var p = String((reg && reg.source) || '').split(':');
+    return p[0] === 'landing_page' && p[1] ? { id: p[1], name: (p.slice(2).join(':') || p[1]).trim() } : null;
+  }
   function PricingPanel(props){
     var OPCref = window.OPC;
     var loadingState = React.useState(true); var loading = loadingState[0], setLoading = loadingState[1];
@@ -8201,6 +8261,9 @@
     var tiersState = React.useState(defaultPricingTiers()); var tiers = tiersState[0], setTiers = tiersState[1];
     var savingState = React.useState(false); var saving = savingState[0], setSaving = savingState[1];
     var courseState = React.useState({ examDate: '2027-06-11', fullOff: 20, quarterOff: 10, showFull: true }); var course = courseState[0], setCourse = courseState[1];
+    // THÊM 2/11/2026 — chữ tiêu đề mục + nút đăng ký trên từng gói (để trống = tự theo số gói đang hiện)
+    var copyState = React.useState({ kicker: '', title: '', sub: '', ctaText: '', ctaOn: true }); var copy = copyState[0], setCopy = copyState[1];
+    function setCp(k, v){ setCopy(function(p){ var n = Object.assign({}, p); n[k] = v; return n; }); }
     function setC(k, v){ setCourse(function(p){ var n = Object.assign({}, p); n[k] = v; return n; }); }
     var initedRef = React.useRef(false);
     var usingState = React.useState({}); var studentsUsing = usingState[0], setStudentsUsing = usingState[1];
@@ -8221,6 +8284,7 @@
           setHasSavedDoc(true);
           setSectionEnabled(data.sectionEnabled !== false);
           setCourse({ examDate: data.examDate || '2027-06-11', fullOff: data.fullOff != null ? data.fullOff : 20, quarterOff: data.quarterOff != null ? data.quarterOff : 10, showFull: data.showFull !== false });
+          setCopy({ kicker: data.sectionKicker || '', title: data.sectionTitle || '', sub: data.sectionSub || '', ctaText: data.ctaText || '', ctaOn: data.ctaEnabled !== false });
           setTiers(Array.isArray(data.tiers) && data.tiers.length ? data.tiers.map(function(t, i){
             return Object.assign({ name:'', price:0, fullPrice:0, unit:'/tháng', badge:'', featured:false, visible:true, features:[] }, t, { id: pricingTierId(t, i) });
           }) : defaultPricingTiers());
@@ -8267,7 +8331,8 @@
       }
       setSaving(true);
       OPCref.pricing.save({ sectionEnabled: sectionEnabled, tiers: tiers.map(function(t, i){ return Object.assign({}, t, { id: pricingTierId(t, i), fullPrice: Number(t.fullPrice) || 0 }); }),
-        examDate: course.examDate, fullOff: Number(course.fullOff) || 0, quarterOff: Number(course.quarterOff) || 0, showFull: course.showFull })
+        examDate: course.examDate, fullOff: Number(course.fullOff) || 0, quarterOff: Number(course.quarterOff) || 0, showFull: course.showFull,
+        sectionKicker: (copy.kicker || '').trim(), sectionTitle: (copy.title || '').trim(), sectionSub: (copy.sub || '').trim(), ctaText: (copy.ctaText || '').trim(), ctaEnabled: copy.ctaOn !== false })
         .then(function(){ setHasSavedDoc(true); props.fireToast('Đã lưu Gói dịch vụ — trang chủ sẽ cập nhật ngay.'); })
         .catch(function(err){ console.error('Lỗi lưu Gói dịch vụ:', err); props.fireToast('Không lưu được — thử lại.', true); })
         .finally(function(){ setSaving(false); });
@@ -8293,6 +8358,22 @@
         'Hiện mục "Gói dịch vụ" trên trang chủ'
       ),
       !sectionEnabled ? h('p', { style: { fontSize: '0.8rem', color: 'var(--warning)', marginTop: '4px' } }, '⚠️ Cả mục Gói dịch vụ sẽ bị ẩn khỏi trang chủ (dùng khi chưa sẵn sàng mở bán).') : null,
+      // THÊM 2/11/2026 — chữ của mục Gói trên trang chủ + nút đăng ký trên từng gói
+      (function(){
+        var nVis = tiers.filter(function(t){ return t.visible !== false; }).length;
+        var w = ['', 'Một', 'Hai', 'Ba', 'Bốn', 'Năm'][nVis] || String(nVis);
+        var autoTitle = w + ' mức đồng hành, cùng một lộ trình gốc';
+        var autoSub = nVis > 1 ? 'Cả ' + w.toLowerCase() + ' gói đều dùng chung một bản đồ năng lực và lộ trình tự động — khác nhau ở mức hỗ trợ đi kèm.' : 'Bản đồ năng lực và lộ trình tự động, cập nhật hằng tuần theo đúng kết quả của từng em.';
+        return h('div', { style: { marginTop: '12px', background: 'var(--surface-2)', borderRadius: '10px', padding: '10px 12px' } },
+          h('div', { style: { fontWeight: 800, fontSize: '0.86rem', marginBottom: '6px' } }, '✏️ Chữ hiển thị ở mục Gói trên trang chủ'),
+          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '10px' } },
+            h('div', { className: 'sm-field' }, h('label', null, 'Dòng nhỏ phía trên'), h('input', { value: copy.kicker, placeholder: 'Gói dịch vụ', onChange: function(e){ setCp('kicker', e.target.value); } })),
+            h('div', { className: 'sm-field' }, h('label', null, 'Chữ trên nút đăng ký'), h('input', { value: copy.ctaText, placeholder: 'Đăng ký gói này', onChange: function(e){ setCp('ctaText', e.target.value); } }))),
+          h('div', { className: 'sm-field', style: { marginTop: '8px' } }, h('label', null, 'Tiêu đề (để trống = tự theo số gói đang hiện)'), h('input', { value: copy.title, placeholder: autoTitle, onChange: function(e){ setCp('title', e.target.value); } })),
+          h('div', { className: 'sm-field', style: { marginTop: '8px' } }, h('label', null, 'Mô tả ngắn (để trống = tự theo số gói đang hiện)'), h('textarea', { rows: 2, value: copy.sub, placeholder: autoSub, onChange: function(e){ setCp('sub', e.target.value); } })),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer', marginTop: '8px' } }, h('input', { type: 'checkbox', checked: copy.ctaOn, onChange: function(e){ setCp('ctaOn', e.target.checked); } }), 'Hiện nút đăng ký trên từng gói (bấm → cuộn xuống form đăng ký, đã chọn sẵn gói)'),
+          h('p', { style: { fontSize: '0.76rem', color: 'var(--ink-2)', margin: '6px 0 0' } }, 'Đang hiện ' + nVis + ' gói trên trang chủ (gói tick "Hiển thị trên trang chủ"). Ẩn bớt gói nào thì tiêu đề tự đổi theo số gói.'));
+      })(),
       // THÊM 20/10/2026 — thông số TRỌN KHÓA dùng chung cho mọi gói
       h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '10px', marginTop: '12px', background: 'var(--surface-2)', borderRadius: '10px', padding: '10px 12px' } },
         h('div', { className: 'sm-field' }, h('label', null, 'Ngày thi tốt nghiệp (hết khóa)'), h('input', { type: 'date', value: course.examDate, onChange: function(e){ setC('examDate', e.target.value); } })),
