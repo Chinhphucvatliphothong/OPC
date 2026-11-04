@@ -176,6 +176,16 @@ service cloud.firestore {
         allow write: if isOpcAdmin();
       }
     }
+    // THÊM 4/11/2026 — ✨ LỜI GIẢI ĐỘNG từng câu (loigiai-dong.js). Học sinh đã đăng nhập chỉ đọc được bản thầy đã
+    // "Duyệt & phát" (status == 'published' — truy vấn phía học sinh có lọc đúng điều kiện này); nháp chỉ admin thấy.
+    match /loi_giai_dong/{qid} {
+      allow read: if isOpcAdmin() || (isSignedIn() && resource.data.status == 'published');
+      allow write: if isOpcAdmin();
+      match /audio/{clipId} {
+        allow read: if isSignedIn();
+        allow write: if isOpcAdmin();
+      }
+    }
     // THÊM 23/10/2026 — THI THỬ THÁNG: thông tin kỳ thi + bảng xếp hạng (tên rút gọn) thầy công bố.
     match /mock_exams/{mockId} {
       allow read: if isSignedIn();

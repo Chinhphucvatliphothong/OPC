@@ -1,0 +1,18 @@
+Lời giải động từng câu (giai đoạn 1): trình phát nền trắng ngà + trình soạn trong admin
+
+- loigiai-dong.js (MỚI, dùng chung): trình phát lời giải từng câu — đề bài tô sáng dữ kiện [hl: …], điểm dừng
+  "? … | Gợi ý: …" chờ em tự làm, đoạn [bẫy X] riêng cho phương án sai (em chọn X → nút "vì sao X sai" nhảy thẳng tới),
+  thanh chặng theo cảnh, phụ đề, tốc độ, toàn màn hình, giọng AI đã lưu (giọng máy khi thiếu).
+- loigiai-dong-admin.js (MỚI): khối "✨ Lời giải động" trong Chi tiết đề — danh sách câu + trạng thái, tính tỉ lệ sai
+  và phương án hay chọn, AI viết / AI vẽ hình, xem thử, lưu nháp, duyệt & phát, AI viết hàng loạt, tạo giọng 1 lần.
+- api/ai-loigiai.js (MỚI): Gemini viết kịch bản theo khung Đọc đề · Chọn định luật · Giải · Bẫy · Mẹo nhớ;
+  lọc SVG, bỏ cụm tô sáng không có trong đề; chế độ visuals chỉ chèn hình.
+- admin.html: OPC.loiGiai (collection loi_giai_dong + audio), nạp 2 file mới, gắn khối vào Chi tiết đề.
+- admin-growth.js: xuất window.OPC_VOICE (giọng AI + nén MP3) để dùng chung.
+- opc-live-data.js: loadLoiGiaiDong (chỉ bản đã phát) + loadLoiGiaiAudio.
+- student-extras.js: nạp lời giải động khi em đăng nhập, ghi lượt xem vào lessonViews/lgd_<qid>.
+- prepscholar-ui.js: nút "✨ Lời giải động" dưới câu trong phần xem lại (kèm đáp án em chọn).
+- index.html: nạp loigiai-dong.js.
+- firestore.rules: loi_giai_dong — học sinh chỉ đọc bản status 'published', chỉ admin ghi.
+
+Co-Authored-By: Claude <noreply@anthropic.com>

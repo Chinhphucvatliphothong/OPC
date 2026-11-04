@@ -672,5 +672,7 @@
   }
 
   if(window.OPC_FX) window.OPC_FX.setAudioLoader(function(id){ return OPC().lessons.loadAudio(id); });
+  // THÊM 4/11/2026 — cho loigiai-dong-admin.js dùng chung giọng AI + nén MP3 (không viết lại)
+  window.OPC_VOICE = { ttsClip: ttsClip, voicePref: voicePref, saveVoicePref: saveVoicePref, VOICE_LIST: VOICE_LIST };
   window.OPC_GROWTH = { MockPanel: MockPanel, LessonsPanel: LessonsPanel, SurveyPanel: SurveyPanel, _computeBoard: computeBoard };
 })(window);

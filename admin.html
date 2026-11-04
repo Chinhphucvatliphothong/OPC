@@ -1033,6 +1033,26 @@
       removeAudio: function(id, i){ return deleteDoc(doc(db, 'video_lessons', id, 'audio', 's' + i)); },
       patch: function(id, data){ return updateDoc(doc(db, 'video_lessons', id), data); }
     };
+    // ================= THÊM 4/11/2026 — ✨ LỜI GIẢI ĐỘNG (xem loigiai-dong.js, loigiai-dong-admin.js) =================
+    // loi_giai_dong/{qid} (qid = examId + '_q' + index): { qid, examId, index, examTitle, script, status 'draft'|'published', source, audio, … }
+    // giọng đã tạo: loi_giai_dong/{qid}/audio/s<chỉ số> = { b64 (MP3), mime, dur, text, source } — giống video_lessons
+    OPC.loiGiai = {
+      listByExam: async function(examId){
+        var snap = await getDocs(query(collection(db, 'loi_giai_dong'), fsMod.where('examId', '==', String(examId))));
+        return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); });
+      },
+      save: function(qid, data){ return setDoc(doc(db, 'loi_giai_dong', qid), Object.assign({}, data, { updatedAt: new Date().toISOString() }), { merge: true }); },
+      remove: async function(qid){
+        var snap = await getDocs(collection(db, 'loi_giai_dong', qid, 'audio')).catch(function(){ return { docs: [] }; });
+        for(var i = 0; i < snap.docs.length; i++){ await deleteDoc(snap.docs[i].ref).catch(function(){}); }
+        return deleteDoc(doc(db, 'loi_giai_dong', qid));
+      },
+      saveAudio: function(qid, i, data){ return setDoc(doc(db, 'loi_giai_dong', qid, 'audio', 's' + i), data); },
+      loadAudio: async function(qid){ var snap = await getDocs(collection(db, 'loi_giai_dong', qid, 'audio')); var m = {}; snap.docs.forEach(function(d){ m[d.id.replace(/^s/, '')] = d.data(); }); return m; },
+      removeAudio: function(qid, i){ return deleteDoc(doc(db, 'loi_giai_dong', qid, 'audio', 's' + i)); },
+      // danh sách mã học sinh (đọc 1 lần) — để tính tỉ lệ sai từng câu
+      studentIds: async function(){ var snap = await getDocs(collection(db, 'students')); return snap.docs.map(function(d){ return d.id; }); }
+    };
     OPC.mockExams = {
       subscribe: function(onNext, onErr){ return onSnapshot(collection(db, 'mock_exams'), onNext, onErr); },
       newId: function(){ return doc(collection(db, 'mock_exams')).id; },
@@ -1258,7 +1278,9 @@
 <script src="/theme-toggle.js"></script> <!-- THÊM 17/10/2026 — nút sáng/tối -->
 <script src="/admin-ops.js"></script> <!-- THÊM 20/10/2026 — Việc hôm nay · Học phí · Link phụ huynh -->
 <script src="/faraday-extras.js"></script> <!-- THÊM 23/10/2026 — trình phát bài giảng FaradayAI + giấy khen (dùng chung với trang học sinh) -->
+<script src="/loigiai-dong.js"></script> <!-- THÊM 4/11/2026 — trình phát ✨ Lời giải động (dùng chung với trang học sinh) -->
 <script src="/admin-growth.js"></script>
+<script src="/loigiai-dong-admin.js"></script> <!-- THÊM 4/11/2026 — ✨ Lời giải động: soạn kịch bản từng câu, AI viết, tạo giọng -->
 <!-- THÊM 27/10/2026 — Đề Tổ: soạn đề ôn luyện theo kế hoạch Tổ + xuất 3 file Word -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="/to-template.js"></script>
@@ -10317,6 +10339,11 @@
             !specialMode ? h(VideoWalkthroughBlock, {
               key: selected.id, exam: selected, bankApi: bankApi, fireToast: props.fireToast,
               onSaved: function(vw){ setSelected(function(prev){ return prev ? Object.assign({}, prev, { videoWalkthrough: vw }) : prev; }); }
+            }) : null,
+
+            // THÊM 4/11/2026 — ✨ Lời giải động (loigiai-dong-admin.js): mỗi câu một clip, gắn thẳng vào câu hỏi
+            (!specialMode && window.OPC_LGD_ADMIN && selected.questions && selected.questions.length) ? h(window.OPC_LGD_ADMIN.Block, {
+              key: 'lgd-' + selected.id, exam: selected, fireToast: props.fireToast
             }) : null,
 
             (selected.images && selected.images.length) ? h('div',null,
