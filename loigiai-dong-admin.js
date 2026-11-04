@@ -176,6 +176,21 @@
   function blobToB64(blob){
     return new Promise(function(ok, bad){ var fr = new FileReader(); fr.onload = function(){ ok(String(fr.result).split(',')[1] || ''); }; fr.onerror = function(){ bad(fr.error); }; fr.readAsDataURL(blob); });
   }
+  // bản ghi của trình duyệt (webm/opus hoặc mp4) → MP3 mono 24 kHz, để iPhone / iPad đời cũ cũng phát được (thất bại → null, giữ bản gốc)
+  async function toMp3(blob){
+    var Vv = V(), AC = window.AudioContext || window.webkitAudioContext, OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if(!Vv || !Vv.encodeMp3 || !Vv.floatToInt16 || !AC || !OAC) return null;
+    try{
+      var buf = await blob.arrayBuffer(), ac = new AC(), dec;
+      try{ dec = await new Promise(function(ok, no){ var p = ac.decodeAudioData(buf, ok, no); if(p && p.then) p.then(ok, no); }); }
+      finally{ try{ ac.close(); }catch(e){} }
+      var rate = 24000, oac = new OAC(1, Math.max(1, Math.ceil(dec.duration * rate)), rate), src = oac.createBufferSource();
+      src.buffer = dec; src.connect(oac.destination); src.start(0);
+      var out = await oac.startRendering();
+      var mp3 = await Vv.encodeMp3(Vv.floatToInt16(out.getChannelData(0)), rate);
+      return mp3 && mp3.b64 ? { b64: mp3.b64, mime: 'audio/mpeg' } : null;
+    }catch(e){ console.warn('Không nén được bản ghi sang MP3, giữ bản gốc:', e); return null; }
+  }
   function pickMime(){
     if(!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
     var c = ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'];
@@ -538,7 +553,8 @@
       var id = qidFor(exam, qq);
       if(alive.current) setSaving(function(n){ return n + 1; });
       try{
-        var b64 = await blobToB64(blob), CH = 800000, n = Math.max(1, Math.ceil(b64.length / CH)), mime = (blob.type || 'audio/webm').split(';')[0];
+        var mp3 = await toMp3(blob), b64 = mp3 ? mp3.b64 : await blobToB64(blob), mime = mp3 ? mp3.mime : (blob.type || 'audio/webm').split(';')[0];
+        var CH = 800000, n = Math.max(1, Math.ceil(b64.length / CH));
         for(var k = 0; k < n; k++) await O().loiGiai.saveAudio(id, 'tp' + k, { b64: b64.slice(k * CH, (k + 1) * CH), mime: mime, part: k, source: 'teacher' });
         var prev = recsRef.current[id], old = prev && prev.teacher && prev.teacher.n || 0;
         for(var j = n; j < old; j++) await O().loiGiai.removeAudio(id, 'tp' + j).catch(function(){});
