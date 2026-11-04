@@ -1,6 +1,9 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    { "source": "/api/ai-loigiai", "destination": "/api/ai-lesson?kind=loigiai" }
+  ],
   "headers": [
     {
       "source": "/admin(.*)",

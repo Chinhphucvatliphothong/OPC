@@ -152,7 +152,8 @@
     var body = { examTitle: exam.title || '', index: q.index, stem: q.stem || '', groupPassage: q.groupPassage || '', type: q.type || 'choice',
       options: (q.options || []).map(function(o){ return { key: o.key, text: o.text, isTrue: !!o.isTrue }; }), shortans: q.shortans, loigiai: q.loigiai || '',
       wrongDist: st && st.dist && Object.keys(st.dist).length ? st.dist : null, mode: mode || 'draft', script: script || '' };
-    var r = await fetch('/api/ai-loigiai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    body.kind = 'loigiai';   // xử lý ở api/ai-lesson.js (gộp để không vượt 12 hàm serverless của Vercel)
+    var r = await fetch('/api/ai-lesson?kind=loigiai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     var j = await r.json().catch(function(){ return {}; });
     if(!r.ok) throw new Error(j.error || ('Lỗi ' + r.status));
     return j;
