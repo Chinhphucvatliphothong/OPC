@@ -137,7 +137,9 @@
     return { t: 'Ít sai', rate: rate };
   }
   function hasTeacher(rec){ return !!(rec && rec.teacher && rec.teacher.n); }
+  function takePending(rec){ return hasTeacher(rec) && !!rec.teacher.pending; }
   function badge(rec, lv){
+    if(takePending(rec)) return { t: 'Thầy ghi · chờ duyệt', bg: '#FFF4D6', c: '#7A4E16' };
     if(hasTeacher(rec)) return { t: 'Thầy ghi bút', bg: '#15171C', c: '#F3E3B8' };
     if(lv.hot) return { t: 'Nên ghi bút', bg: '#FCE9E7', c: '#B42318' };
     if(rec && String(rec.script || '').trim()){
@@ -216,6 +218,7 @@
     var s11 = React.useState(function(){ return V() ? V().voicePref() : { voice: 'Charon', accent: 'nam', style: '' }; }); var pref = s11[0], setPref = s11[1];
     var s12 = React.useState(null); var proj = s12[0], setProj = s12[1];
     var s13 = React.useState(''); var err = s13[0], setErr = s13[1];
+    var s14 = React.useState('2d'); var pvMode = s14[0], setPvMode = s14[1];
     var taRef = React.useRef(null), hlRef = React.useRef(null), bulkStop = React.useRef(false), recsRef = React.useRef(null);
     recsRef.current = recs;
 
@@ -253,6 +256,7 @@
       if(!cur) return;
       var r = cur.rec, data = Object.assign(baseFor(cur.q), { script: draft, status: status || (r && r.status) || 'draft', source: (r && r.source) || 'teacher' });
       if(!r || !r.createdAt) data.createdAt = nowIso();
+      if(status === 'published' && takePending(r)) data.teacher = Object.assign({}, r.teacher, { pending: false });   // thầy duyệt luôn bản ghi bút
       setBusy('save');
       try{ await O().loiGiai.save(cur.qid, data); patchRec(cur.qid, data); setDirty(false); toast(status === 'published' ? 'Đã duyệt — học sinh xem được lời giải ' + cName(cur.q) + '.' : 'Đã lưu kịch bản ' + cName(cur.q) + '.'); }
       catch(e){ toast('Chưa lưu được: ' + ((e && e.message) || e), true); }
@@ -395,14 +399,15 @@
       }));
 
     var parsed = L() ? L().parse(draft) : { scenes: [] }, nSc = parsed.scenes.length, scI = Math.min(caretScene, Math.max(0, nSc - 1)), sc = parsed.scenes[scI];
-    var isPub = !!(cur && cur.rec && cur.rec.status === 'published');
+    var isPub = !!(cur && cur.rec && cur.rec.status === 'published'), pendTake = !!(cur && takePending(cur.rec));
     var editor = h('div', { className: 'lga-card lga-ed' },
       h('div', { className: 'lga-ed-hd' },
         h('span', { style: { fontSize: '14px', fontWeight: 700, marginRight: '8px' } }, 'Kịch bản ' + (cur ? 'câu ' + cur.q.index : '')),
         h('button', { type: 'button', className: 'lga-chip', onClick: function(){ insert('[hl: ]', 1); }, title: 'Tô sáng cụm chữ trong đề (chép y nguyên)' }, '[hl: …] tô sáng đề'),
         h('button', { type: 'button', className: 'lga-chip', onClick: function(){ insert('? | Gợi ý: ', 10); }, title: 'Video dừng chờ em tự làm' }, '? dừng cho em thử'),
         h('button', { type: 'button', className: 'lga-chip', onClick: function(){ var k = (cur && cur.st && Object.keys(cur.st.dist || {}).sort(function(a, b){ return cur.st.dist[b] - cur.st.dist[a]; })[0]) || 'B'; insert('[bẫy ' + k + ']\n> ', 0); }, title: 'Đoạn riêng cho phương án sai' }, '[bẫy B] đoạn riêng'),
-        h('button', { type: 'button', className: 'lga-chip blue', onClick: function(){ insert('[svg: <svg viewBox="0 0 400 240"></svg>]', 8); }, title: 'Hình minh hoạ SVG (1 dòng)' }, '[svg: …] hình minh hoạ')),
+        h('button', { type: 'button', className: 'lga-chip blue', onClick: function(){ insert('[svg: <svg viewBox="0 0 400 240"></svg>]', 8); }, title: 'Hình minh hoạ SVG (1 dòng)' }, '[svg: …] hình minh hoạ'),
+        h('button', { type: 'button', className: 'lga-chip blue', onClick: function(){ insert('[3d: binh-khi | xoay]', 1); }, title: 'Mô hình 3D: ' + (window.OPC_3D ? window.OPC_3D.names().join(', ') : '') }, '[3d: …] mô hình 3D')),
       h('div', { className: 'lga-box' },
         h('pre', { className: 'lga-hl', ref: hlRef, 'aria-hidden': 'true', dangerouslySetInnerHTML: { __html: hlScript(draft) } }),
         h('textarea', { className: 'lga-ta', ref: taRef, value: draft, spellCheck: false, 'aria-label': 'Kịch bản lời giải ' + (cur ? cName(cur.q) : ''),
@@ -411,22 +416,28 @@
       h('div', { className: 'lga-ed-ft' },
         h('button', { type: 'button', className: 'lga-btn sm dark', disabled: !!busy || !cur, onClick: aiWrite }, icon('spark', 16, '#C9A24A'), busy === 'ai' ? 'AI đang viết…' : 'AI viết'),
         h('button', { type: 'button', className: 'lga-btn sm', disabled: !!busy || !dirty, onClick: function(){ save(); } }, busy === 'save' ? 'Đang lưu…' : (isPub ? 'Lưu' : 'Lưu nháp')),
+        h('button', { type: 'button', className: 'lga-btn sm', disabled: !String(draft).trim(), onClick: function(){ preview('script'); } }, icon('eye', 16), 'Xem thử cả clip'),
         h('span', { style: { marginLeft: 'auto' } }, dirty ? 'Có thay đổi chưa lưu' : (cur && cur.rec && cur.rec.updatedAt ? 'Đã lưu ' + new Date(cur.rec.updatedAt).toLocaleString('vi-VN') : '')),
-        err ? h('span', { className: 'lga-err', role: 'alert', style: { flexBasis: '100%' } }, err) : null));
+        err ? h('span', { className: 'lga-err', role: 'alert', style: { flexBasis: '100%' } }, err) : null,
+        window.OPC_3D ? h('span', { style: { flexBasis: '100%' } }, 'Mô hình 3D có sẵn: ' + window.OPC_3D.names().join(' · ') + '. Ví dụ: [3d: binh-khi | xoay | T=400 | hạt nhanh dần khi T tăng]') : null));
 
     // xem trước cảnh đang soạn (theo vị trí con trỏ)
-    var fig = null, math = null, firstTxt = null;
-    if(sc) sc.items.forEach(function(it){ if(it.t === 'svg' && !fig) fig = it.v; else if(it.t === 'math' && !math) math = it.v; else if(!firstTxt && (it.t === 'li' || it.t === 'p' || it.t === 'note')) firstTxt = it.v; });
+    var fig = null, m3 = null, math = null, firstTxt = null;
+    if(sc) sc.items.forEach(function(it){ if(it.t === 'svg' && !fig) fig = it.v; else if(it.t === '3d' && !m3) m3 = it.v; else if(it.t === 'math' && !math) math = it.v; else if(!firstTxt && (it.t === 'li' || it.t === 'p' || it.t === 'note')) firstTxt = it.v; });
+    var as3d = !!m3 && (pvMode === '3d' || !fig);
     var FXs = window.OPC_FX && window.OPC_FX.sanitizeSvg;
     var pv = h('div', { className: 'lga-pv' },
       h('span', { className: 'lga-kick' }, 'Xem trước · ' + (sc ? 'Bước ' + (scI + 1) + (sc.title ? ' · ' + sc.title : '') : 'chưa có cảnh')),
       h('div', { className: 'lga-pv-box' },
-        fig && FXs ? h('div', { style: { width: '100%' }, dangerouslySetInnerHTML: { __html: FXs(fig) } }) : null,
+        as3d ? (window.OPC_3D ? h(window.OPC_3D.View, { key: m3, spec: m3, style: { maxWidth: '300px' } }) : h('span', { className: 'lga-note' }, 'Chưa nạp mohinh3d.js')) : null,
+        (!as3d && fig && FXs) ? h('div', { style: { width: '100%' }, dangerouslySetInnerHTML: { __html: FXs(fig) } }) : null,
         math ? h('div', { className: 'lga-pv-math', dangerouslySetInnerHTML: { __html: L().mathHtml(math, false) } }) : null,
-        (!fig && !math) ? h('div', { style: { fontSize: '13px', color: '#5E5A51', lineHeight: 1.5 } }, sc ? h('span', { dangerouslySetInnerHTML: { __html: firstTxt ? L().rich(firstTxt) : esc(sc.title || '') } }) : 'Đặt con trỏ trong một cảnh (# …) để xem trước.') : null),
-      h('div', { style: { display: 'flex', gap: '6px' } },
-        h('button', { type: 'button', className: 'lga-btn sm dark', style: { flex: '1 1 auto' }, disabled: !String(draft).trim(), onClick: function(){ preview('script'); } }, icon('eye', 16), 'Xem thử cả clip'),
-        h('button', { type: 'button', className: 'lga-btn sm', style: { flex: '1 1 auto' }, disabled: !!busy || !String(draft).trim(), onClick: aiDraw }, busy === 'draw' ? 'AI đang vẽ…' : 'AI vẽ lại hình')),
+        (!fig && !math && !m3) ? h('div', { style: { fontSize: '13px', color: '#5E5A51', lineHeight: 1.5 } }, sc ? h('span', { dangerouslySetInnerHTML: { __html: firstTxt ? L().rich(firstTxt) : esc(sc.title || '') } }) : 'Đặt con trỏ trong một cảnh (# …) để xem trước.') : null),
+      h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' }, role: 'group', 'aria-label': 'Kiểu hình minh hoạ' },
+        h('button', { type: 'button', className: 'lga-btn sm' + (!as3d ? ' dark' : ''), style: { flex: '1 1 auto', padding: '0 8px' }, 'aria-pressed': !as3d ? 'true' : 'false', disabled: !fig, onClick: function(){ setPvMode('2d'); } }, 'Hình 2D (SVG)'),
+        h('button', { type: 'button', className: 'lga-btn sm' + (as3d ? ' dark' : ''), style: { flex: '1 1 auto', padding: '0 8px' }, 'aria-pressed': as3d ? 'true' : 'false',
+          title: m3 ? '' : 'Cảnh này chưa có [3d: …] — bấm để chèn', onClick: function(){ if(m3) setPvMode('3d'); else { insert('[3d: binh-khi | xoay]', 1); setPvMode('3d'); } } }, 'Mô hình 3D'),
+        h('button', { type: 'button', className: 'lga-btn sm', style: { flex: '1 1 auto', padding: '0 8px' }, disabled: !!busy || !String(draft).trim(), onClick: aiDraw }, busy === 'draw' ? 'Đang vẽ…' : 'AI vẽ lại')),
       h('div', { className: 'lga-bar', role: 'img', 'aria-label': 'Cảnh ' + (scI + 1) + ' trên ' + nSc }, h('i', { style: { width: (nSc ? Math.round((scI + 1) / nSc * 100) : 0) + '%' } })));
 
     var VL = V() ? V().VOICE_LIST : [];
@@ -448,14 +459,14 @@
       h('span', { style: { fontSize: '13px', color: '#3D3A33', lineHeight: 1.45 } }, 'Ghi nét bút Apple Pencil + giọng thầy ngay trên đề. Bản ghi tự gắn vào ' + (cur ? 'câu ' + cur.q.index : 'câu') + ', không cần YouTube.'),
       h('button', { type: 'button', className: 'lga-btn clay', disabled: !cur, onClick: function(){ openProjector(cur.qid); } }, h('span', { className: 'lga-dot', 'aria-hidden': 'true' }), take ? 'Ghi lại bằng bút trên iPad' : 'Ghi bằng bút trên iPad'),
       take ? h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '13px' } },
-        h('span', null, 'Đã có bản ghi · ' + fmt(take.dur || 0)),
+        h('span', null, 'Đã có bản ghi · ' + fmt(take.dur || 0) + (take.pending ? ' · chờ thầy duyệt' : ' · học sinh xem được')),
         h('button', { type: 'button', className: 'lga-btn sm', onClick: function(){ preview('teacher'); } }, 'Xem lại'),
         h('button', { type: 'button', className: 'lga-btn sm', style: { color: '#B42318' }, onClick: removeTake }, 'Xoá')) : null);
 
     var approve = h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap' } },
-      (!isPub || dirty) ? h('button', { type: 'button', className: 'lga-btn green', style: { flex: '1 1 auto' }, disabled: !!busy || !cur || (!String(draft).trim() && !take), onClick: function(){ save('published'); } }, 'Duyệt và phát cho học sinh')
+      (!isPub || dirty || pendTake) ? h('button', { type: 'button', className: 'lga-btn green', style: { flex: '1 1 auto' }, disabled: !!busy || !cur || (!String(draft).trim() && !take), onClick: function(){ save('published'); } }, pendTake && isPub && !dirty ? 'Duyệt bản thầy ghi và phát' : 'Duyệt và phát cho học sinh')
         : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600, color: '#1F6B43' } }, icon('check', 18), 'Đang phát cho học sinh'),
-      (isPub && !dirty) ? h('button', { type: 'button', className: 'lga-btn', disabled: !!busy, onClick: unpublish }, 'Gỡ xuống') : null);
+      (isPub && !dirty && !pendTake) ? h('button', { type: 'button', className: 'lga-btn', disabled: !!busy, onClick: unpublish }, 'Gỡ xuống') : null);
 
     return h('section', { className: 'lga', 'aria-label': 'Lời giải động' },
       head,
@@ -480,6 +491,9 @@
     var s6 = React.useState(0); var sceneIdx = s6[0], setSceneIdx = s6[1];
     var s7 = React.useState(0); var saving = s7[0], setSaving = s7[1];
     var s8 = React.useState(0); var inkN = s8[0], setInkN = s8[1];
+    var s9 = React.useState(false); var show3d = s9[0], setShow3d = s9[1];
+    var s10 = React.useState(true); var spin3d = s10[0], setSpin3d = s10[1];
+    var viewLog = React.useRef([]);
     var cvRef = React.useRef(null), strokes = React.useRef([]), sceneLog = React.useRef([[0, 0]]), curStroke = React.useRef(null), erasing = React.useRef(false);
     var qStart = React.useRef(performance.now()), sessStart = React.useRef(0), stream = React.useRef(null), mr = React.useRef(null);
     var chain = React.useRef(Promise.resolve()), penSeen = React.useRef(false), size = React.useRef({ w: 1, h: 1 }), raf = React.useRef(0), alive = React.useRef(true), recsRef = React.useRef(props.recs);
@@ -510,8 +524,9 @@
 
     function relT(){ return Math.round(performance.now() - qStart.current); }
     function draw(){ if(raf.current) return; raf.current = requestAnimationFrame(function(){ raf.current = 0; L().drawInk(cvRef.current, strokes.current, null); }); }
-    function resetInk(scene0){ strokes.current = []; curStroke.current = null; qStart.current = performance.now(); sceneLog.current = [[0, scene0 || 0]]; setSceneIdx(scene0 || 0); setInkN(0); draw(); }
+    function resetInk(scene0){ strokes.current = []; curStroke.current = null; qStart.current = performance.now(); sceneLog.current = [[0, scene0 || 0]]; setSceneIdx(scene0 || 0); viewLog.current = [[0, show3d ? 1 : 0, spin3d ? 1 : 0]]; setInkN(0); draw(); }
     function goScene(i){ i = Math.max(0, Math.min(parsed.scenes.length - 1, i)); if(i === sceneIdx || i < 0) return; setSceneIdx(i); sceneLog.current.push([relT(), i]); }
+    function setView(s3, sp){ setShow3d(s3); setSpin3d(sp); viewLog.current.push([relT(), s3 ? 1 : 0, sp ? 1 : 0]); }
     function live(){ return strokes.current.filter(function(s){ return s.x == null; }); }
     function undo(){ var l = live(); if(!l.length) return; l[l.length - 1].x = relT(); setInkN(live().length); draw(); }
 
@@ -541,7 +556,7 @@
     }
     // gói bản ghi của câu đang chiếu → lưu nền (giọng chia mẩu + nét bút), rồi gắn vào câu
     function finishCurrent(){
-      var qq = q, ink = { s: strokes.current.map(function(s){ return s; }), sc: sceneLog.current.slice() }, dur = (performance.now() - qStart.current) / 1000;
+      var qq = q, ink = { s: strokes.current.map(function(s){ return s; }), sc: sceneLog.current.slice(), v: viewLog.current.slice() }, dur = (performance.now() - qStart.current) / 1000;
       var ar = size.current.w / Math.max(1, size.current.h), p = stopRecorder();
       chain.current = chain.current.then(function(){ return p; }).then(function(blob){
         if(!blob || !blob.size || dur < 2) return null;
@@ -562,8 +577,9 @@
         var inkStr = JSON.stringify(ink);
         if(inkStr.length > 900000){ ink.s.forEach(function(s){ s.p = s.p.filter(function(pt, i){ return i % 2 === 0 || i === s.p.length - 1; }); }); inkStr = JSON.stringify(ink); }
         await O().loiGiai.saveAudio(id, 'tk', { ink: inkStr, source: 'teacher' });
-        var patch = { qid: id, examId: String(exam.id), index: qq.index, examTitle: exam.title || '', teacher: { mime: mime, dur: Math.round(dur * 10) / 10, n: n, at: nowIso(), ar: Math.round(ar * 1000) / 1000 } };
-        if(!prev){ patch.status = 'published'; patch.script = ''; patch.source = 'teacher'; patch.createdAt = nowIso(); }
+        // pending: học sinh CHƯA thấy bản ghi này cho tới khi thầy xem lại và bấm "Duyệt và phát cho học sinh"
+        var patch = { qid: id, examId: String(exam.id), index: qq.index, examTitle: exam.title || '', teacher: { mime: mime, dur: Math.round(dur * 10) / 10, n: n, at: nowIso(), ar: Math.round(ar * 1000) / 1000, pending: true } };
+        if(!prev){ patch.status = 'draft'; patch.script = ''; patch.source = 'teacher'; patch.createdAt = nowIso(); }
         await O().loiGiai.save(id, patch);
         if(props.onSaved) props.onSaved(id, patch);
         if(L().clearAudioCache) L().clearAudioCache();
@@ -579,7 +595,7 @@
       if(rs !== 'rec') return Promise.resolve();
       var n = marks.length, p = finishCurrent();
       setRs('idle'); if(stream.current){ stream.current.getTracks().forEach(function(t){ t.stop(); }); stream.current = null; }
-      return p.then(function(){ toast('Đã lưu bản ghi ' + n + ' câu — gắn thẳng vào từng câu.'); });
+      return p.then(function(){ toast('Đã lưu bản ghi ' + n + ' câu. Học sinh chưa thấy: thầy xem lại từng câu rồi bấm "Duyệt và phát cho học sinh".'); });
     }
     function close(){
       if(rs === 'rec'){ if(!window.confirm('Đang ghi. Dừng và lưu bản ghi câu này rồi thoát?')) return; end(); }
@@ -653,6 +669,7 @@
       h('div', { style: { marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#5E5A51' } }, icon('chart', 18), classLine));
 
     // ---- bảng bên phải + thanh công cụ bút
+    var sc3d = !!(sc && sc.items.some(function(x){ return x.t === '3d'; })), scSvg = !!(sc && sc.items.some(function(x){ return x.t === 'svg'; }));
     var label = sc ? ('Bước ' + (sceneIdx + 1) + ' / ' + parsed.scenes.length + (sc.title ? ' · ' + sc.title : '')) : 'Bảng trắng · câu này chưa có kịch bản';
     function tb(name, lab, on, onClick, dis, body){ return h('button', { type: 'button', 'aria-label': lab, title: lab, className: on ? 'on' : '', 'aria-pressed': on == null ? undefined : (on ? 'true' : 'false'), disabled: dis, onClick: onClick }, body || icon(name, 20)); }
     var toolbar = h('div', { className: 'lga-tb', role: 'toolbar', 'aria-label': 'Bút viết' },
@@ -664,10 +681,13 @@
       }),
       tb('eraser', 'Tẩy', tool.m === 'erase', function(){ setTool({ m: 'erase', c: tool.c }); }),
       tb('undo', 'Hoàn tác', null, undo, !inkN),
+      sc3d ? h('span', { className: 'div', 'aria-hidden': 'true' }) : null,
+      (sc3d && scSvg) ? tb('cube', show3d ? 'Hiện hình 2D' : 'Hiện mô hình 3D', show3d, function(){ setView(!show3d, spin3d); }) : null,
+      sc3d ? tb('rotate', 'Xoay mô hình 3D', spin3d, function(){ setView(show3d, !spin3d); }, scSvg && !show3d) : null,
       parsed.scenes.length > 1 ? h('span', { className: 'div', 'aria-hidden': 'true' }) : null,
       parsed.scenes.length > 1 ? tb('prev', 'Bước trước', null, function(){ goScene(sceneIdx - 1); }, sceneIdx <= 0) : null,
       parsed.scenes.length > 1 ? tb('next', 'Bước sau', null, function(){ goScene(sceneIdx + 1); }, sceneIdx >= parsed.scenes.length - 1) : null);
-    var board = h(L().Board, { scene: sc, label: label, canvasRef: cvRef, canvasProps: canvasProps, style: { height: '100%' },
+    var board = h(L().Board, { scene: sc, label: label, show3d: show3d, spin3d: spin3d, canvasRef: cvRef, canvasProps: canvasProps, style: { height: '100%' },
       onSize: function(w, hh){ size.current = { w: w, h: hh }; draw(); } }, toolbar);
 
     // ---- đầu trang

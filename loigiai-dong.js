@@ -15,7 +15,7 @@
  *   ? Câu hỏi cho em | Gợi ý: …    video TỰ DỪNG, em bấm "Em làm xong, xem tiếp" mới chạy tiếp (Gợi ý không bắt buộc)
  *   [bẫy B]                        bắt đầu đoạn riêng cho phương án nhiễu B (Đúng/Sai: [bẫy a]…). Em chọn B →
  *                                  hiện thẻ "Em đã chọn B · xem vì sao B sai" nhảy thẳng tới đoạn đó.
- *   [3d: …]                        (giai đoạn 3 — hiện tại bỏ qua)
+ *   [3d: tên | xoay | T=400 | ghi chú]  mô hình 3D xoay được (mohinh3d.js: binh-khi, hat-nhan, nam-cham, day-dan, khung-day)
  *
  * BẢN THẦY GHI (THÊM 4/11/2026 · loigiai-dong-admin.js › Thầy chiếu): rec.teacher = { mime, dur, n, at, ar } —
  *   giọng thầy chia n mẩu base64 ở audio/stp0…stp<n-1> (khoá 'tp0'…), nét bút + cảnh ở audio/stk (khoá 'tk', { ink: JSON }).
@@ -85,7 +85,6 @@
         m[1].split('|').forEach(function(p){ p = p.trim(); if(p) cur.hl.push(p); });
         return;
       }
-      if(/^\[3d\s*:/i.test(line)) return; // giai đoạn 3
       if((m = line.match(/^\[(?:bẫy|bay|trap)\s*([A-Da-d])?\s*\]$/i))){ cur.items.push({ t: 'trap', key: m[1] ? m[1] : '' }); return; }
       if((m = line.match(/^\$\$([\s\S]*)\$\$$/))) cur.items.push({ t: 'math', v: m[1].trim() });
       else if(/^[-•*]\s+/.test(line)) cur.items.push({ t: 'li', v: line.replace(/^[-•*]\s+/, '') });
@@ -95,6 +94,7 @@
         cur.items.push({ t: 'ask', v: parts[0], hint: parts[1] || '' });
       }
       else if((m = line.match(/^\[(?:svg|hình|hinh|sơ đồ|so do)\s*:\s*(<svg[\s\S]*<\/svg>)\s*\]$/i))) cur.items.push({ t: 'svg', v: m[1].trim() });
+      else if((m = line.match(/^\[3d\s*:\s*([^\]]+)\]$/i))) cur.items.push({ t: '3d', v: m[1].trim() });
       else if((m = line.match(/^\[(?:ảnh|anh|img|image)\s*:\s*([^\]]+)\]$/i))) cur.items.push({ t: 'img', v: m[1].trim() });
       else cur.items.push({ t: 'p', v: line });
     });
@@ -104,7 +104,7 @@
       sceneStart.push(steps.length + 1);
       steps.push({ scene: si, upto: 0, say: sc.say || (sc.title ? sc.title + '.' : '') });
       sc.items.forEach(function(it, ii){
-        var visual = it.t === 'math' || it.t === 'img' || it.t === 'svg';
+        var visual = it.t === 'math' || it.t === 'img' || it.t === 'svg' || it.t === '3d';
         var say = it.say || (visual ? '' : (it.t === 'trap' ? '' : speakable(it.v)));
         var st = { scene: si, upto: ii + 1, say: say, pause: visual ? 3000 : (it.t === 'trap' ? 500 : 0), wait: it.t === 'ask' };
         steps.push(st);
@@ -241,6 +241,8 @@
     '.lgd-scene.has-svg > h2{grid-column:1/-1;} .lgd-scene.has-svg > .lgd-it{grid-column:1;margin-bottom:.5em;}',
     '.lgd-scene.has-svg > .lgd-svg{grid-column:2;grid-row:2 / span 14;align-self:center;margin:0;padding:.4em;background:#FFFDF8;border:1px solid #EFE9DC;border-radius:.7em;}',
     '.lgd-svg svg{display:block;width:100%;height:auto;max-height:15em;}',
+    '.lgd-3d{cursor:default;}',
+    '.lgd-figsw{position:absolute;top:6px;right:6px;height:36px;min-width:36px;padding:0 10px;font-size:12px;z-index:1;}',
     '.lgd-cap{font-size:14px;line-height:1.45;background:#F3EBDA;color:#15171C;padding:8px 10px;border-radius:10px;}',
     '.lgd-wm{position:absolute;right:2.4%;top:3%;display:flex;align-items:center;gap:.3em;font-weight:800;font-size:.72em;color:#5E5A51;} .lgd-wm img{width:1.5em;height:1.5em;} .lgd-wm b{color:#7A4E16;}',
     '.lgd-title{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:.4em;padding:0 8%;}',
@@ -377,6 +379,7 @@
     React.useEffect(function(){ function onCh(){ if(!document.fullscreenElement) setFs(false); } document.addEventListener('fullscreenchange', onCh); return function(){ document.removeEventListener('fullscreenchange', onCh); }; }, []);
 
     var s12 = React.useState(false); var stemOpen = s12[0], setStemOpen = s12[1];
+    var s13 = React.useState(false); var fig3d = s13[0], setFig3d = s13[1];   // cảnh có cả hình 2D và mô hình 3D: đang xem cái nào
     var isTitle = idx === 0, isEnd = idx >= total - 1, stp = (!isTitle && !isEnd) ? steps[idx - 1] : null;
     var curScene = stp ? stp.scene : (isEnd ? parsed.scenes.length - 1 : -1);
     var accent = '#C9A24A', nScenes = parsed.scenes.length;
@@ -451,12 +454,20 @@
         h('button', { type: 'button', className: 'lgd-ib', onClick: props.onClose }, 'Đóng')));
     else {
       var sc = parsed.scenes[stp.scene], upto = stp.upto;
-      stage = h('div', { className: 'lgd-scene' + (sc.items.some(function(x){ return x.t === 'svg'; }) ? ' has-svg' : '') },
+      var both = sc.items.some(function(x){ return x.t === 'svg'; }) && sc.items.some(function(x){ return x.t === '3d'; });
+      var swap = function(to3d){ return h('button', { type: 'button', className: 'lgd-ib lgd-figsw', onClick: function(e){ e.stopPropagation(); setFig3d(to3d); }, 'aria-label': to3d ? 'Xem mô hình 3D' : 'Xem hình 2D' }, to3d ? icon('cube', 16) : null, to3d ? '3D' : '2D'); };
+      stage = h('div', { className: 'lgd-scene' + (sc.items.some(function(x){ return x.t === 'svg' || x.t === '3d'; }) ? ' has-svg' : '') },
         sc.title ? h('h2', null, sc.title) : null,
         sc.items.map(function(it, i){
           var cls = 'lgd-it ' + (i < upto ? 'on' : '') + (i === upto - 1 ? ' cur' : '');
+          var other = it.t === 'svg' ? '3d' : '2d', otherShown = sc.items.some(function(x, j){ return j < upto && x.t === (other === '3d' ? '3d' : 'svg'); });
+          if((it.t === 'svg' || it.t === '3d') && both && (it.t === '3d') !== fig3d && otherShown) return null;   // chỉ hiện 1 hình, có nút đổi
           if(it.t === 'svg') return i < upto
-            ? h('div', { key: i, className: cls + ' lgd-svg', dangerouslySetInnerHTML: { __html: (FX().sanitizeSvg ? FX().sanitizeSvg(it.v) : '') } })
+            ? h('div', { key: i, className: cls + ' lgd-svg', style: { position: 'relative' } },
+                h('div', { dangerouslySetInnerHTML: { __html: (FX().sanitizeSvg ? FX().sanitizeSvg(it.v) : '') } }), (both && otherShown) ? swap(true) : null)
+            : h('div', { key: i, className: 'lgd-it lgd-svg', style: { visibility: 'hidden', padding: 0, border: 0 } });
+          if(it.t === '3d') return i < upto
+            ? h('div', { key: i, className: cls + ' lgd-svg lgd-3d', style: { position: 'relative' } }, model3d(it.v, { compact: true, aspect: 16 / 10, maxH: Math.round(Math.max(110, ((stageRef.current && stageRef.current.clientHeight) || 300) * 0.48)) + 'px' }), (both && otherShown) ? swap(false) : null)
             : h('div', { key: i, className: 'lgd-it lgd-svg', style: { visibility: 'hidden', padding: 0, border: 0 } });
           if(it.t === 'math') return h('div', { key: i, className: cls + ' lgd-math', dangerouslySetInnerHTML: { __html: mathHtml(it.v, true) } });
           if(it.t === 'img') return h('div', { key: i, className: cls + ' lgd-img' }, h('img', { src: it.v, alt: '' }));
@@ -531,7 +542,9 @@
     spark: ['M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z', 'M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z'],
     mic: ['M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3', 'M5 11a7 7 0 0 0 14 0', 'M12 18v3'],
     eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z', 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6'],
-    check: ['M5 12l5 5 9-10']
+    check: ['M5 12l5 5 9-10'],
+    cube: ['M12 3l8 4.5v9L12 21l-8-4.5v-9z', 'M12 12l8-4.5', 'M12 12v9', 'M12 12L4 7.5'],
+    rotate: ['M21 12a9 9 0 1 1-3-6.7', 'M21 4v5h-5']
   };
   function icon(name, size, color){
     var d = ICONS[name] || [], filled = name === 'play';
@@ -581,14 +594,16 @@
       window.addEventListener('resize', fit);
       return function(){ if(ro) ro.disconnect(); window.removeEventListener('resize', fit); };
     }, []);
-    var sc = props.scene, fig = null, items = [];
-    if(sc) sc.items.forEach(function(it){ if(it.t === 'svg'){ if(!fig) fig = it; } else items.push(it); });
+    var sc = props.scene, svg = null, m3 = null, items = [];
+    if(sc) sc.items.forEach(function(it){ if(it.t === 'svg'){ if(!svg) svg = it; } else if(it.t === '3d'){ if(!m3) m3 = it; } else items.push(it); });
+    var fig = (m3 && (props.show3d || !svg)) ? m3 : svg;
     var style = Object.assign({ fontSize: fp + 'px' }, props.aspect ? { aspectRatio: String(props.aspect) } : {}, props.style || {});
     return h('div', { className: 'lgd-bd', ref: ref, style: style },
       sc ? null : h('div', { className: 'lgd-bd-blank', 'aria-hidden': 'true' }),
       h('div', { className: 'lgd-bd-in' },
         props.label ? h('span', { className: 'lgd-bd-lab' }, props.label) : null,
-        fig ? h('div', { className: 'lgd-bd-fig', dangerouslySetInnerHTML: { __html: FX().sanitizeSvg ? FX().sanitizeSvg(fig.v) : '' } }) : null,
+        (fig && fig.t === '3d') ? h('div', { className: 'lgd-bd-fig' }, model3d(fig.v, { 'static': true, spin: !!props.spin3d })) : null,
+        (fig && fig.t === 'svg') ? h('div', { className: 'lgd-bd-fig', dangerouslySetInnerHTML: { __html: FX().sanitizeSvg ? FX().sanitizeSvg(fig.v) : '' } }) : null,
         items.map(function(it, i){
           if(it.t === 'math') return h('div', { key: i, className: 'lgd-bd-math', dangerouslySetInnerHTML: { __html: mathHtml(it.v, false) } });
           if(it.t === 'img') return h('div', { key: i, className: 'lgd-bd-it' }, h('img', { src: it.v, alt: '', style: { maxWidth: '50%', maxHeight: '8em' } }));
@@ -598,6 +613,12 @@
       h('canvas', Object.assign({ className: 'lgd-ink', ref: props.canvasRef, 'aria-hidden': 'true' }, props.canvasProps || {})),
       props.children);
   }
+  // mô hình 3D (mohinh3d.js) — thiếu file thì hiện chữ thay thế
+  function model3d(spec, o){
+    if(!window.OPC_3D) return React.createElement('div', { style: { padding: '.6em', fontSize: '.8em', color: '#5E5A51' } }, 'Mô hình 3D: ' + spec);
+    return React.createElement(window.OPC_3D.View, Object.assign({ spec: spec }, o || {}));
+  }
+  function viewAt(log, t){ var v = [0, 0]; (log || []).forEach(function(e){ if(e[0] <= t) v = [e[1], e[2]]; }); return v; }
   function b64ToUrl(b64, mime){
     try{ var bin = atob(b64), n = bin.length, u = new Uint8Array(n); for(var i = 0; i < n; i++) u[i] = bin.charCodeAt(i); return URL.createObjectURL(new Blob([u], { type: mime || 'audio/webm' })); }
     catch(e){ return 'data:' + (mime || 'audio/webm') + ';base64,' + b64; }
@@ -642,7 +663,7 @@
     function toggle(){ var a = audioRef.current; if(!a) return; if(a.paused){ var p = a.play(); if(p && p.catch) p.catch(function(){}); } else a.pause(); }
     function cycleRate(){ var r = rate >= 1.5 ? 1 : (rate >= 1.25 ? 1.5 : 1.25); setRate(r); try{ localStorage.setItem('lgd-rate', r); }catch(e){} }
     var dur = (audioRef.current && isFinite(audioRef.current.duration) && audioRef.current.duration) || T.dur || 0;
-    var si = sceneAt(take && take.ink ? take.ink.sc : [], t), sc = parsed.scenes[si] || null;
+    var si = sceneAt(take && take.ink ? take.ink.sc : [], t), sc = parsed.scenes[si] || null, vw = viewAt(take && take.ink ? take.ink.v : [], t);
     var hl = []; parsed.scenes.forEach(function(x, i){ if(i <= si) hl = hl.concat(x.hl); });
     var label = sc ? ('Bước ' + (si + 1) + ' / ' + parsed.scenes.length + (sc.title ? ' · ' + sc.title : '')) : 'Thầy giảng';
     return h('div', { className: 'lgd-ov', onClick: function(e){ if(e.target === e.currentTarget) props.onClose(); } },
@@ -656,7 +677,7 @@
         h('div', { className: 'lgd-body' },
           (q && q.stem) ? h('div', { className: 'lgd-card', style: { padding: '12px 14px' } },
             h('div', { className: 'lgd-q', dangerouslySetInnerHTML: { __html: stemHtml(q.stem, hl) } })) : null,
-          h(Board, { scene: sc, label: label, aspect: T.ar || 1.6, canvasRef: cvRef, onSize: function(){ setSizeTick(function(x){ return x + 1; }); } },
+          h(Board, { scene: sc, label: label, aspect: T.ar || 1.6, show3d: !!vw[0], spin3d: !!vw[1] && playing, canvasRef: cvRef, onSize: function(){ setSizeTick(function(x){ return x + 1; }); } },
             take === null ? h('div', { className: 'lgd-title', style: { fontSize: '14px', color: '#5E5A51' } }, 'Đang tải bản ghi của thầy…') : null,
             (take && take.err) ? h('div', { className: 'lgd-title', style: { fontSize: '14px', color: '#B42318' } }, 'Chưa tải được bản ghi. Em thử lại sau nhé.') : null),
           h('div', { className: 'lgd-ctl', style: { gap: '12px' } },
@@ -678,7 +699,7 @@
     if(!hostEl){ hostEl = document.createElement('div'); hostEl.id = 'lgd-host'; document.body.appendChild(hostEl); }
     function close(){ try{ ReactDOM.unmountComponentAtNode(hostEl); }catch(e){} if(opts.onClose) opts.onClose(); }
     function onDone(r){ if(tracker && !opts.preview) try{ tracker(r, true); }catch(e){} if(opts.onDone) opts.onDone(r); }
-    var hasScript = !!String(rec.script || '').trim(), hasTeacher = !!(rec.teacher && rec.teacher.n);
+    var hasScript = !!String(rec.script || '').trim(), hasTeacher = !!(rec.teacher && rec.teacher.n && (!rec.teacher.pending || opts.preview));
     // THÊM 4/11/2026 — câu có bản THẦY GHI (bút + giọng): mặc định mở bản thầy, chuyển qua lại với lời giải động
     function show(mode){
       var key = rec.qid + ':' + mode + ':' + Date.now();
@@ -693,9 +714,11 @@
 
   // ------------------------------------------------------------ bảng tra phía học sinh
   var registry = {}, tracker = null, listeners = [];
+  // bản thầy ghi chỉ hiện cho học sinh khi thầy đã bấm "Duyệt và phát" (teacher.pending = false)
+  function teacherOk(r){ return !!(r && r.teacher && r.teacher.n && !r.teacher.pending); }
   function register(list){
     registry = {};
-    (list || []).forEach(function(r){ if(r && r.qid && r.status === 'published' && (r.script || (r.teacher && r.teacher.n))) registry[r.qid] = r; });
+    (list || []).forEach(function(r){ if(r && r.qid && r.status === 'published' && (r.script || teacherOk(r))) registry[r.qid] = r; });
     listeners.forEach(function(f){ try{ f(registry); }catch(e){} });
   }
   function onChange(f){ listeners.push(f); return function(){ listeners = listeners.filter(function(x){ return x !== f; }); }; }
@@ -713,7 +736,7 @@
     var rec = forQuestion(q); if(!rec) return null;
     o = o || {};
     if(rec.index == null) rec.index = indexOfQid(rec.qid);
-    var label = (rec.teacher && rec.teacher.n) ? ('✍️ Thầy giảng câu này · ' + fmtTime(rec.teacher.dur || 0)) : ('✨ Lời giải động · ' + fmtTime(estimateSec(rec.script)));
+    var label = teacherOk(rec) ? ('✍️ Thầy giảng câu này · ' + fmtTime(rec.teacher.dur || 0)) : ('✨ Lời giải động · ' + fmtTime(estimateSec(rec.script)));
     return h('div', { style: { margin: '0 0 8px' } },
       h('button', { type: 'button', className: 'btn ' + (o.wrong ? 'btn-primary' : 'btn-secondary') + ' lgd-btn', style: { fontSize: '0.86rem' },
         onClick: function(){ open(rec, { q: q && q.stem ? q : null, chosen: o.chosen }); } }, label));
@@ -721,6 +744,7 @@
 
   window.OPC_LGD = {
     parse: parse, says: says, estimateSec: estimateSec, fmtTime: fmtTime, normSay: normSay,
+    teacherOk: teacherOk, viewAt: viewAt,
     Player: Player, TeacherPlayer: TeacherPlayer, Board: Board, drawInk: drawInk, sceneAt: sceneAt, icon: icon, stemHtml: stemHtml, mathHtml: mathHtml, rich: rich, ensureCss: ensureCss,
     open: open, init: init, register: register, onChange: onChange, forQuestion: forQuestion, button: button,
     qidOf: qidOf, toPlayerQuestion: toPlayerQuestion, clearAudioCache: function(){ audioCache = {}; },
