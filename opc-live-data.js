@@ -26,7 +26,7 @@
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, query, orderBy, limit
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, query, orderBy, limit, where
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import {
   getAuth, onAuthStateChanged, signInWithCustomToken, signOut
@@ -791,6 +791,19 @@ async function loadLessonAudio(lessonId){
   try{ var snap = await getDocs(collection(db, 'video_lessons', String(lessonId), 'audio')); var m = {}; snap.forEach(function(d){ m[d.id.replace(/^s/, '')] = d.data(); }); return m; }
   catch(e){ console.warn('Không tải được giọng đọc bài giảng:', e && e.code); return {}; }
 }
+// THÊM 4/11/2026 — ✨ LỜI GIẢI ĐỘNG (loigiai-dong.js): chỉ bản thầy đã "Duyệt & phát" (firestore.rules chỉ cho học sinh đọc bản này)
+async function loadLoiGiaiDong(){
+  try{
+    var snap = await getDocs(query(collection(db, 'loi_giai_dong'), where('status', '==', 'published')));
+    var out = []; snap.forEach(function(d){ out.push(Object.assign({ qid: d.id }, d.data())); });
+    return out;
+  }catch(e){ console.warn('Không tải được lời giải động:', e && e.code); return []; }
+}
+// giọng AI đã lưu (khoá 0..n) + bản thầy ghi bút + giọng (khoá tp0.., tk) của 1 câu
+async function loadLoiGiaiAudio(qid){
+  try{ var snap = await getDocs(collection(db, 'loi_giai_dong', String(qid), 'audio')); var m = {}; snap.forEach(function(d){ m[d.id.replace(/^s/, '')] = d.data(); }); return m; }
+  catch(e){ console.warn('Không tải được giọng lời giải động:', e && e.code); return {}; }
+}
 // mock_exams: kỳ thi thử định kỳ (đề giao online qua assignedExams) + bảng xếp hạng thầy đã công bố.
 async function loadMocks(){
   try{
@@ -854,6 +867,7 @@ async function submitBooking(d){
 
 window.OPC_LIVE = {
   loadProof: loadProof, submitBooking: submitBooking, // THÊM 24/10/2026
+  loadLoiGiaiDong: loadLoiGiaiDong, loadLoiGiaiAudio: loadLoiGiaiAudio, // THÊM 4/11/2026
   loadLessons: loadLessons, loadMocks: loadMocks, loadSettingsDoc: loadSettingsDoc, // THÊM 23/10/2026
   getSurveyState: getSurveyState, saveSurveyState: saveSurveyState, submitSurvey: submitSurvey, recordLessonView: recordLessonView, loadLessonViews: loadLessonViews, loadLessonAudio: loadLessonAudio,
   loadCurriculum: loadCurriculum,

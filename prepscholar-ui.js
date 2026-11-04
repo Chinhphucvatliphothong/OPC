@@ -1270,6 +1270,9 @@
       var info = WT ? WT.forQuestion(q) : null;
       // THÊM 23/10/2026 — kèm nút "📺 Ôn lý thuyết" (bài giảng FaradayAI / video ứng dụng thực tế, faraday-extras.js)
       var lessonBtn = (window.OPC_FX && q) ? window.OPC_FX.lessonButton(h, q, wrong) : null;
+      // THÊM 4/11/2026 — ✨ Lời giải động / bản thầy ghi bút của đúng câu này (kèm đáp án em chọn → nhảy tới đoạn "vì sao sai")
+      var lgdBtn = (window.OPC_LGD && q && q.id) ? window.OPC_LGD.button(h, q, { wrong: wrong, chosen: userAnswers[q.id] }) : null;
+      if(lgdBtn) lessonBtn = h(React.Fragment, null, lgdBtn, lessonBtn);
       if(!info) return lessonBtn;
       // SỬA 16/10/2026 — gắn onProgress để ghi em đã xem bao nhiêu; nút ghi rõ đã xem chưa
       var qIdV = info.examId + '_q' + info.index;

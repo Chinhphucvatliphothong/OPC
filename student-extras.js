@@ -196,6 +196,11 @@
           setTimeout(function(){ if(!cancelled) setSurvey({ trigger: 'teacher' }); }, 4000);
       });
       if(window.OPC_FX && L.loadLessonAudio) window.OPC_FX.setAudioLoader(L.loadLessonAudio); // THÊM 24/10/2026 — giọng AI / giọng thầy đã lưu
+      // THÊM 4/11/2026 — ✨ Lời giải động từng câu (+ bản thầy ghi bút): nạp bản đã phát, ghi lượt xem vào lessonViews/lgd_<qid>
+      if(window.OPC_LGD && L.loadLoiGiaiDong) window.OPC_LGD.init({
+        load: L.loadLoiGiaiDong, loadAudio: L.loadLoiGiaiAudio,
+        track: function(r, done){ if(L.recordLessonView) L.recordLessonView(stu.id, { id: 'lgd_' + r.qid, title: 'Lời giải câu ' + (r.index != null ? r.index : '') + ' · ' + (r.examTitle || ''), kind: (r.teacher && r.teacher.n) ? 'lgd-teacher' : 'lgd' }, done); }
+      });
       if(window.OPC_FX) window.OPC_FX.setTracker(function(l){ if(L.recordLessonView) L.recordLessonView(stu.id, l, false); setViews(function(p){ var n = Object.assign({}, p); n[l.id] = Object.assign({}, n[l.id], { opened: true }); return n; }); });
       // bọc saveAttempt: em vừa NỘP BÀI (không phải lưu làm dở) → cập nhật thi thử + có thể hỏi khảo sát
       if(L.saveAttempt && !L.__sxWrapped){
