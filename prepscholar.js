@@ -192,6 +192,17 @@
   // - Phần I (Trắc nghiệm 4 chọn 1): 0.25đ / câu
   // - Phần II (Trắc nghiệm Đúng/Sai 4 ý): Đúng 1 ý: 0.1đ; Đúng 2 ý: 0.25đ; Đúng 3 ý: 0.5đ; Đúng 4 ý: 1.0đ
   // - Phần III (Trả lời ngắn): 0.25đ / câu
+  // THÊM 5/11/2026 — so khớp đáp án Phần III: CHÍNH XÁC tuyệt đối (dấu phẩy hay dấu chấm thập phân đều được).
+  // "0,62" = "0.62" = ",62" (cùng giá trị); "0,6", "0,5", "1", "1,03" ≠ 0,62.
+  function shortAnsMatch(raw, correct){
+    if(raw === undefined || raw === null || correct === undefined || correct === null || correct === '') return false;
+    var t = String(raw).replace(/\s+/g, '').replace(',', '.');
+    if(t === '' || t === '-' || t === '.' || t === '-.' || !/^-?\d*\.?\d*$/.test(t)) return false;
+    var num = Number(t), c = Number(correct);
+    if(!isFinite(num) || !isFinite(c)) return false;
+    return Math.abs(num - c) <= 1e-9 * Math.max(1, Math.abs(c));
+  }
+
   function scoreExam(questions, answers){
     var totalMaxScore = 0;
     var totalEarnedScore = 0;
@@ -274,12 +285,10 @@
         // phía admin đã tự quy đổi phẩy -> chấm khi nạp đề (xem
         // opc-live-data.js), nay chấm bài phía học sinh cũng quy đổi y hệt
         // để không phân biệt "," hay "." — coi cả 2 cách viết là một.
-        var normalizedVal = (typeof rawVal === 'string') ? rawVal.trim().replace(',', '.') : rawVal;
-        if(normalizedVal !== undefined && normalizedVal !== '' && !isNaN(Number(normalizedVal))){
-          var num = Number(normalizedVal);
-          var tol = q.tolerance || 0.05;
-          isRight = Math.abs(num - q.correctAnswer) <= tol;
-        }
+        // SỬA 5/11/2026 — Phần III chấm CHÍNH XÁC 100% như đề TN THPT: đáp án 0,62 thì chỉ 0,62 mới đúng
+        // (trước đây dùng dung sai q.tolerance — có đề lưu ±0,5 nên tô 0,5 / 0,6 / 1 / 1,03 đều được điểm).
+        // Không còn dùng q.tolerance khi chấm; chỉ bỏ qua sai lệch làm tròn số máy (1e-9).
+        isRight = shortAnsMatch(rawVal, q.correctAnswer);
         var earnedPt = isRight ? maxPt : 0;
         totalEarnedScore += earnedPt;
         tStats.earnedScore += earnedPt;
@@ -1156,6 +1165,7 @@
     getRollingExamShortages: getRollingExamShortages,
     createRollingExam: createRollingExam,
     scoreExam: scoreExam,
+    shortAnsMatch: shortAnsMatch, // THÊM 5/11/2026 — chấm Phần III chính xác (dùng cả ở màn quét phiếu)
     getQuestionsByTopic: function(topicKey){
       return QUESTION_BANK.filter(function(q){ return q.topicKey === topicKey; });
     },

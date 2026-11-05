@@ -124,6 +124,10 @@ service cloud.firestore {
     match /class_tests/{testId} {
       allow read, write: if isOpcAdmin();
     }
+    // THÊM 5/11/2026 — Ảnh phiếu đã quét (phiếu nắn thẳng + cột Phần III em tô) để thầy xem ✓/✗ và sửa tay. Chỉ admin.
+    match /paper_scans/{scanId} {
+      allow read, write: if isOpcAdmin();
+    }
 
     match /registrations/{regId} {
       allow create: if request.resource.data.keys().hasOnly(['name','gmail','phone','parentZalo','referralCode','status','createdAt','source'])

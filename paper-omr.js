@@ -15,7 +15,8 @@
  *   3. Với từng ô tô: đo độ tối phần lõi ô so với nền giấy ngay quanh ô (bù ánh sáng không đều).
  *   4. Mỗi câu chọn ô tối nhất nếu đủ tối và vượt hẳn ô thứ hai; tô 2 ô / tô mờ → đánh dấu "cần xem lại" để thầy sửa tay.
  *
- * API: window.OPC_OMR = { layoutSheet, renderSheetSvg, orderForSheet, readSheet, sheetCode }
+ * API: window.OPC_OMR = { layoutSheet, renderSheetSvg, orderForSheet, readSheet, sheetCode, warpSheet, shotDataUrl, bubbleAt }
+ * SỬA 5/11/2026 — thêm ảnh phiếu nắn thẳng (warpSheet) để lưu lại + vẽ ✓/✗ + sửa tay trên ảnh.
  */
 (function (global) {
   'use strict';
@@ -416,18 +417,21 @@
         if (!d2.sure) unsure.II[q2] = (unsure.II[q2] || '') + 'abcd'[s];
       }
     }
+    // THÊM 5/11/2026 — cols3[q] = 4 ký tự theo ĐÚNG CỘT em tô ('' = cột trống) để vẽ dấu ✓/✗ và sửa tay trên ảnh
+    var cols3 = [];
     for (var q3 = 0; q3 < L.n3; q3++) {
-      var str = '', bad = false;
+      var str = '', bad = false, cc3 = [];
       for (var col = 0; col < 4; col++) {
         var d3 = decide(groups['III:' + q3 + ':' + col]);
         if (d3.pick != null) str += L.bubbles[d3.pick].ch;
+        cc3.push(d3.pick != null ? L.bubbles[d3.pick].ch : '');
         if (!d3.sure) bad = true;
       }
       if (str && !/^-?\d*(,\d*)?$/.test(str)) bad = true;
-      res.III[q3] = str;
+      res.III[q3] = str; cols3[q3] = cc3;
       if (bad) unsure.III[q3] = 'Cần xem lại';
     }
-    return { ok: true, answers: res, unsure: unsure, threshold: T, baseline: base, id: idInfo, values: vals };
+    return { ok: true, answers: res, cols3: cols3, unsure: unsure, threshold: T, baseline: base, id: idInfo, values: vals };
   }
 
   // THÊM 20/10/2026 — ĐỐI CHIẾU với danh sách có sẵn (SBD trong lớp / mã đề của bài): chấm điểm từng ứng viên =
@@ -548,7 +552,59 @@
     return out;
   }
 
+  // ======================= ẢNH PHIẾU ĐÃ NẮN THẲNG (THÊM 5/11/2026) =======================
+  // Từ ảnh chụp (nghiêng, xa gần) + vị trí 4 mốc → ảnh phiếu nhìn thẳng, đúng tỉ lệ: mỗi mm phiếu = k điểm ảnh,
+  // chừa lề m mm quanh 4 mốc. Ô tô (b.x, b.y) mm nằm ở điểm ảnh ((b.x + m)·k, (b.y + m)·k) → vẽ ✓/✗ và bấm sửa tay dễ.
+  // Ảnh này được lưu lại (JPEG) để thầy xem / sửa bài sau.
+  var SHOT_K = 5, SHOT_M = 3;
+  function warpSheet(img, L, dst, k, m) {
+    k = k || SHOT_K; m = m == null ? SHOT_M : m;
+    if (typeof document === 'undefined' || !dst || dst.length !== 4) return null;
+    var src = L.markers.map(function (mm) { return [mm.cx, mm.cy]; });
+    var H = homography(src, dst);
+    if (!H) return null;
+    var ow = Math.round((L.W + 2 * m) * k), oh = Math.round((L.H + 2 * m) * k);
+    var cv = document.createElement('canvas'); cv.width = ow; cv.height = oh;
+    var ctx = cv.getContext('2d'), out = ctx.createImageData(ow, oh), od = out.data;
+    var sd = img.data, w = img.width, h = img.height;
+    for (var y = 0; y < oh; y++) {
+      for (var x = 0; x < ow; x++) {
+        var p = H(x / k - m, y / k - m), px = p[0], py = p[1], o = (y * ow + x) * 4;
+        if (!(px >= 0 && py >= 0 && px < w - 1 && py < h - 1)) { od[o] = od[o + 1] = od[o + 2] = 255; od[o + 3] = 255; continue; }
+        var x0 = px | 0, y0 = py | 0, fx = px - x0, fy = py - y0, i0 = (y0 * w + x0) * 4, i1 = i0 + w * 4;
+        for (var c = 0; c < 3; c++) {
+          var a = sd[i0 + c] + (sd[i0 + 4 + c] - sd[i0 + c]) * fx, b = sd[i1 + c] + (sd[i1 + 4 + c] - sd[i1 + c]) * fx;
+          od[o + c] = a + (b - a) * fy;
+        }
+        od[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(out, 0, 0);
+    return cv;
+  }
+  // Ảnh nắn thẳng → JPEG data URL, ép dưới ~700 kB (Firestore giới hạn 1 MB/bản ghi)
+  function shotDataUrl(cv) {
+    if (!cv) return '';
+    var q = 0.72, url = cv.toDataURL('image/jpeg', q);
+    while (url.length > 700000 && q > 0.3) { q -= 0.1; url = cv.toDataURL('image/jpeg', q); }
+    return url;
+  }
+  // Ô tô gần điểm (xmm, ymm) nhất (trên ảnh đã nắn thẳng, đổi ra mm) — dùng khi thầy bấm sửa tay trên ảnh
+  function bubbleAt(L, xmm, ymm) {
+    var best = -1, bd = 1e9;
+    L.bubbles.forEach(function (b, i) {
+      var d = Math.hypot(b.x - xmm, b.y - ymm);
+      if (d < bd && d <= b.r * 1.9) { bd = d; best = i; }
+    });
+    return best;
+  }
+
   global.OPC_OMR = {
+    warpSheet: warpSheet,
+    shotDataUrl: shotDataUrl,
+    bubbleAt: bubbleAt,
+    SHOT_K: SHOT_K,
+    SHOT_M: SHOT_M,
     layoutSheet: layoutSheet,
     renderSheetSvg: renderSheetSvg,
     orderForSheet: orderForSheet,

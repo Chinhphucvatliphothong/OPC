@@ -569,7 +569,8 @@ function transformQuestion(q, examMeta){
     // mà em điền 2 vẫn được tính đúng.
     var pa = parseShortAnswer(q.shortans);
     out.correctAnswer = pa ? pa.value : null;
-    out.tolerance = pa ? (0.5 * Math.pow(10, -pa.decimals) * Math.pow(10, pa.exp) + 1e-9) : 0.5;
+    // SỬA 5/11/2026 — Phần III chấm CHÍNH XÁC (xem shortAnsMatch trong prepscholar.js): dung sai = 0
+    out.tolerance = 0;
     out.unit = '';
   } else {
     out.options = (q.options || []).map(function(o){ return { key: o.key, text: o.text }; });

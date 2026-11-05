@@ -1,0 +1,13 @@
+Phần III chấm chính xác 100% + lưu ảnh phiếu quét, ✓/✗ và sửa tay trên ảnh
+
+- prepscholar.js: thêm shortAnsMatch — Phần III chỉ đúng khi khớp CHÍNH XÁC đáp án
+  (0,62 ≠ 0,5 / 0,6 / 1 / 1,03); bỏ dung sai q.tolerance khi chấm.
+- admin.html: sửa lỗi "out.tolerance = 0.5" ghi đè dung sai; màn xem lại chấm chính xác.
+- opc-live-data.js: tolerance = 0 cho câu trả lời ngắn.
+- paper-omr.js: warpSheet (ảnh phiếu nắn thẳng), shotDataUrl, bubbleAt, cols3 (Phần III theo cột).
+- admin.html: lưu ảnh phiếu vào paper_scans; ScanSheetView vẽ ✓ xanh / ✗ đỏ / vòng đáp án đúng /
+  khung vàng câu máy chưa chắc; bấm ô tròn trên ảnh để thêm/bỏ ô tô; nút "🖼 Xem ảnh ✓/✗ · sửa tay"
+  ngay trong màn quét; nút "🧮 Chấm lại" cả bài kiểm tra.
+- firestore.rules: thêm match /paper_scans (chỉ admin).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
