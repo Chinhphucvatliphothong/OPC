@@ -2989,7 +2989,8 @@
     var busyState = React.useState(false); var busy = busyState[0], setBusy = busyState[1];
     // THÊM 13/10/2026 — nguồn "🤖 Đề cá nhân hoá cho lớp" (tự sinh theo điểm TB + câu lớp sai nhiều)
     var srcState = React.useState('bank'); var src = srcState[0], setSrc = srcState[1];
-    var autoState = React.useState({ struct: '18-4-6', topics: [], mx: { w: {}, lv: { M1: 40, M2: 30, M3: 20, M4: 10 }, parts: { I: 18, II: 4, III: 6 } } }); // SỬA 6/11/2026: thêm mx = ma trận Bộ GD (struct 'matrix') var auto = autoState[0], setAuto = autoState[1];
+    // SỬA 6/11/2026: thêm mx = ma trận Bộ GD (struct 'matrix')
+    var autoState = React.useState({ struct: '18-4-6', topics: [], mx: { w: {}, lv: { M1: 40, M2: 30, M3: 20, M4: 10 }, parts: { I: 18, II: 4, III: 6 } } }); var auto = autoState[0], setAuto = autoState[1];
     var poolState = React.useState(null); var pool = poolState[0], setPool = poolState[1];
     React.useEffect(function(){
       if(src !== 'auto' || pool) return;
