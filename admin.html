@@ -3001,10 +3001,15 @@
     // THÊM 6/11/2026 — "Chuẩn ma trận Bộ GD" (đề TN THPT 2026): hàng = chủ đề lớn đang có câu hỏi dùng được (bỏ đề đang khoá),
     // trọng số/mức độ/số câu mỗi Phần chỉnh được; allocate() chia số câu cho từng ô (chủ đề × Phần × mức độ) bằng exam-matrix.js
     var isMatrix = auto.struct === 'matrix';
+    // SỬA 6/11/2026 — câu trong pool (toStudentQuestionShape) mang tên chủ đề ở topicName, KHÔNG có chuDeLon/index
+    // → trước đây bảng ma trận báo "Ngân hàng chưa có câu hỏi dùng được". Chỉ lấy chủ đề Vật lí 12 (bỏ VL10/VL11) nếu có.
+    function mxRowOf(q){ return q.chuDeLon || q.topicName || q.chuDe || ''; }
     var mxRows = React.useMemo(function(){
-      var set = {}; (pool || []).forEach(function(q){ if(q.examLocked) return; var n = q.chuDeLon || q.chuDe; if(n) set[n] = 1; });
+      var set = {}; (pool || []).forEach(function(q){ if(q.examLocked) return; var n = mxRowOf(q); if(n) set[n] = 1; });
       var order = (typeof CHU_DE_LIST !== 'undefined' && CHU_DE_LIST) ? CHU_DE_LIST : [];
-      return Object.keys(set).sort(function(a, b){ var ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+      var names = Object.keys(set), k12 = names.filter(function(n){ return order.indexOf(n) > -1; });
+      if(k12.length) names = k12;
+      return names.sort(function(a, b){ var ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
     }, [pool]);
     var mxSpec = React.useMemo(function(){
       var base = window.OPC_MATRIX ? window.OPC_MATRIX.presetBGD(mxRows) : { rows: [] };
@@ -3056,11 +3061,14 @@
           // THÊM 6/11/2026 — Chuẩn ma trận Bộ GD: bốc từng ô (chủ đề × Phần × mức độ); ưu tiên câu lớp CHƯA làm, thiếu mới lấy cả câu cũ
           if(!window.OPC_MATRIX) throw new Error('Thiếu exam-matrix.js.');
           if(!mxSum.total) throw new Error('Ma trận chưa có câu nào — kiểm tra số câu mỗi Phần và tỉ trọng chủ đề.');
-          var avail = pool.filter(function(q){ return !q.examLocked && (!auto.topics.length || auto.topics.indexOf(q.topicKey) > -1); });
+          // pick() nhận diện câu theo examId + '_q' + index và chủ đề theo chuDeLon → bọc câu cho đúng dạng, bốc xong trả về câu gốc
+          var origById = {};
+          var avail = pool.filter(function(q){ return !q.examLocked && mxRows.indexOf(mxRowOf(q)) > -1 && (!auto.topics.length || auto.topics.indexOf(q.topicKey) > -1); })
+            .map(function(q){ origById[q.id] = q; return { id: q.id, examId: '', index: q.id, part: q.part, level: q.level || 'M2', chuDeLon: mxRowOf(q) }; });
           var fresh = avail.filter(function(q){ return !(cstats.usedQ || {})[q.id]; });
           var pk = window.OPC_MATRIX.pick(fresh, Object.assign({}, mxCells), { rows: mxRows });
           if((pk.shortage && pk.shortage.length) || pk.substituted) pk = window.OPC_MATRIX.pick(avail, Object.assign({}, mxCells), { rows: mxRows });
-          qs = window.OPC_OMR.orderForSheet(pk.I.concat(pk.II, pk.III)).all;
+          qs = window.OPC_OMR.orderForSheet(pk.I.concat(pk.II, pk.III).map(function(x){ return origById[x.id]; }).filter(Boolean)).all;
           mxInfo = { shortage: pk.shortage || [], substituted: pk.substituted || 0 };
           if(mxInfo.shortage.length) props.fireToast('Ngân hàng thiếu ' + mxInfo.shortage.reduce(function(a, x){ return a + (x.need - x.got); }, 0) + ' câu so với ma trận — đề còn ' + qs.length + ' câu.', true);
           else if(mxInfo.substituted) props.fireToast('Có ' + mxInfo.substituted + ' câu phải thay bằng chủ đề/mức độ gần nhất vì ngân hàng chưa đủ câu đúng ô.');
