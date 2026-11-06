@@ -1,0 +1,9 @@
+Kiểm tra lớp: thêm cấu trúc "Chuẩn ma trận Bộ GD" cho đề cá nhân hoá lớp
+
+- admin.html (ClassTestCreateModal): mục "Cấu trúc" có thêm lựa chọn
+  "Chuẩn ma trận Bộ GD (đề TN THPT 2026 · 28 câu · 50 phút)" = 18 + 4 + 6.
+- Bảng ma trận chỉnh được: số câu mỗi Phần, tỉ lệ M1–M4, tỉ trọng chủ đề.
+- Bốc câu theo ô (chủ đề × Phần × mức độ) bằng exam-matrix.js; ưu tiên câu lớp
+  chưa làm, thiếu mới lấy câu cũ / thay bằng ô gần nhất; bỏ đề đang khoá.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
