@@ -109,8 +109,9 @@
     m = s.match(/^(?:c|ch|chuong)\s*([1-4])(?![0-9])/);
     if(m) return Number(m[1]);
     // THÊM 28/10/2026 — mã bài/nano-point khối 10, 11: "k10-5", "k11-3.2" -> tra bài trong nano-map.js
+    // SỬA 7/11/2026 — thêm tiền tố danh mục nano-point VL10 (md-, cd-, bd-, dlh-) và VL11 (s11-, dt11-, dd11-)
     var N0 = window.OPC_NANO;
-    if(N0 && /^k1[01]-\d/.test(s)){
+    if(N0 && /^(k1[01]|md|cd|bd|dlh|s11|dt11|dd11)-\d/.test(s)){
       var bk = s.split('.')[0];
       var bb = N0.getBai ? N0.getBai(bk) : null;
       if(bb && TOPIC_TO_CHUONG[bb.chuDeKey]) return TOPIC_TO_CHUONG[bb.chuDeKey];
@@ -181,11 +182,16 @@
   //  - settings/curriculum.lockedExams: [examId, ...] — đề trong ngân hàng bị khoá với
   //    học sinh (áp dụng mọi em): hệ thống không lấy câu của đề đó để luyện tập thích ứng,
   //    Drill, thi thử, đề cá nhân hoá… Đề đã giao sẵn cho em và lịch sử làm bài không đổi.
+  // SỬA 7/11/2026 — key bài cũ VL10/VL11 (k10-9, k11-12…) đổi sang key mới (bd-2, s11-5…) qua OPC_NANO.resolveBaiKey
+  function resolveBai(k){
+    var N = window.OPC_NANO;
+    return (N && N.resolveBaiKey) ? N.resolveBaiKey(k) : k;
+  }
   function normalizeKeys(arr){
     if(!Array.isArray(arr)) return [];
     var seen = {}, out = [];
     arr.forEach(function(v){
-      var s = String(v == null ? '' : v).trim();
+      var s = resolveBai(String(v == null ? '' : v).trim());
       if(s && !seen[s]){ seen[s] = true; out.push(s); }
     });
     return out;
@@ -223,7 +229,7 @@
   function questionLessonKeys(q){
     var out = [];
     if(!q) return out;
-    function add(k){ k = String(k == null ? '' : k).trim(); if(k && out.indexOf(k) < 0) out.push(k); }
+    function add(k){ k = resolveBai(String(k == null ? '' : k).trim()); if(k && out.indexOf(k) < 0) out.push(k); }
     var N = window.OPC_NANO;
     add(q.baiKey); add(q.nanoBaiKey);
     var ids = (Array.isArray(q.nanoIds) && q.nanoIds.length) ? q.nanoIds
