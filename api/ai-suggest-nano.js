@@ -24,7 +24,7 @@
 // Nay: chọn 1-3 nano-point ở BẤT KỲ Bài nào, kèm confidence (cao/vừa/thấp); được trả mảng rỗng khi không có
 // nano-point nào thật sự khớp (thay vì ép đoán bừa).
 var SYSTEM_INSTRUCTION = [
-  'Bạn là hệ thống gắn nhãn kiến thức cho câu hỏi Vật Lí lớp 12 (chương trình GDPT 2018, thi Tốt nghiệp THPT —',
+  'Bạn là hệ thống gắn nhãn kiến thức cho câu hỏi Vật Lí lớp 10, 11, 12 (chương trình GDPT 2018, SGK Kết nối tri thức; lớp 12 thi Tốt nghiệp THPT —',
   'gồm sách giáo khoa và sách Chuyên đề học tập) theo danh mục \"nano-point\" chuẩn của FaradayAI Luyện Thi Vật Lí.',
   '',
   'Bạn được đưa: (1) TOÀN BỘ danh mục chuẩn: Chủ đề > Bài > nano-point, mỗi nano-point có mã id riêng; (2) nội dung',
