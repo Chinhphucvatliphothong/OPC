@@ -550,6 +550,8 @@ function transformQuestion(q, examMeta){
     groupPassage: q.groupPassage || null,
     groupImages: resolveQuestionImages({ images: q.groupImages || [] }, examMeta.images),
     ctxFrom: q.ctxFrom != null ? q.ctxFrom : null, // THÊM 14/10/2026 — ngữ cảnh lấy từ câu trước (index)
+    // THÊM 9/11/2026 — chùm tường minh (PrepScholarEngine.buildGroups): các câu cùng groupId (cùng đề) là 1 chùm, bốc đề phải lấy đủ cả chùm
+    groupId: q.groupId || null, groupSeq: q.groupSeq || null, groupSize: q.groupSize || null, groupKind: q.groupKind || null,
     examTitle: examMeta.title,
     examId: examMeta.examId,
     baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
