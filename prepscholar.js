@@ -132,6 +132,57 @@
   var MOET_STRUCTURE = { I: 18, II: 4, III: 6 };
   var PART_LABELS = { I: 'Phần I (ABCD)', II: 'Phần II (Đúng/Sai)', III: 'Phần III (Trả lời ngắn)' };
 
+  // THÊM 9/11/2026 — CHÙM CÂU HỎI phía học sinh. Câu trong QUESTION_BANK mang groupId/groupSeq/groupSize/groupKind
+  // (xem buildGroups). Chùm là ĐƠN VỊ NGUYÊN TỬ khi bốc đề: lấy đủ cả chùm hoặc không lấy.
+  function groupMembersIndex(){
+    var by = {}, map = {};
+    QUESTION_BANK.forEach(function(q){
+      if(q && q.groupId && q.examId) (by[q.examId + '|' + q.groupId] || (by[q.examId + '|' + q.groupId] = [])).push(q);
+    });
+    Object.keys(by).forEach(function(k){
+      var m = by[k].slice().sort(function(a, b){ return (a.groupSeq || 0) - (b.groupSeq || 0); });
+      if(m.length > 1) m.forEach(function(q){ map[q.id] = m; });
+    });
+    return map;
+  }
+  // Chùm đủ thành viên trong toàn ngân hàng hiện hành (sau khi lọc chương) — thiếu thành viên → không dùng được.
+  function isCompleteGroup(q, idx){
+    var m = idx[q.id];
+    if(!m) return !(q.groupSize > 1); // câu thuộc chùm nhưng không còn đủ ≥2 câu trong ngân hàng → thiếu
+    return m.length >= (q.groupSize || m.length);
+  }
+  // Bỏ câu thuộc chùm bị thiếu thành viên khỏi pool (không giao Y mà thiếu X / dữ kiện chung)
+  function dropIncompleteGroups(pool){
+    var idx = groupMembersIndex();
+    return pool.filter(function(q){ return isCompleteGroup(q, idx); });
+  }
+  // Mở rộng danh sách đã bốc thành cả chùm: chèn các câu còn lại của chùm NGAY SAU câu đầu tiên của chùm, đúng thứ tự gốc.
+  function expandToClusters(picked){
+    var idx = groupMembersIndex(), seen = {}, out = [];
+    picked.forEach(function(q){
+      if(seen[q.id]) return;
+      var m = idx[q.id];
+      if(m && isCompleteGroup(q, idx)){ m.forEach(function(x){ if(!seen[x.id]){ seen[x.id] = 1; out.push(x); } }); }
+      else if(!(q.groupSize > 1)){ seen[q.id] = 1; out.push(q); }
+    });
+    return out;
+  }
+  // Bốc ĐÚNG count câu từ pool (1 Phần) mà không cắt chùm: nhận danh sách ưu tiên "picked", rồi bù từ pool.
+  function fillWithClusters(picked, pool, count){
+    var idx = groupMembersIndex(), seen = {}, out = [];
+    function tryAdd(q){
+      if(seen[q.id]) return;
+      var m = idx[q.id];
+      if(!isCompleteGroup(q, idx)) return;
+      var members = (m || [q]).filter(function(x){ return !seen[x.id]; });
+      if(out.length + members.length > count) return;
+      members.forEach(function(x){ seen[x.id] = 1; out.push(x); });
+    }
+    picked.forEach(tryAdd);
+    for(var i = 0; i < pool.length && out.length < count; i++) tryAdd(pool[i]);
+    return out;
+  }
+
   // Chọn "count" câu trong pool, ưu tiên PHỦ RỘNG nhiều Tag (nano-point)
   // khác nhau trước khi lặp lại Tag.
   function pickCoverage(pool, count){
@@ -182,8 +233,8 @@
     if(shortages.length) return { ok: false, questions: [], shortages: shortages, chapters: UNLOCKED_CHAPTERS.slice() };
     var questions = [];
     Object.keys(MOET_STRUCTURE).forEach(function(part){
-      var pool = shuffled(QUESTION_BANK.filter(function(q){ return q.part === part; }));
-      questions = questions.concat(pickCoverage(pool, MOET_STRUCTURE[part]));
+      var pool = dropIncompleteGroups(shuffled(QUESTION_BANK.filter(function(q){ return q.part === part; })));
+      questions = questions.concat(fillWithClusters(pickCoverage(pool, MOET_STRUCTURE[part]), pool, MOET_STRUCTURE[part])); // SỬA 9/11/2026 — không cắt chùm
     });
     return { ok: true, questions: questions, shortages: [], chapters: UNLOCKED_CHAPTERS.slice() };
   }
@@ -756,6 +807,8 @@
     // SỬA 5/10/2026 — câu gắn nhiều nano-point nằm trong pool của TỪNG nano-point đó
     QUESTION_BANK.forEach(function(q){
       if(askedIds[q.id]) return;
+      // THÊM 9/11/2026 — luyện thích ứng hỏi từng câu một: câu phụ thuộc kết quả câu trước trong chùm (groupKind 'chain', không phải câu đầu) không giải riêng được → bỏ
+      if(q.groupKind === 'chain' && (q.groupSeq || 1) > 1) return;
       nanoIdsOf(q).forEach(function(nid){ (poolByNano[nid] || (poolByNano[nid] = [])).push(q); });
     });
     var availableNanoIds = Object.keys(poolByNano);
@@ -930,7 +983,94 @@
       }
       out[i] = res; prev = res;
     });
+    return buildGroups(changed ? out : list);
+  }
+
+  // ============================================================================
+  // THÊM 9/11/2026 — QUAN HỆ CHÙM TƯỜNG MINH (groupId / groupSeq / groupSize / groupKind)
+  // Trước đây "chùm" chỉ được suy đoán mỗi lần bốc câu (so chuỗi groupPassage giữa 2 câu liền kề) nên dễ vỡ: bốc câu Y
+  // mà thiếu câu X / thiếu dữ kiện chung. Nay mỗi chùm có 1 groupId ổn định ('g' + index câu đầu tiên), gắn ngay lúc
+  // nhập đề và luôn được tính lại (idempotent) mỗi lần đọc đề (linkPrevContext). Mọi bộ chọn câu coi cả chùm là 1 đơn vị.
+  //  - cùng groupId (do parser gắn)                       → cùng chùm
+  //  - câu "dựa vào câu trên" (ctxFrom = index câu nguồn)  → cùng chùm với câu nguồn (groupKind = 'chain')
+  //  - đề cũ chưa có groupId: cùng groupPassage ở 2 câu liền kề cùng Phần → cùng chùm (migration mềm)
+  function buildGroups(list){
+    if(!Array.isArray(list) || list.length < 2) return stripSingleGroup(list);
+    var n = list.length, parent = [], i;
+    for(i = 0; i < n; i++) parent.push(i);
+    function find(x){ while(parent[x] !== x){ parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    function union(a, b){ a = find(a); b = find(b); if(a !== b) parent[Math.max(a, b)] = Math.min(a, b); }
+    var order = [];
+    for(i = 0; i < n; i++) if(list[i]) order.push(i);
+    order.sort(function(a, b){
+      var ia = Number(list[a].index), ib = Number(list[b].index);
+      if(isNaN(ia) || isNaN(ib) || ia === ib) return a - b;
+      return ia - ib;
+    });
+    var byId = {}, byIdx = {};
+    order.forEach(function(pos, k){
+      var q = list[pos];
+      if(q.index != null) byIdx[q.index] = pos;
+      if(q.groupId){ if(byId[q.groupId] != null) union(byId[q.groupId], pos); else byId[q.groupId] = pos; }
+      if(q.ctxFrom != null && byIdx[q.ctxFrom] != null && (list[byIdx[q.ctxFrom]].part || 'I') === (q.part || 'I')) union(byIdx[q.ctxFrom], pos);
+      var prev = k > 0 ? list[order[k - 1]] : null;
+      if(prev && (prev.part || 'I') === (q.part || 'I') && !(prev.groupId && q.groupId)){
+        if(q.groupPassage && prev.groupPassage === q.groupPassage) union(order[k - 1], pos);
+        else if(q.ctxOwn && prev.groupPassage === q.ctxOwn) union(order[k - 1], pos);
+      }
+    });
+    var comps = {};
+    order.forEach(function(pos){ var r = find(pos); (comps[r] || (comps[r] = [])).push(pos); });
+    var out = list.slice(), changed = false;
+    Object.keys(comps).forEach(function(r){
+      var members = comps[r];
+      if(members.length < 2){
+        var q0 = list[members[0]];
+        if(q0.groupId != null || q0.groupSeq != null || q0.groupSize != null || q0.groupKind != null){
+          var c0 = Object.assign({}, q0); delete c0.groupId; delete c0.groupSeq; delete c0.groupSize; delete c0.groupKind;
+          out[members[0]] = c0; changed = true;
+        }
+        return;
+      }
+      var first = list[members[0]];
+      var gid = 'g' + (first.index != null ? first.index : members[0]);
+      var kind = members.some(function(p){ return list[p].ctxFrom != null; }) ? 'chain' : 'shared';
+      members.forEach(function(p, k){
+        var q = list[p];
+        if(q.groupId === gid && q.groupSeq === k + 1 && q.groupSize === members.length && q.groupKind === kind) return;
+        out[p] = Object.assign({}, q, { groupId: gid, groupSeq: k + 1, groupSize: members.length, groupKind: kind });
+        changed = true;
+      });
+    });
     return changed ? out : list;
+  }
+  function stripSingleGroup(list){
+    if(!Array.isArray(list)) return list;
+    var changed = false;
+    var out = list.map(function(q){
+      if(q && (q.groupId != null || q.groupSeq != null || q.groupSize != null || q.groupKind != null)){
+        var c = Object.assign({}, q); delete c.groupId; delete c.groupSeq; delete c.groupSize; delete c.groupKind; changed = true; return c;
+      }
+      return q;
+    });
+    return changed ? out : list;
+  }
+  // Bản đồ chùm của 1 tập câu (có thể gộp nhiều đề; mỗi đề cần q.examId): { "<examId>_q<index>": [các thành viên theo thứ tự] }.
+  // Chỉ chứa chùm >= 2 câu. keyOf tuỳ chọn (mặc định examId_q<index>).
+  function clusterMap(questions, keyOf){
+    keyOf = keyOf || function(q){ return q.examId + '_q' + q.index; };
+    var byExam = {}, map = {};
+    (questions || []).forEach(function(q){ if(q) (byExam[q.examId == null ? '' : q.examId] || (byExam[q.examId == null ? '' : q.examId] = [])).push(q); });
+    Object.keys(byExam).forEach(function(eid){
+      var grouped = buildGroups(byExam[eid]);
+      var byGid = {};
+      grouped.forEach(function(q){ if(q.groupId) (byGid[q.groupId] || (byGid[q.groupId] = [])).push(q); });
+      Object.keys(byGid).forEach(function(g){
+        var mem = byGid[g].slice().sort(function(a, b){ return (a.groupSeq || 0) - (b.groupSeq || 0); });
+        mem.forEach(function(q){ map[keyOf(q)] = mem; });
+      });
+    });
+    return map;
   }
 
   // ============================================================================
@@ -1178,9 +1318,9 @@
       // hiểu lầm. Giờ trả về đúng pool của chuyên đề đó (có thể rỗng) — nơi
       // gọi hàm này (startDrill trong prepscholar-ui.js) chịu trách nhiệm
       // báo cho học sinh biết khi chưa có câu hỏi, thay vì âm thầm đổi đề.
-      var pool = QUESTION_BANK.filter(function(q){ return q.topicKey === topicKey; });
+      var pool = dropIncompleteGroups(QUESTION_BANK.filter(function(q){ return q.topicKey === topicKey; }));
       count = Math.min(count || 5, pool.length);
-      return pool.slice(0, count);
+      return expandToClusters(pool.slice(0, count)); // SỬA 9/11/2026 — câu chùm đi đủ cả chùm (có thể nhiều hơn count vài câu)
     },
     // Bài kiểm tra đầu vào (Diagnostic Test) — theo đúng cấu trúc đề thi
     // Vật lí THPT chương trình GDPT 2018: Phần I 18 câu, Phần II 4 câu,
@@ -1193,8 +1333,8 @@
       var TARGET = MOET_STRUCTURE;
       var out = [];
       Object.keys(TARGET).forEach(function(part){
-        var pool = QUESTION_BANK.filter(function(q){ return q.part === part; });
-        out = out.concat(pickCoverage(pool, TARGET[part]));
+        var pool = dropIncompleteGroups(QUESTION_BANK.filter(function(q){ return q.part === part; }));
+        out = out.concat(fillWithClusters(pickCoverage(pool, TARGET[part]), pool, TARGET[part])); // SỬA 9/11/2026 — không cắt chùm
       });
       return out;
     },
@@ -1206,8 +1346,9 @@
         var nano = window.OPC_NANO.getNano(nanoId);
         if(nano) pool = QUESTION_BANK.filter(function(q){ return q.baiKey === nano.baiKey; });
       }
+      pool = dropIncompleteGroups(pool);
       count = Math.min(count || 5, pool.length);
-      return pool.slice(0, count);
+      return expandToClusters(pool.slice(0, count)); // SỬA 9/11/2026
     },
     // THÊM 30/9/2026 — "Luyện thêm N câu tương tự" ngay dưới lời giải của 1
     // câu làm sai: ưu tiên câu CÙNG nano-point (cùng kỹ năng), thiếu thì bù
@@ -1247,7 +1388,7 @@
       }
       fill(false);
       if(picked.length < count) fill(true); // hết câu mới thì mới cho gặp lại câu cũ
-      return picked;
+      return expandToClusters(picked); // SỬA 9/11/2026 — câu chùm đi đủ cả chùm
     },
     countSimilar: function(question){
       if(!question) return 0;
@@ -1261,9 +1402,9 @@
     // Luyện lại cả 1 "Bài" (gộp các Tag con) — dùng cho nút "Luyện bài này"
     // trên lưới 16 Bài của Trang chủ Học sinh.
     createBaiDrill: function(baiKey, count){
-      var pool = QUESTION_BANK.filter(function(q){ return q.baiKey === baiKey; });
+      var pool = dropIncompleteGroups(QUESTION_BANK.filter(function(q){ return q.baiKey === baiKey; }));
       count = Math.min(count || 5, pool.length);
-      return pool.slice(0, count);
+      return expandToClusters(pool.slice(0, count)); // SỬA 9/11/2026
     },
     classifyMastery: classifyMastery,
     buildBaiMasteryStatus: buildBaiMasteryStatus,
@@ -1290,7 +1431,9 @@
     predictExamScore: function(attempts){ var b = {}; QUESTION_BANK.forEach(function(q){ b[q.id] = q; }); return predictExamScore(attempts, b); },
     compactPrediction: compactPrediction,
     formatPrediction: formatPrediction,
-    linkPrevContext: linkPrevContext
+    linkPrevContext: linkPrevContext,
+    buildGroups: buildGroups, // THÊM 9/11/2026 — chùm tường minh (groupId/groupSeq/groupSize/groupKind)
+    clusterMap: clusterMap
   };
 
 })(window);

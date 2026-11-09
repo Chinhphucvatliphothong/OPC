@@ -3622,6 +3622,10 @@
     return cands[cands.length - 1];
   }
   // Sinh đề cho lớp/nhóm: counts {I,II,III}; stats từ ctClassStats; ưu tiên câu thuộc nano-point lớp sai nhiều
+  // THÊM 9/11/2026 — bỏ câu "chain" (dùng kết quả câu đứng trước trong chùm, groupSeq > 1) khỏi nguồn bốc từng câu lẻ
+  function ctDropDependents(pool){
+    return (pool || []).filter(function(q){ return !(q.groupKind === 'chain' && (q.groupSeq || 1) > 1); });
+  }
   function ctGenerateExam(pool, counts, stats, opts){
     opts = opts || {};
     var rnd = ctRng(opts.seed || String(Date.now()));
@@ -3632,6 +3636,7 @@
       return 1 + 4 * m;
     }
     var chosen = [];
+    pool = ctDropDependents(pool); // THÊM 9/11/2026 — câu phụ thuộc kết quả câu trước trong chùm không giải riêng được
     ['I', 'II', 'III'].forEach(function(p){
       var n = counts[p] || 0; if(!n) return;
       var cands = pool.filter(function(q){ return q.part === p && !used[q.id] && (!topic || topic.indexOf(q.topicKey) > -1); });
@@ -3656,6 +3661,7 @@
   // Phiếu ôn cá nhân cho 1 em: câu cùng nano-point với câu em sai (cùng phần, mức ≤ câu sai), đủ n câu
   function ctGenerateReview(pool, testQs, answers, n, seed, exclude){
     var NE = window.PrepScholarEngine, rnd = ctRng(seed);
+    pool = ctDropDependents(pool); // THÊM 9/11/2026
     var res = NE.scoreExam(testQs, answers || {}).perQuestionResults;
     var wrong = res.filter(function(r){ return !r.isFullCorrect; }).map(function(r){ return r.question; });
     var inTest = {}; testQs.forEach(function(q){ inTest[q.id] = 1; });
@@ -4829,22 +4835,20 @@
   // lấy cả CỤM kí tự phía sau cho đến dấu ":" gần nhất (hoặc tối đa 60 kí
   // tự nếu không có dấu ":"), rồi lấy MỌI số xuất hiện trong cụm đó — không
   // đòi hỏi chữ "câu" phải lặp lại trước từng số.
+  // SỬA 9/11/2026 — chỉ đọc DÃY SỐ CÂU ngay sau chữ "câu" ("câu 1 và 2", "Câu 3, 4, 5", "câu 6 đến câu 8"), dừng ở dấu chấm/phẩy
+  // không nối tiếp số. Trước đây quét 60 kí tự đầu nên "Dữ kiện chung cho câu 21 và 22. Một khối khí ở 300 K" ra 299 câu.
+  var GROUP_NUM_LIST_RE = /c[aâ]u\s*\d+(?:\s*(?:,|và|&|đến|tới|-|–|—)\s*(?:c[aâ]u\s*)?\d+)*/i;
   function inferGroupQuestionCount(passageText){
-    var m = passageText.match(/c[aâ]u\s*\d/i);
+    var m = String(passageText || '').match(GROUP_NUM_LIST_RE);
     if(!m) return { count: 1, uncertain: true };
-    var startIdx = m.index;
-    var colonIdx = passageText.indexOf(':', startIdx);
-    var windowEnd = (colonIdx > -1 && colonIdx - startIdx < 80) ? colonIdx : Math.min(passageText.length, startIdx + 60);
-    var windowText = passageText.slice(startIdx, windowEnd);
-    var nums = [];
-    var numRegex = /\d+/g;
-    var nm;
-    while((nm = numRegex.exec(windowText)) !== null){ nums.push(Number(nm[0])); }
+    var nums = (m[0].match(/\d+/g) || []).map(Number);
     if(nums.length >= 2){
-      return { count: Math.max.apply(null, nums) - Math.min.apply(null, nums) + 1, uncertain: false };
-    } else if(nums.length === 1){
-      return { count: 1, uncertain: false };
+      var isRange = /đến|tới|-|–|—/i.test(m[0]);
+      var distinct = nums.filter(function(x, i){ return nums.indexOf(x) === i; });
+      var cnt = isRange ? (Math.max.apply(null, nums) - Math.min.apply(null, nums) + 1) : distinct.length;
+      return { count: Math.max(1, Math.min(cnt, 12)), uncertain: false };
     }
+    if(nums.length === 1) return { count: 1, uncertain: false };
     return { count: 1, uncertain: true };
   }
 
@@ -4937,25 +4941,40 @@
   // đây chỉ nhận "Nội dung … câu N" nên cả cụm câu chùm Phần III bị tách rời, mất đoạn dữ kiện + hình chung).
   // Đoạn dùng chung bắt đầu TỪ dòng có cụm này (bỏ tiêu đề "PHẦN III…", \setcounter… phía trên), bỏ luôn nhãn
   // "Sử dụng … Câu 1 và Câu 2:" (số câu gốc sai khi bốc sang đề khác — bản in/màn hình tự ghi nhãn đúng số câu mới).
-  var GROUP_TRIGGER_RE = /(?:n[ộo]i\s*dung|th[ôo]ng\s*tin|d[ữu]\s*ki[ệe]n|ng[ữu]\s*c[ảa]nh|đo[ạa]n\s*(?:v[ăa]n|tr[íi]ch)|m[ôo]\s*t[ảa]\s*sau)[^\n]{0,60}?c[aâ]u\s*\d/i;
+  // SỬA 9/11/2026 — nhận thêm: "Sử dụng/Dùng (kết quả|số liệu|đồ thị|bảng…) sau cho câu…", "Dựa vào … trả lời câu…",
+  // "Căn cứ …", "Dữ liệu/Kết quả/Số liệu chung cho câu…", "…chung cho câu…". Nhãn luôn phải chứa "câu <số>".
+  var GROUP_TRIGGER_RE = /(?:n[ộo]i\s*dung|th[ôo]ng\s*tin|d[ữu]\s*ki[ệe]n|d[ữu]\s*li[ệe]u|s[ốo]\s*li[ệe]u|k[ếe]t\s*qu[ảa]|ng[ữu]\s*c[ảa]nh|đo[ạa]n\s*(?:v[ăa]n|tr[íi]ch)|m[ôo]\s*t[ảa]\s*sau|s[ửu]\s*d[ụu]ng|d[ùu]ng|d[ựu]a\s*v[àa]o|c[ăa]n\s*c[ứu]|chung)[^\n]{0,60}?c[aâ]u\s*\d/i;
   function stripGroupLabel(passageText){
     var m = passageText.match(GROUP_TRIGGER_RE);
     if(!m || m.index > 40) return passageText;
     var colon = passageText.indexOf(':', m.index);
-    if(colon < 0 || colon - m.index > 140) return passageText;
-    return passageText.slice(colon + 1).replace(/^[\s}]+/, '').trim();
+    if(colon >= 0 && colon - m.index <= 140){
+      return passageText.slice(colon + 1).replace(/^[\s}]+/, '').trim();
+    }
+    // SỬA 9/11/2026 — nhãn không có dấu ":" ("Dữ kiện chung cho câu 21 và 22. Một khối khí…"): cắt đến hết dãy số câu + dấu câu
+    var nm = passageText.slice(m.index).match(GROUP_NUM_LIST_RE);
+    if(!nm) return passageText;
+    var end = m.index + nm.index + nm[0].length;
+    var rest = passageText.slice(end).replace(/^\s*[:.;,]?\s*/, '').replace(/^[\s}]+/, '').trim();
+    return rest || passageText;
   }
   function cleanLatexLayout(t){
     return t.replace(/\\setcounter\{[^{}]*\}\{[^{}]*\}/g, ' ')
       .replace(/\\(?:vspace|hspace)\*?\{[^{}]*\}/g, ' ')
       .replace(/\\(?:qquad|quad|hfill|medskip|smallskip|bigskip|newline|par)\b/g, ' ');
   }
-  function extractPlainPreambleGroup(text){
+  function extractPlainPreambleGroup(text, force){
     var trig = text.match(GROUP_TRIGGER_RE);
-    if(!trig) return null;
+    if(!trig && !force) return null;
     // Bắt đầu từ ĐẦU DÒNG chứa cụm nhận diện (bỏ tiêu đề Phần / lệnh định dạng phía trên)
-    var lineStart = text.lastIndexOf('\n', trig.index) + 1;
-    text = text.slice(lineStart);
+    // THÊM 9/11/2026 — force (có thẻ "% @group:" mà không nhận ra nhãn): lấy cả phần mở đầu, bỏ dòng tiêu đề "PHẦN …"
+    if(trig){
+      var lineStart = text.lastIndexOf('\n', trig.index) + 1;
+      text = text.slice(lineStart);
+    } else {
+      text = text.split('\n').filter(function(l){ return !/^\s*(?:\\textbf\{)?\s*PH[ẦA]N\b/i.test(l); }).join('\n');
+      if(!text.replace(/%.*$/gm, '').trim()) return null;
+    }
     var imgs = [];
     var imgRegex3 = /\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g;
     var im3;
@@ -5075,6 +5094,19 @@
     t = t.replace(/%\s*(?:@nano[\w-]*\s*:|AI_TU_GIAI|AI_CAN_KIEM_TRA|CHUA_CO_DAP_AN)[^\n]*/gi, '');       // dấu vết của AI/nano nằm giữa dòng
     return t.replace(/\n{3,}/g, '\n\n').trim();
   }
+  // THÊM 9/11/2026 — đếm số câu \begin{ex} THỰC SỰ liền nhau kể từ dòng startIdx cho đến khi gặp ranh giới chùm:
+  // nhãn chùm mới / \immini mới / tiêu đề Phần (chỉ xét dòng nằm NGOÀI \begin{ex}). Dùng để đối chiếu với số câu ghi trong nhãn.
+  function countExUntilBoundary(lines, startIdx){
+    var cnt = 0, inside = false;
+    for(var j = startIdx; j < lines.length && cnt < 15; j++){
+      var l = lines[j];
+      if(!inside){
+        if(/\\begin\{ex\}/.test(l)){ cnt++; inside = !/\\end\{ex\}/.test(l); continue; }
+        if(j > startIdx && (GROUP_TRIGGER_RE.test(l) || /\\immini/.test(l) || /\\tieuephan|^\s*(?:\\textbf\{)?\s*PH[ẦA]N\b/i.test(l))) break;
+      } else if(/\\end\{ex\}/.test(l)){ inside = false; }
+    }
+    return cnt;
+  }
   function parseTexBank(content, filename, opts){
     var allowEssay = !!(opts && opts.allowEssay);
     // THÊM 25/9/2026: gỡ trước cú pháp \immini{ \begin{ex}...\end{ex} }{hình}
@@ -5091,6 +5123,7 @@
     var titleCand = '';
     var preambleBuffer = [];
     var pendingGroup = null;
+    var lastGroupTag = null; // THÊM 9/11/2026 — thẻ "% @group: 3-4" (AI/giáo viên ghi) = nguồn số câu của chùm đáng tin nhất
 
     var tagRegex = /%\s*\[(M[1-4])\]\s*\[([^\]]+)\]\s*\[([^\]]+)\]/i;
     var subsecRegex = /\\subsubsection\{([^}]+)\}/i;
@@ -5110,12 +5143,21 @@
       var isPartIII = /\\tieuephan\{.*?III.*?\}/i.test(line) || /PH[ẦA]N\s*[:\-]?\s*(III|3)\b/i.test(line);
       var isPartII = /\\tieuephan\{.*?II.*?\}/i.test(line) || /PH[ẦA]N\s*[:\-]?\s*(II|2)\b/i.test(line);
       var isPartI = /\\tieuephan\{.*?I.*?\}/i.test(line) || /PH[ẦA]N\s*[:\-]?\s*(I|1)\b/i.test(line);
+      var prevPartVal = currentPart;
       if(isPartIII){
         currentPart = 'III';
       } else if(isPartII){
         currentPart = 'II';
       } else if(isPartI){
         currentPart = 'I';
+      }
+      // THÊM 9/11/2026 — chùm không bao giờ vượt qua ranh giới Phần (chùm cũ chưa đủ câu bị bỏ, không "rò" sang Phần sau)
+      if(currentPart !== prevPartVal && !inEx) pendingGroup = null;
+
+      var groupTagLine = !inEx ? line.match(/%\s*@group\s*:\s*(\d+)\s*(?:[-–—,]\s*(\d+))?/i) : null;
+      if(groupTagLine){
+        var ga = Number(groupTagLine[1]), gb = groupTagLine[2] != null ? Number(groupTagLine[2]) : ga;
+        lastGroupTag = { count: Math.max(1, Math.min(Math.abs(gb - ga) + 1, 12)) };
       }
 
       var nanoLine = line.match(/%.*?@nano\s*:\s*(.*)$/i);
@@ -5146,7 +5188,18 @@
             // nhận diện qua cụm "Nội dung ... câu N" — xem extractPlainPreambleGroup.
             newGroup = extractPlainPreambleGroup(preambleText);
           }
-          if(newGroup) pendingGroup = newGroup;
+          // THÊM 9/11/2026 — có thẻ "% @group:" mà không nhận ra nhãn → vẫn lấy phần mở đầu làm đoạn dùng chung
+          if(!newGroup && lastGroupTag && !/\\immini/.test(preambleText)) newGroup = extractPlainPreambleGroup(preambleText, true);
+          if(newGroup){
+            // Đối chiếu số câu: thẻ @group > số \begin{ex} thật sự liền sau > số trong nhãn. Lệch nhau → đánh dấu "nghi ngờ"
+            var actualEx = countExUntilBoundary(lines, i);
+            if(lastGroupTag){ newGroup.remaining = Math.min(lastGroupTag.count, Math.max(1, actualEx)); newGroup.uncertain = false; }
+            else if(actualEx > 0 && newGroup.remaining > actualEx){ newGroup.remaining = actualEx; newGroup.uncertain = true; }
+            else if(actualEx > newGroup.remaining && actualEx <= 4 && newGroup.uncertain){ newGroup.remaining = actualEx; }
+            newGroup.id = 'g' + (questions.length + 1);
+            pendingGroup = newGroup;
+          }
+          lastGroupTag = null;
           preambleBuffer = [];
         }
         inEx = true;
@@ -5237,12 +5290,12 @@
           // giảm dần số câu còn lại thuộc nhóm — hết thì xoá nhóm đang chờ.
           var groupData = null;
           if(pendingGroup && pendingGroup.remaining > 0){
-            groupData = { passage: pendingGroup.passage, images: pendingGroup.images.slice(), uncertain: pendingGroup.uncertain };
+            groupData = { passage: pendingGroup.passage, images: pendingGroup.images.slice(), uncertain: pendingGroup.uncertain, id: pendingGroup.id };
             pendingGroup.remaining -= 1;
             if(pendingGroup.remaining <= 0) pendingGroup = null;
           }
 
-          questions.push({
+          var parsedQ = {
             index: questions.length + 1,
             part: currentPart,
             type: qType,
@@ -5261,7 +5314,9 @@
             groupImages: groupData ? groupData.images : [],
             groupUncertain: groupData ? !!groupData.uncertain : false,
             raw: full
-          });
+          };
+          if(groupData && groupData.id) parsedQ.groupId = groupData.id; // THÊM 9/11/2026 — chùm tường minh (PrepScholarEngine.buildGroups); không đặt undefined vì Firestore từ chối
+          questions.push(parsedQ);
         }
       } else {
         preambleBuffer.push(line);
@@ -9623,12 +9678,15 @@
           if(!pq || !pq.groupPassage) return q;
           if(norm(pq.stem) !== norm(q.stem)){ skipped++; return q; }
           var own = q.ctxFrom != null ? (q.ctxOwn || null) : (q.groupPassage || null);
-          if(own === pq.groupPassage) return q;
+          // SỬA 9/11/2026 — dù đoạn dữ kiện đã đúng, vẫn cập nhật groupId do parser mới gắn (chùm tường minh) nếu khác
+          if(own === pq.groupPassage && (!pq.groupId || q.groupId === pq.groupId)) return q;
           changed++;
           var nq = Object.assign({}, q, { groupPassage: pq.groupPassage, groupImages: pq.groupImages || [], groupUncertain: !!pq.groupUncertain });
+          if(pq.groupId) nq.groupId = pq.groupId;
           delete nq.ctxFrom; delete nq.ctxOwn; delete nq.ctxOwnImages;
           return nq;
         });
+        if(window.PrepScholarEngine && window.PrepScholarEngine.buildGroups) qs = window.PrepScholarEngine.buildGroups(qs); // THÊM 9/11/2026 — tính lại groupSeq/groupSize/groupKind
         if(!changed){ props.fireToast('Không có câu chùm nào cần gắn lại' + (skipped ? ' (' + skipped + ' câu lệch nội dung so với file gốc, giữ nguyên)' : '') + '.'); return; }
         if(!window.confirm('Gắn đoạn dữ kiện dùng chung cho ' + changed + ' câu chùm của đề "' + (exam.title || '') + '"?' + (skipped ? '\n(' + skipped + ' câu lệch nội dung so với file gốc sẽ giữ nguyên.)' : ''))) return;
         await bankApi.updateQuestions(exam.id, qs);
@@ -9978,6 +10036,11 @@
     // cơ chế khớp tên file với lúc nạp cả đề, không cần logic ảnh riêng.
     async function importSingleQuestion(idx, q){
       if(!form.title.trim()){ props.fireToast('Vui lòng nhập tiêu đề đề thi trước khi nạp riêng 1 câu.', true); return; }
+      // THÊM 9/11/2026 — câu "dựa vào kết quả câu trên" không thể đứng riêng (thiếu kết quả câu nguồn) → bắt nạp cả chùm
+      if(q && (q.ctxFrom != null || q.groupKind === 'chain')){
+        props.fireToast('Câu này dùng kết quả của câu trước trong cùng chùm — không nạp riêng được. Hãy nạp cả đề/chùm để các câu đi cùng nhau.', true);
+        return;
+      }
       setImportingRows(function(prev){ return Object.assign({}, prev, { [idx]: true }); });
       try{
         var examRef = bankApi.newRef();
@@ -9987,6 +10050,10 @@
         }
         var row = nanoRows[idx] || { baiKey:'', nanoIds:[] };
         var singleQ = Object.assign({}, q, { index: 1, nanoBaiKey: row.baiKey || '', nanoPointIds: row.nanoIds || [] });
+        // THÊM 9/11/2026 — tách 1 câu khỏi chùm: dữ kiện chung (groupPassage) được giữ lại để câu vẫn đủ đề; bỏ các trường liên kết
+        // chùm/phụ thuộc (ctxFrom…) vì câu nguồn không còn đi cùng — nếu để lại, lần đọc sau câu sẽ MẤT dữ kiện.
+        delete singleQ.groupId; delete singleQ.groupSeq; delete singleQ.groupSize; delete singleQ.groupKind;
+        delete singleQ.ctxFrom; delete singleQ.ctxOwn; delete singleQ.ctxOwnImages;
         var texContent = texFile ? await texFile.text() : '';
         await bankApi.saveExamDoc(examRef, {
           title: form.title.trim() + ' — Câu ' + (idx + 1),
@@ -10643,7 +10710,10 @@
                           h('span',{className:'eb-part-pill'}, 'Phần ' + q.part),
                           h('span',{className:'eb-level-badge eb-level-' + (q.level ? q.level.toLowerCase() : 'm1')}, q.level + ' · ' + (lvlObj.label ? lvlObj.label.split('·')[1].trim() : 'Mức')),
                           q.chuDeLon ? h('span',{className:'eb-tag-topic'}, q.chuDeLon) : null,
-                          q.dangBai ? h('span',{className:'eb-tag-sub'}, q.dangBai) : null
+                          q.dangBai ? h('span',{className:'eb-tag-sub'}, q.dangBai) : null,
+                          // THÊM 9/11/2026 — nhãn chùm tường minh: câu k/n của chùm; chùm "chain" = câu sau dùng kết quả câu trước
+                          q.groupSize > 1 ? h('span',{className:'eb-tag-sub', title: q.groupKind === 'chain' ? 'Các câu trong chùm phụ thuộc nhau — luôn được bốc đi cùng nhau' : 'Các câu dùng chung dữ kiện — luôn được bốc đi cùng nhau'}, '🔗 Chùm ' + q.groupSeq + '/' + q.groupSize + (q.groupKind === 'chain' ? ' · phụ thuộc' : '')) : null,
+                          q.groupUncertain ? h('span',{className:'eb-tag-sub', style:{color:'#b45309'}, title:'Số câu ghi trong nhãn chùm lệch với số câu thực tế — hãy kiểm tra'}, '⚠ kiểm tra chùm') : null
                         )
                       ),
                       // Ngữ cảnh dùng chung nếu câu này thuộc "câu hỏi chùm"
@@ -11220,6 +11290,7 @@
       groupPassage: q.groupPassage || null,
       groupImages: resolveQuestionImagesLocal({ images: q.groupImages || [] }, resolvedImages),
       ctxFrom: q.ctxFrom != null ? q.ctxFrom : null, // THÊM 14/10/2026 — ngữ cảnh lấy từ câu trước (index câu nguồn)
+      groupId: q.groupId || null, groupSeq: q.groupSeq || null, groupSize: q.groupSize || null, groupKind: q.groupKind || null, // THÊM 9/11/2026 — chùm tường minh
       examTitle: examTitle,
       examId: examId,
       baiKey: (q.nanoBaiKey || (bai ? bai.key : '')) || '',
@@ -11483,37 +11554,39 @@
 
       // THÊM 15/10/2026 — CÂU HỎI CHÙM: các câu cùng đoạn "Sử dụng các thông tin sau cho Câu…" (cùng groupPassage) hoặc câu
       // "dựa vào câu trên" (ctxFrom) của CÙNG 1 đề là 1 cụm — bốc 1 câu thì lấy cả cụm, xếp liền nhau đúng thứ tự gốc.
-      var clusterOf = {};
-      (function(){
-        var byExam = {};
-        allQuestionPool.forEach(function(q){ (byExam[q.examId] || (byExam[q.examId] = [])).push(q); });
-        Object.keys(byExam).forEach(function(eid){
-          var list = byExam[eid].slice().sort(function(a, b){ return (Number(a.index) || 0) - (Number(b.index) || 0); });
-          var cur = null, prev = null;
-          list.forEach(function(q){
-            var joins = prev && (prev.part === q.part) && (
-              (q.groupPassage && prev.groupPassage === q.groupPassage) ||
-              (q.ctxFrom != null && Number(q.ctxFrom) === Number(prev.index)) ||
-              (q.ctxOwn && prev.groupPassage === q.ctxOwn) ||
-              (q.ctxFrom != null && prev.ctxFrom != null && q.ctxOwn && q.ctxOwn === prev.ctxOwn));
-            if(!joins) cur = [];
-            cur.push(q);
-            clusterOf[eid + '_q' + q.index] = cur;
-            prev = q;
-          });
+      // SỬA 9/11/2026 — chùm TƯỜNG MINH (groupId do PrepScholarEngine.buildGroups gắn) thay cho suy đoán so chuỗi;
+      // chùm là ĐƠN VỊ NGUYÊN TỬ: hoặc lấy đủ mọi câu, hoặc bỏ cả chùm — không bao giờ giao câu Y mà thiếu câu X / dữ kiện chung.
+      var clusterOf = (window.PrepScholarEngine && window.PrepScholarEngine.clusterMap) ? window.PrepScholarEngine.clusterMap(allQuestionPool) : {};
+      function qKey(q){ return q.examId + '_q' + q.index; }
+      // Chỉ giữ chùm CÒN ĐỦ mọi thành viên trong tập đã lọc (chương mở / bài khoá / chuyên đề / chỉ câu mới / đã giao).
+      function dropIncompleteClusters(list){
+        var has = {}; list.forEach(function(q){ has[qKey(q)] = 1; });
+        return list.filter(function(q){
+          var c = clusterOf[qKey(q)];
+          return !c || c.every(function(m){ return has[qKey(m)]; });
         });
-      })();
+      }
+      var droppedIncomplete = fullPool.length;
+      fullPool = dropIncompleteClusters(fullPool);
+      pool = dropIncompleteClusters(pool);
+      droppedIncomplete -= fullPool.length;
+      if(!pool.length) pool = fullPool;
+      if(!pool.length){
+        props.fireToast('Các câu hỏi chùm phù hợp bị thiếu thành viên (do bộ lọc chương/bài/chuyên đề) nên không giao — nới bộ lọc hoặc kiểm tra chùm trong Ngân hàng đề.', true);
+        return;
+      }
+      // Chọn cả chùm: trả về các thành viên theo đúng thứ tự gốc (hoặc [q] nếu là câu lẻ)
       function finalizePart(chosen, part, target){
-        var inFull = {}; fullPool.forEach(function(q){ if(q.part === part) inFull[q.examId + '_q' + q.index] = q; });
+        var inFull = {}; fullPool.forEach(function(q){ if(q.part === part) inFull[qKey(q)] = q; });
         var out = [], seen = {};
         function tryAdd(q){
-          var k = q.examId + '_q' + q.index;
-          if(seen[k]) return;
-          var members = (clusterOf[k] || [q]).filter(function(m){ return inFull[m.examId + '_q' + m.index]; });
-          if(!members.length) members = [q];
-          var fresh = members.filter(function(m){ return !seen[m.examId + '_q' + m.index]; });
+          var k = qKey(q);
+          if(seen[k] || !inFull[k]) return;
+          var members = (clusterOf[k] || [q]).filter(function(m){ return m.part === part; });
+          if(!members.every(function(m){ return inFull[qKey(m)]; })) return; // chùm thiếu thành viên → bỏ cả chùm
+          var fresh = members.filter(function(m){ return !seen[qKey(m)]; });
           if(out.length + fresh.length > target) return;
-          fresh.forEach(function(m){ seen[m.examId + '_q' + m.index] = 1; out.push(inFull[m.examId + '_q' + m.index] || m); });
+          fresh.forEach(function(m){ seen[qKey(m)] = 1; out.push(inFull[qKey(m)]); });
         }
         chosen.forEach(tryAdd);
         if(out.length < target) shuffle(pool.filter(function(q){ return q.part === part; })).forEach(function(q){ if(out.length < target) tryAdd(q); });
@@ -11573,12 +11646,25 @@
         var reviewTarget = Math.min(dueReview.length, Math.ceil(totalTarget * 0.4));
         for(var ri = 0; ri < dueReview.length && reviewChosen.length < reviewTarget; ri++){
           var rq = poolById[dueReview[ri].qId];
+          if(reviewChosen.indexOf(rq) > -1) continue;
           var partTarget = rq.part === 'I' ? targetP1 : (rq.part === 'II' ? targetP2 : targetP3);
           var partChosen = rq.part === 'I' ? chosenP1 : (rq.part === 'II' ? chosenP2 : chosenP3);
-          if(partChosen.length >= partTarget) continue; // Phần đó đã đủ chỗ, bỏ qua câu này
-          if(mxLeft){ var mk = mxKey(rq); if(!(mxLeft[mk] > 0)) continue; mxLeft[mk]--; } // THÊM 27/10/2026 — câu ôn lại cũng phải nằm trong ô ma trận còn chỗ
-          if(rq.part === 'I') chosenP1.push(rq); else if(rq.part === 'II') chosenP2.push(rq); else chosenP3.push(rq);
-          reviewChosen.push(rq);
+          // SỬA 9/11/2026 — câu ôn lại thuộc chùm thì lấy CẢ CHÙM (đủ chỗ trong Phần đó mới lấy, nếu không bỏ qua)
+          var rMembers = (clusterOf[rq.examId + '_q' + rq.index] || [rq]).map(function(m){ return poolById[m.examId + '_q' + m.index]; });
+          if(rMembers.some(function(m){ return !m; })) continue;
+          rMembers = rMembers.filter(function(m){ return reviewChosen.indexOf(m) < 0; });
+          if(partChosen.length + rMembers.length > partTarget) continue; // Phần đó không đủ chỗ cho cả chùm, bỏ qua
+          if(mxLeft){
+            var need = {}, okMx = true;
+            rMembers.forEach(function(m){ var mk = mxKey(m); need[mk] = (need[mk] || 0) + 1; });
+            Object.keys(need).forEach(function(mk){ if((mxLeft[mk] || 0) < need[mk]) okMx = false; });
+            if(!okMx) continue; // THÊM 27/10/2026 — câu ôn lại cũng phải nằm trong ô ma trận còn chỗ
+            Object.keys(need).forEach(function(mk){ mxLeft[mk] -= need[mk]; });
+          }
+          rMembers.forEach(function(m){
+            if(m.part === 'I') chosenP1.push(m); else if(m.part === 'II') chosenP2.push(m); else chosenP3.push(m);
+            reviewChosen.push(m);
+          });
         }
       }
 
@@ -11747,6 +11833,8 @@
       function pushGroupPassageTex(list, idx){
         var q = list[idx];
         if(!q || !q.groupPassage || (idx > 0 && list[idx - 1].groupPassage === q.groupPassage)) return;
+        // THÊM 9/11/2026 — câu "dựa vào câu trên" đứng ngay dưới câu nguồn: dữ kiện (kèm đề câu nguồn) đã có ở câu trên → không in lặp (đồng bộ với bản PDF)
+        if(q.ctxFrom != null && idx > 0 && list[idx - 1].examId === q.examId && Number(list[idx - 1].index) === Number(q.ctxFrom)) return;
         var j = idx; while(j + 1 < list.length && list[j + 1].groupPassage === q.groupPassage) j++;
         var label = j > idx ? ('Sử dụng các thông tin sau cho Câu ' + (idx + 1) + (j - idx === 1 ? ' và Câu ' : ' đến Câu ') + (j + 1) + ':') : ('Sử dụng các thông tin sau cho Câu ' + (idx + 1) + ':');
         lines.push('\\noindent\\textbf{' + label + '} ' + gpCleanLead(q.groupPassage));
@@ -12383,6 +12471,13 @@
           pool.push({ q: Object.assign({}, q, { examId: ex.id, examTitle: ex.title, examImages: ex.images }), nid: nid, score: score + Math.random() });
         });
       });
+      // THÊM 9/11/2026 — chùm câu hỏi: gom các thành viên của mỗi chùm (cùng đề + groupId) để bốc đủ cả chùm
+      var drillSibs = {};
+      drillExams.filter(function(ex){ return ex.examKind !== 'soTruong'; }).forEach(function(ex){
+        (ex.questions || []).forEach(function(q){
+          if(q.groupId) (drillSibs[ex.id + '|' + q.groupId] || (drillSibs[ex.id + '|' + q.groupId] = [])).push(Object.assign({}, q, { examId: ex.id, examTitle: ex.title, examImages: ex.images }));
+        });
+      });
       pool.sort(function(a, b){ return b.score - a.score; });
       var picked = [], perNano = {}, rest = [];
       pool.forEach(function(it){
@@ -12391,6 +12486,17 @@
         else rest.push(it);
       });
       for(var i = 0; i < rest.length && picked.length < count; i++) picked.push(rest[i]);
+      // Mở rộng thành cả chùm (chèn các câu còn lại của chùm ngay sau câu đầu tiên của chùm, đúng thứ tự gốc)
+      var seenQ = {}, expanded = [];
+      picked.forEach(function(it){
+        var q = it.q, key = q.examId + '_q' + q.index;
+        if(seenQ[key]) return;
+        var mem = q.groupId ? (drillSibs[q.examId + '|' + q.groupId] || []).slice().sort(function(a, b){ return (a.groupSeq || 0) - (b.groupSeq || 0); }) : [];
+        if(mem.length > 1 && (!q.groupSize || mem.length >= q.groupSize)){
+          mem.forEach(function(m){ var k2 = m.examId + '_q' + m.index; if(!seenQ[k2]){ seenQ[k2] = 1; expanded.push({ q: m }); } });
+        } else if(!(q.groupSize > 1)){ seenQ[key] = 1; expanded.push(it); }
+      });
+      picked = expanded;
       // Xếp lại theo Phần I -> II -> III cho giống đề thật.
       var order = { I: 0, II: 1, III: 2 };
       return picked.map(function(it){ return it.q; }).sort(function(a, b){ return (order[a.part] || 0) - (order[b.part] || 0); });
