@@ -10,6 +10,16 @@
 //   • "📄 + Giấy": nối thêm trang giấy trống dưới câu hỏi để viết tự do — kiểu ô li (vở học sinh), ô vuông (vẽ đồ thị)
 //     hoặc trắng. Giấy nằm chung lớp viết nên viết tràn từ đề xuống giấy được.
 //
+// SỬA 09/11/2026 — bút laser + chống "đơ bút" khi dạy lâu trên iPad:
+//   • Thêm 🔴 bút laser: vệt sáng chạy theo bút rồi tự mờ sau ~1,2 giây, không lưu vào nét vẽ / hoàn tác.
+//   • Chống kẹt: trước đây nếu iPadOS làm mất sự kiện nhấc bút (pointerup) thì lớp viết tưởng vẫn đang viết và bỏ qua
+//     mọi lần chạm sau -> bút "đơ". Nay bút chạm xuống luôn được ưu tiên (huỷ thao tác cũ bị kẹt / lòng bàn tay đang
+//     đè), xử lý thêm lostpointercapture, ẩn tab, chuyển ứng dụng.
+//   • Giải phóng bộ nhớ canvas khi đóng/đổi câu (Safari giới hạn tổng bộ nhớ canvas; vượt là không vẽ được nữa),
+//     không cấp phát lại canvas khi kích thước không đổi, giảm độ phân giải tối đa.
+//   • Mượt hơn: nét dài tự chốt dần vào lớp nền (không chậm dần theo độ dài nét), tẩy chỉ vẽ lại 1 lần/khung hình,
+//     bút Pencil bám tay hơn.
+//
 // Cách dùng (trong admin.html):
 //   h(InkBoard, { resetKey: cauHoi.id }, h(KhungCauHoi, {...}))
 //
@@ -49,6 +59,7 @@
   ];
   var TOOLS = [
     { v: 'pen', icon: '✒️', t: 'Bút' },
+    { v: 'laser', icon: '🔴', t: 'Bút laser (chỉ trỏ, tự mờ)' },
     { v: 'hl', icon: '🖍️', t: 'Bút dạ quang' },
     { v: 'line', icon: '📏', t: 'Đường thẳng' },
     { v: 'arrow', icon: '↗', t: 'Mũi tên (vectơ)' },
@@ -61,10 +72,21 @@
   ];
   var PAGE_H = 620;             // chiều cao 1 trang giấy nháp (px)
   var MAX_PAGES = 6;
-  var MAX_CANVAS_PIXELS = 12e6; // Safari giới hạn ~16,7 triệu pixel/canvas -> chừa an toàn
+  var MAX_CANVAS_PIXELS = 8e6;  // Safari giới hạn ~16,7 triệu pixel/canvas và tổng bộ nhớ canvas -> chừa an toàn
   var MAX_HISTORY = 60;         // số bước hoàn tác tối đa
   var PALM_GRACE_MS = 500;      // sau khi nhấc bút, bỏ qua chạm ngón/lòng bàn tay trong khoảng này
   var TAP_SLOP = 8;             // dịch chuyển (px) tối đa để vẫn tính là "chạm" chứ không phải "cuộn"
+  var STALE_MS = 1500;          // thao tác không có sự kiện nào quá lâu -> coi như bị kẹt (mất pointerup)
+  var CHUNK_PTS = 400;          // nét bút dài hơn số điểm này -> chốt phần đầu vào lớp nền
+  var LASER_MS = 1200;          // thời gian vệt laser tồn tại
+
+  function nowMs() {
+    return (global.performance && global.performance.now) ? global.performance.now() : Date.now();
+  }
+  function releaseCanvas(c) {
+    if (!c) return;
+    try { c.width = 0; c.height = 0; } catch (e) {}
+  }
 
   // ---------------------------------------------------------------------------
   // Nhập điểm: lọc rung tay (streamline) + làm mượt độ dày (lực nhấn / tốc độ)
@@ -86,7 +108,7 @@
       st._t = t;
       return;
     }
-    var stream = type === 'pen' ? 0.42 : 0.5;  // 0 = bám sát tay, gần 1 = rất mượt nhưng trễ
+    var stream = type === 'pen' ? 0.35 : 0.5;  // 0 = bám sát tay, gần 1 = rất mượt nhưng trễ
     var nx = last[0] + (x - last[0]) * (1 - stream);
     var ny = last[1] + (y - last[1]) * (1 - stream);
     var dx = nx - last[0], dy = ny - last[1];
@@ -110,6 +132,9 @@
   }
 
   // Bút: dựng đường bao hai bên (trái/phải) theo pháp tuyến, tô kín -> nét có độ dày thay đổi liền mạch
+  // SỬA 09/11/2026 — dùng lại mảng tạm (không cấp phát mảng mới mỗi khung hình); s.noTS / s.noTE = phần nét dài đã
+  // được tách khúc -> không vuốt nhọn ở chỗ nối.
+  var SCR = { acc: [], rad: [], lx: [], ly: [], rx: [], ry: [] };
   function drawPen(ctx, s) {
     var pts = s.points;
     var n = pts.length;
@@ -122,49 +147,101 @@
       ctx.fill();
       return;
     }
+    var acc = SCR.acc, radii = SCR.rad, lx = SCR.lx, ly = SCR.ly, rx = SCR.rx, ry = SCR.ry;
     // độ dài tích luỹ để vuốt nhọn đầu/cuối nét
-    var acc = [0];
+    acc[0] = 0;
     for (var i = 1; i < n; i++) {
       var ddx = pts[i][0] - pts[i - 1][0], ddy = pts[i][1] - pts[i - 1][1];
-      acc.push(acc[i - 1] + Math.sqrt(ddx * ddx + ddy * ddy));
+      acc[i] = acc[i - 1] + Math.sqrt(ddx * ddx + ddy * ddy);
     }
     var L = acc[n - 1];
-    var taperS = Math.min(L * 0.3, 6 + base * 2.2);
-    var taperE = Math.min(L * 0.3, 4 + base * 1.6);
-    var radii = [];
+    var taperS = s.noTS ? 0 : Math.min(L * 0.3, 6 + base * 2.2);
+    var taperE = s.noTE ? 0 : Math.min(L * 0.3, 4 + base * 1.6);
     for (var k = 0; k < n; k++) {
       var r = (base * pts[k][2]) / 2;
       if (taperS > 0) r *= 0.45 + 0.55 * Math.min(1, acc[k] / taperS);
       if (taperE > 0) r *= 0.6 + 0.4 * Math.min(1, (L - acc[k]) / taperE);
-      radii.push(Math.max(0.35, r));
+      radii[k] = Math.max(0.35, r);
     }
-    var left = [], right = [];
     for (var j = 0; j < n; j++) {
-      var a = pts[Math.max(0, j - 1)], b = pts[Math.min(n - 1, j + 1)];
+      var a = pts[j > 0 ? j - 1 : 0], b = pts[j < n - 1 ? j + 1 : n - 1];
       var tx = b[0] - a[0], ty = b[1] - a[1];
       var len = Math.sqrt(tx * tx + ty * ty) || 1;
       var nx = -ty / len, ny = tx / len;
-      left.push([pts[j][0] + nx * radii[j], pts[j][1] + ny * radii[j]]);
-      right.push([pts[j][0] - nx * radii[j], pts[j][1] - ny * radii[j]]);
+      lx[j] = pts[j][0] + nx * radii[j]; ly[j] = pts[j][1] + ny * radii[j];
+      rx[j] = pts[j][0] - nx * radii[j]; ry[j] = pts[j][1] - ny * radii[j];
     }
     ctx.beginPath();
-    ctx.moveTo(left[0][0], left[0][1]);
+    ctx.moveTo(lx[0], ly[0]);
     for (var p = 1; p < n; p++) {
-      ctx.quadraticCurveTo(left[p - 1][0], left[p - 1][1], (left[p - 1][0] + left[p][0]) / 2, (left[p - 1][1] + left[p][1]) / 2);
+      ctx.quadraticCurveTo(lx[p - 1], ly[p - 1], (lx[p - 1] + lx[p]) / 2, (ly[p - 1] + ly[p]) / 2);
     }
-    ctx.lineTo(left[n - 1][0], left[n - 1][1]);
-    ctx.lineTo(right[n - 1][0], right[n - 1][1]);
+    ctx.lineTo(lx[n - 1], ly[n - 1]);
+    ctx.lineTo(rx[n - 1], ry[n - 1]);
     for (var q = n - 1; q > 0; q--) {
-      ctx.quadraticCurveTo(right[q][0], right[q][1], (right[q][0] + right[q - 1][0]) / 2, (right[q][1] + right[q - 1][1]) / 2);
+      ctx.quadraticCurveTo(rx[q], ry[q], (rx[q] + rx[q - 1]) / 2, (ry[q] + ry[q - 1]) / 2);
     }
-    ctx.lineTo(right[0][0], right[0][1]);
+    ctx.lineTo(rx[0], ry[0]);
     ctx.closePath();
     ctx.fill();
     // đầu tròn hai đầu nét
     ctx.beginPath();
     ctx.arc(pts[0][0], pts[0][1], radii[0], 0, Math.PI * 2);
+    ctx.moveTo(pts[n - 1][0] + radii[n - 1], pts[n - 1][1]);
     ctx.arc(pts[n - 1][0], pts[n - 1][1], radii[n - 1], 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // THÊM 09/11/2026 — Bút laser: vệt sáng, mỗi điểm mờ dần theo tuổi; trả về true nếu còn điểm cần vẽ tiếp
+  function drawLaser(ctx, trails, t) {
+    var alive = false;
+    for (var i = trails.length - 1; i >= 0; i--) {
+      var tr = trails[i];
+      var pts = tr.pts;
+      var cut = 0;
+      while (cut < pts.length && t - pts[cut][2] > LASER_MS) cut++;
+      if (cut) pts.splice(0, Math.min(cut, pts.length - 1)); // giữ điểm cuối để còn chấm đầu bút khi đang chạm
+      if (!tr.live && (!pts.length || t - pts[pts.length - 1][2] > LASER_MS)) { trails.splice(i, 1); continue; }
+      alive = true;
+      var n = pts.length;
+      ctx.save();
+      ctx.lineCap = 'butt'; // đầu bằng: chỗ nối giữa các mức mờ không chồng lên nhau
+      ctx.lineJoin = 'round';
+      for (var layer = 0; layer < 2; layer++) {
+        ctx.strokeStyle = layer ? 'rgba(255,240,240,1)' : tr.color;
+        ctx.lineWidth = layer ? 2.2 : 9;
+        // gom các đoạn cùng mức mờ (8 mức) thành 1 đường -> không bị "chuỗi hạt" do chồng nét trong suốt
+        var bucket = -1, open = false;
+        for (var k = 1; k < n; k++) {
+          var age = (t - pts[k][2]) / LASER_MS;
+          var bk = age >= 1 ? 0 : Math.ceil((1 - age) * 8);
+          if (bk !== bucket) {
+            if (open) ctx.stroke();
+            open = false;
+            bucket = bk;
+            if (!bk) continue;
+            ctx.globalAlpha = (layer ? 0.9 : 0.38) * bk / 8;
+            ctx.beginPath();
+            ctx.moveTo(pts[k - 1][0], pts[k - 1][1]);
+            open = true;
+          }
+          if (open) ctx.lineTo(pts[k][0], pts[k][1]);
+        }
+        if (open) ctx.stroke();
+      }
+      if (tr.live && n) {
+        var tip = pts[n - 1];
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = tr.color;
+        ctx.beginPath(); ctx.arc(tip[0], tip[1], 11, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.arc(tip[0], tip[1], 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(tip[0], tip[1], 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    return alive;
   }
 
   // Bút dạ quang: 1 nét rộng, trong suốt, vẽ 1 lần (chỗ chồng trong cùng nét không đậm thêm)
@@ -307,6 +384,10 @@
     var lastPenRef = useRef(0);     // thời điểm bút chạm gần nhất (chống chạm nhầm lòng bàn tay)
     var rafRef = useRef(0);
     var scrollToPaperRef = useRef(false);
+    var laserRef = useRef([]);      // THÊM 09/11/2026 — các vệt laser (không lưu, không hoàn tác)
+    var baseDirtyRef = useRef(false); // lớp nền cần vẽ lại (gom lại 1 lần/khung hình)
+    var sizeRef = useRef({ w: 0, h: 0, d: 0 });
+    var resizeRafRef = useRef(0);
 
     var s1 = useState(true);   var writing = s1[0];   var setWriting = s1[1];
     var s2 = useState('pen');  var tool = s2[0];      var setTool = s2[1];
@@ -339,14 +420,27 @@
       var cv = canvasRef.current;
       if (!cv) return;
       var ctx = cv.getContext('2d');
-      var d = dprRef.current;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, cv.width, cv.height);
-      if (baseRef.current) ctx.drawImage(baseRef.current, 0, 0);
-      if (currentRef.current) {
-        ctx.setTransform(d, 0, 0, d, 0, 0);
-        drawStroke(ctx, currentRef.current);
+      if (!ctx) {
+        // Safari hết bộ nhớ canvas -> thử cấp phát lại 1 lần
+        sizeRef.current = { w: 0, h: 0, d: 0 };
+        resize();
+        ctx = cv.getContext('2d');
+        if (!ctx) return;
       }
+      var more = false;
+      try {
+        if (baseDirtyRef.current) renderBase();
+        var d = dprRef.current;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        if (baseRef.current && baseRef.current.width) ctx.drawImage(baseRef.current, 0, 0);
+        ctx.setTransform(d, 0, 0, d, 0, 0);
+        if (currentRef.current) drawStroke(ctx, currentRef.current);
+        if (laserRef.current.length) more = drawLaser(ctx, laserRef.current, nowMs());
+      } catch (err) {
+        if (global.console) console.warn('[InkBoard] paint', err);
+      }
+      if (more) schedule();
     }
 
     function schedule() {
@@ -354,17 +448,23 @@
     }
 
     function renderBase() {
+      baseDirtyRef.current = false;
       var b = baseRef.current;
       if (!b) return;
       var ctx = b.getContext('2d');
+      if (!ctx) return;
       var d = dprRef.current;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, b.width, b.height);
       ctx.setTransform(d, 0, 0, d, 0, 0);
-      strokesRef.current.forEach(function (s) { drawStroke(ctx, s); });
+      var arr = strokesRef.current;
+      for (var i = 0; i < arr.length; i++) {
+        try { drawStroke(ctx, arr[i]); } catch (e) {}
+      }
     }
 
     // Đồng bộ kích thước canvas với khung nội dung (nội dung dài ra khi mở lời giải / thêm giấy)
+    // SỬA 09/11/2026 — không cấp phát lại khi kích thước không đổi (mỗi lần cấp phát tốn hàng chục MB trên iPad)
     function resize() {
       var wrap = wrapRef.current;
       var cv = canvasRef.current;
@@ -373,29 +473,79 @@
       var hh = Math.max(1, wrap.clientHeight);
       var d = Math.min(global.devicePixelRatio || 1, Math.sqrt(MAX_CANVAS_PIXELS / (w * hh)));
       d = Math.max(0.5, d);
+      var sz = sizeRef.current;
+      if (sz.w === w && sz.h === hh && Math.abs(sz.d - d) < 0.001 && baseRef.current) return;
+      sizeRef.current = { w: w, h: hh, d: d };
       dprRef.current = d;
-      cv.width = Math.round(w * d);
-      cv.height = Math.round(hh * d);
+      var pw = Math.round(w * d), ph = Math.round(hh * d);
       if (!baseRef.current) baseRef.current = document.createElement('canvas');
-      baseRef.current.width = cv.width;
-      baseRef.current.height = cv.height;
+      // về 0 trước để Safari trả bộ nhớ cũ ngay, rồi mới cấp phát cỡ mới
+      releaseCanvas(cv);
+      releaseCanvas(baseRef.current);
+      cv.width = pw;
+      cv.height = ph;
+      baseRef.current.width = pw;
+      baseRef.current.height = ph;
       renderBase();
       paint();
     }
 
+    function scheduleResize() {
+      if (resizeRafRef.current) return;
+      resizeRafRef.current = requestAnimationFrame(function () {
+        resizeRafRef.current = 0;
+        resize();
+      });
+    }
+
+    // Huỷ thao tác đang dở (bị kẹt do mất pointerup, chuyển ứng dụng…); commit = giữ nét đang viết
+    function abortActive(commit) {
+      var a = activeRef.current;
+      activeRef.current = null;
+      if (!a) return;
+      if (a.kind === 'draw') {
+        if (commit) commitCurrent(a);
+        currentRef.current = null;
+      } else if (a.kind === 'laser') {
+        if (a.trail) a.trail.live = false;
+      } else if (a.kind === 'erase' && a.pushed) {
+        bump();
+      }
+      schedule();
+    }
+
     useEffect(function () {
+      var cvEl = canvasRef.current; // React xoá ref trước khi chạy dọn dẹp -> giữ lại phần tử để giải phóng
       resize();
       var ro = null;
       if (typeof ResizeObserver !== 'undefined' && wrapRef.current) {
-        ro = new ResizeObserver(function () { resize(); });
+        ro = new ResizeObserver(scheduleResize);
         ro.observe(wrapRef.current);
       } else {
-        global.addEventListener('resize', resize);
+        global.addEventListener('resize', scheduleResize);
       }
+      function onHide() {
+        abortActive(true);
+        laserRef.current = [];
+        schedule();
+      }
+      function onVis() { if (document.hidden) onHide(); }
+      global.addEventListener('blur', onHide);
+      document.addEventListener('visibilitychange', onVis);
       return function () {
         if (ro) ro.disconnect();
-        else global.removeEventListener('resize', resize);
+        else global.removeEventListener('resize', scheduleResize);
+        global.removeEventListener('blur', onHide);
+        document.removeEventListener('visibilitychange', onVis);
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        if (resizeRafRef.current) cancelAnimationFrame(resizeRafRef.current);
+        rafRef.current = 0;
+        resizeRafRef.current = 0;
+        // SỬA 09/11/2026 — trả bộ nhớ canvas ngay khi đóng (Safari giải phóng rất chậm -> dạy lâu bị "đơ")
+        releaseCanvas(cvEl);
+        releaseCanvas(baseRef.current);
+        baseRef.current = null;
+        laserRef.current = [];
       };
     }, []);
 
@@ -405,6 +555,7 @@
       historyRef.current = [];
       currentRef.current = null;
       activeRef.current = null;
+      laserRef.current = [];
       setPages(0);
       renderBase();
       paint();
@@ -508,23 +659,75 @@
           a.pushed = true;
         }
         strokesRef.current = kept;
-        renderBase();
+        baseDirtyRef.current = true; // vẽ lại nền 1 lần ở khung hình kế tiếp
         schedule();
       }
+    }
+
+    function drawOnBase(s) {
+      var b = baseRef.current;
+      if (!b) return;
+      var ctx = b.getContext('2d');
+      if (!ctx) return;
+      var d = dprRef.current;
+      ctx.setTransform(d, 0, 0, d, 0, 0);
+      try { drawStroke(ctx, s); } catch (e) {}
+    }
+
+    // Chốt nét đang vẽ vào danh sách nét (gọi khi nhấc bút, hoặc khi huỷ thao tác bị kẹt)
+    function commitCurrent(a) {
+      var s = currentRef.current;
+      currentRef.current = null;
+      if (s && a.shape) {
+        // đường thẳng/mũi tên quá ngắn (chạm nhầm) thì bỏ
+        var ddx = s.points[1][0] - s.points[0][0], ddy = s.points[1][1] - s.points[0][1];
+        if (ddx * ddx + ddy * ddy < 16) s = null;
+      }
+      if (s && s.points.length) {
+        delete s._t;
+        if (!a.pushed) pushHistory();
+        a.pushed = true;
+        strokesRef.current = strokesRef.current.concat([s]);
+        drawOnBase(s);
+        bump();
+      }
+    }
+
+    // Nét bút quá dài -> chốt phần đã viết vào lớp nền, phần tiếp nối bắt đầu từ 2 điểm cuối (liền mạch, không vuốt nhọn
+    // ở chỗ nối). Cả nét vẫn là 1 bước hoàn tác.
+    function chunkCurrent(a) {
+      var s = currentRef.current;
+      if (!s || s.kind !== 'pen' || s.points.length < CHUNK_PTS) return;
+      var pts = s.points;
+      var head = { kind: s.kind, color: s.color, width: s.width, points: pts.slice() };
+      if (s.noTS) head.noTS = true;
+      head.noTE = true;
+      if (!a.pushed) { pushHistory(); a.pushed = true; }
+      strokesRef.current = strokesRef.current.concat([head]);
+      drawOnBase(head);
+      s.points = pts.slice(pts.length - 2);
+      s.noTS = true;
     }
 
     // ---- Xử lý Pointer Events ----
     function onDown(e) {
       var o = optRef.current;
       var cv = canvasRef.current;
-      if (!cv || activeRef.current) return;
+      if (!cv) return;
       var now = Date.now();
+      var prev = activeRef.current;
+      if (prev) {
+        // SỬA 09/11/2026 — trước đây có thao tác đang dở là bỏ qua luôn -> mất pointerup một lần là bút đơ mãi.
+        // Bút luôn được ưu tiên (kể cả khi lòng bàn tay đang đè); thao tác im lặng quá lâu coi như bị kẹt.
+        if (prev.id === e.pointerId || e.pointerType === 'pen' || now - (prev.t || 0) > STALE_MS) abortActive(true);
+        else return;
+      }
 
       if (e.pointerType === 'touch' && !o.fingerDraws) {
         // Chống chạm nhầm: đang viết (hoặc vừa nhấc bút) thì bỏ qua ngón tay / lòng bàn tay
         if (now - lastPenRef.current < PALM_GRACE_MS) return;
         activeRef.current = {
-          id: e.pointerId, kind: 'scroll',
+          id: e.pointerId, kind: 'scroll', t: now,
           x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false
         };
         try { cv.setPointerCapture(e.pointerId); } catch (err) {}
@@ -539,16 +742,21 @@
       var erasing = o.tool === 'erase' || (e.buttons & 32) === 32; // đầu tẩy của bút (nếu có)
 
       if (erasing) {
-        activeRef.current = { id: e.pointerId, kind: 'erase', pushed: false };
+        activeRef.current = { id: e.pointerId, kind: 'erase', pushed: false, t: now };
         eraseAt(x, y, activeRef.current, o);
+      } else if (o.tool === 'laser') {
+        var tr = { color: o.color, live: true, pts: [[x, y, nowMs()]] };
+        laserRef.current.push(tr);
+        if (laserRef.current.length > 12) laserRef.current.shift();
+        activeRef.current = { id: e.pointerId, kind: 'laser', trail: tr, t: now };
       } else if (o.tool === 'line' || o.tool === 'arrow') {
         currentRef.current = { kind: o.tool, color: o.color, width: o.width, points: [[x, y, 1], [x, y, 1]] };
-        activeRef.current = { id: e.pointerId, kind: 'draw', shape: true };
+        activeRef.current = { id: e.pointerId, kind: 'draw', shape: true, t: now };
       } else {
         var st = { kind: o.tool === 'hl' ? 'hl' : 'pen', color: o.color, width: o.width, points: [] };
         addPoint(st, x, y, e.pressure, e.pointerType, e.timeStamp || now);
         currentRef.current = st;
-        activeRef.current = { id: e.pointerId, kind: 'draw', type: e.pointerType };
+        activeRef.current = { id: e.pointerId, kind: 'draw', type: e.pointerType, t: now };
       }
       try { cv.setPointerCapture(e.pointerId); } catch (err2) {}
       e.preventDefault();
@@ -560,6 +768,7 @@
       var cv = canvasRef.current;
       if (!a || !cv || a.id !== e.pointerId) return;
       var o = optRef.current;
+      a.t = Date.now();
 
       if (a.kind === 'scroll') {
         var dx = e.clientX - a.x;
@@ -581,10 +790,15 @@
       var evs = native.getCoalescedEvents ? native.getCoalescedEvents() : [];
       if (!evs.length) evs = [native];
       var r = cv.getBoundingClientRect();
+      var tl = nowMs();
       for (var i = 0; i < evs.length; i++) {
         var x = evs[i].clientX - r.left;
         var y = evs[i].clientY - r.top;
-        if (a.kind === 'draw' && currentRef.current) {
+        if (a.kind === 'laser') {
+          var lp = a.trail.pts, lq = lp[lp.length - 1];
+          if (!lq || Math.abs(lq[0] - x) + Math.abs(lq[1] - y) > 1) lp.push([x, y, tl]);
+          else lq[2] = tl;
+        } else if (a.kind === 'draw' && currentRef.current) {
           if (a.shape) {
             currentRef.current.points[1] = [x, y, 1];
           } else {
@@ -594,19 +808,23 @@
           eraseAt(x, y, a, o);
         }
       }
+      if (a.kind === 'draw' && !a.shape) chunkCurrent(a);
       schedule();
     }
 
+    // commit: true = nhấc bút bình thường, false = huỷ (pointercancel), 'lost' = mất pointer capture
     function onEnd(e, commit) {
       var a = activeRef.current;
       var cv = canvasRef.current;
       if (!a || !cv || a.id !== e.pointerId) return;
       activeRef.current = null;
-      try { cv.releasePointerCapture(e.pointerId); } catch (err) {}
+      if (commit !== 'lost') {
+        try { cv.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
 
       if (a.kind === 'scroll') {
         // Ngón tay chạm nhẹ (không kéo) -> chuyển cú chạm xuống phần tử bên dưới (vd. nút "Hiện lời giải")
-        if (commit && !a.moved) {
+        if (commit === true && !a.moved) {
           cv.style.pointerEvents = 'none';
           var el = document.elementFromPoint(e.clientX, e.clientY);
           cv.style.pointerEvents = 'auto';
@@ -620,27 +838,12 @@
 
       if (e.pointerType === 'pen') lastPenRef.current = Date.now();
 
-      if (a.kind === 'draw') {
-        var s = currentRef.current;
+      if (a.kind === 'laser') {
+        a.trail.live = false;
+      } else if (a.kind === 'draw') {
+        if (commit) commitCurrent(a);
+        else if (a.pushed) bump(); // phần đầu nét dài đã chốt vẫn giữ
         currentRef.current = null;
-        if (s && a.shape) {
-          // đường thẳng/mũi tên quá ngắn (chạm nhầm) thì bỏ
-          var ddx = s.points[1][0] - s.points[0][0], ddy = s.points[1][1] - s.points[0][1];
-          if (ddx * ddx + ddy * ddy < 16) s = null;
-        }
-        if (commit && s && s.points.length) {
-          delete s._t;
-          pushHistory();
-          strokesRef.current = strokesRef.current.concat([s]);
-          var b = baseRef.current;
-          if (b) {
-            var ctx = b.getContext('2d');
-            var d = dprRef.current;
-            ctx.setTransform(d, 0, 0, d, 0, 0);
-            drawStroke(ctx, s);
-          }
-          bump();
-        }
       } else if (a.kind === 'erase') {
         bump();
       }
@@ -727,6 +930,7 @@
         onPointerMove: onMove,
         onPointerUp: function (e) { onEnd(e, true); },
         onPointerCancel: function (e) { onEnd(e, false); },
+        onLostPointerCapture: function (e) { onEnd(e, 'lost'); },
         onContextMenu: function (e) { e.preventDefault(); },
         style: {
           position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', zIndex: 10,
