@@ -20,6 +20,15 @@
 //   • Mượt hơn: nét dài tự chốt dần vào lớp nền (không chậm dần theo độ dài nét), tẩy chỉ vẽ lại 1 lần/khung hình,
 //     bút Pencil bám tay hơn.
 //
+// SỬA 10/11/2026 — thanh bút kéo được + giấy chèn đúng câu đang xem:
+//   • Thanh công cụ có tay nắm "⠿" ở đầu: kéo (ngón tay / bút / chuột) để dời thanh bút tới bất kỳ đâu trên màn hình,
+//     chạm đúp tay nắm để về vị trí mặc định (giữa đáy). Vị trí được nhớ cho lần mở sau (localStorage, có try/catch).
+//   • "📄 + Giấy": trước đây luôn nối giấy ở CUỐI cả đề. Nay giấy chèn NGAY DƯỚI CÂU ĐANG HIỆN TRÊN MÀN HÌNH (câu chiếm
+//     nhiều diện tích nhìn thấy nhất; nếu đang nhìn một tờ giấy thì thêm trang vào tờ đó). Nút "−" bớt trang của tờ giấy
+//     đang xem. Nét viết nằm bên dưới chỗ chèn tự dời xuống/lên theo để vẫn khớp với nội dung.
+//   • Cách nhận biết "câu": phần tử con có thuộc tính data-ink-anchor="..." hoặc data-hvi="..." (admin đã có sẵn data-hvi
+//     ở mỗi câu của màn "Xem lại bài làm"). Không có phần tử nào như vậy (vd. màn giảng 1 câu) -> giấy nối ở cuối như cũ.
+//
 // Cách dùng (trong admin.html):
 //   h(InkBoard, { resetKey: cauHoi.id }, h(KhungCauHoi, {...}))
 //
@@ -28,7 +37,8 @@
 //   scrollEl    : (tuỳ chọn) phần tử có thanh cuộn riêng; mặc định cuộn cả trang (window)
 //   fingerDraws : (tuỳ chọn) true = ngón tay cũng vẽ (mặc định false: ngón tay chỉ cuộn)
 //   onReady     : (tuỳ chọn) nhận {undo, clear, getStrokes, setStrokes, getState, setState} để điều khiển từ ngoài
-//                 getState() -> { strokes, pages, paper } ; setState(cùng dạng) — dùng để nhớ nét vẽ theo từng câu
+//                 getState() -> { strokes, pages, paper, blocks } ; setState(cùng dạng) — dùng để nhớ nét vẽ theo từng câu
+//                 (blocks = các tờ giấy chèn sau từng câu: [{key, pages}]; pages = số trang giấy ở cuối)
 //   children    : nội dung (câu hỏi, lời giải...) nằm bên dưới lớp viết
 (function (global) {
   'use strict';
@@ -42,6 +52,7 @@
   var useRef = React.useRef;
   var useState = React.useState;
   var useEffect = React.useEffect;
+  var useLayoutEffect = React.useLayoutEffect || React.useEffect;
 
   var COLORS = [
     { v: '#e11d48', t: 'Đỏ' },
@@ -71,7 +82,7 @@
     { v: 'blank', t: 'Trắng' }
   ];
   var PAGE_H = 620;             // chiều cao 1 trang giấy nháp (px)
-  var MAX_PAGES = 6;
+  var MAX_PAGES = 10;            // tổng số trang giấy (cộng tất cả các câu)
   var MAX_CANVAS_PIXELS = 8e6;  // Safari giới hạn ~16,7 triệu pixel/canvas và tổng bộ nhớ canvas -> chừa an toàn
   var MAX_HISTORY = 60;         // số bước hoàn tác tối đa
   var PALM_GRACE_MS = 500;      // sau khi nhấc bút, bỏ qua chạm ngón/lòng bàn tay trong khoảng này
@@ -79,6 +90,10 @@
   var STALE_MS = 1500;          // thao tác không có sự kiện nào quá lâu -> coi như bị kẹt (mất pointerup)
   var CHUNK_PTS = 400;          // nét bút dài hơn số điểm này -> chốt phần đầu vào lớp nền
   var LASER_MS = 1200;          // thời gian vệt laser tồn tại
+  var ANCHOR_SEL = '[data-ink-anchor],[data-hvi]'; // THÊM 10/11/2026 — phần tử đánh dấu "một câu" để chèn giấy sau nó
+  var END_KEY = '__end';        // khối giấy ở cuối (khi không có phần tử câu nào)
+  var POS_KEY = 'faraday_ink_toolbar_pos_v1'; // nhớ vị trí thanh bút
+  var EDGE = 4;                 // chừa mép màn hình khi kéo thanh bút (px)
 
   function nowMs() {
     return (global.performance && global.performance.now) ? global.performance.now() : Date.now();
@@ -336,6 +351,51 @@
     return false;
   }
 
+  // THÊM 10/11/2026 — tiện ích cho giấy chèn giữa đề + vị trí thanh bút
+  function sumPages(blocks) {
+    var n = 0;
+    for (var i = 0; i < blocks.length; i++) n += blocks[i].pages;
+    return n;
+  }
+  function findBlock(blocks, key) {
+    for (var i = 0; i < blocks.length; i++) if (blocks[i].key === key) return blocks[i];
+    return null;
+  }
+  function anchorKey(el, idx) {
+    return 'a:' + (el.getAttribute('data-ink-anchor') || el.getAttribute('data-hvi') || ('#' + idx));
+  }
+  // Dời các nét có điểm đầu nằm từ y trở xuống một đoạn dy (chèn giấy -> xuống, bớt giấy -> lên).
+  // Tạo nét mới (không sửa nét cũ) và dùng chung bản đồ cache để các bản trong lịch sử hoàn tác vẫn dùng chung đối tượng.
+  function shiftStrokes(arr, y, dy, cache) {
+    return arr.map(function (s) {
+      if (!s.points || !s.points.length || s.points[0][1] < y) return s;
+      var hit = cache.get(s);
+      if (hit) return hit;
+      var n = {};
+      for (var k in s) if (Object.prototype.hasOwnProperty.call(s, k)) n[k] = s[k];
+      n.points = s.points.map(function (p) { return [p[0], p[1] + dy, p[2]]; });
+      cache.set(s, n);
+      return n;
+    });
+  }
+  function loadToolbarPos() {
+    try {
+      var raw = global.localStorage && global.localStorage.getItem(POS_KEY);
+      if (!raw) return null;
+      var p = JSON.parse(raw);
+      if (p && isFinite(p.x) && isFinite(p.y)) return { x: Number(p.x), y: Number(p.y) };
+    } catch (e) {}
+    return null;
+  }
+  function saveToolbarPos(p) {
+    try {
+      if (!global.localStorage) return;
+      if (p) global.localStorage.setItem(POS_KEY, JSON.stringify(p));
+      else global.localStorage.removeItem(POS_KEY);
+    } catch (e) {}
+  }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
   // Mẫu giấy nháp (CSS nền, không tốn canvas)
   function paperStyle(kind, pages) {
     var st = {
@@ -372,9 +432,16 @@
   }
 
   function InkBoard(props) {
+    var ReactDOM = global.ReactDOM; // lấy lúc dựng (react-dom đã nạp)
     var wrapRef = useRef(null);
     var canvasRef = useRef(null);
-    var paperRef = useRef(null);
+    var endRef = useRef(null);      // SỬA 10/11/2026 — khối giấy ở cuối đề (khi không có câu nào để neo)
+    var hostsRef = useRef({});      // THÊM 10/11/2026 — khoá câu -> <div> chứa tờ giấy, chèn ngay sau câu đó trong DOM
+    var pendingRef = useRef(null);  // thay đổi giấy đang chờ đo độ cao thực để dời nét viết: {y, h0}
+    var scrollKeyRef = useRef(null);// khối giấy vừa thêm -> cuộn tới
+    var tbRef = useRef(null);       // thanh công cụ
+    var dragRef = useRef(null);     // đang kéo thanh bút
+    var lastTapRef = useRef(0);     // chạm đúp tay nắm -> về vị trí mặc định
     var baseRef = useRef(null);     // canvas ẩn chứa các nét đã hoàn tất (để vẽ lại nhanh)
     var dprRef = useRef(1);
     var strokesRef = useRef([]);    // các nét đã hoàn tất
@@ -383,7 +450,6 @@
     var activeRef = useRef(null);   // thao tác đang diễn ra: {id, kind: 'draw'|'erase'|'scroll'}
     var lastPenRef = useRef(0);     // thời điểm bút chạm gần nhất (chống chạm nhầm lòng bàn tay)
     var rafRef = useRef(0);
-    var scrollToPaperRef = useRef(false);
     var laserRef = useRef([]);      // THÊM 09/11/2026 — các vệt laser (không lưu, không hoàn tác)
     var baseDirtyRef = useRef(false); // lớp nền cần vẽ lại (gom lại 1 lần/khung hình)
     var sizeRef = useRef({ w: 0, h: 0, d: 0 });
@@ -395,7 +461,8 @@
     var s4 = useState(WIDTHS[1].v); var width = s4[0]; var setWidth = s4[1];
     var s5 = useState(false);  var collapsed = s5[0]; var setCollapsed = s5[1];
     var s6 = useState(0);      var setRev = s6[1];   // chỉ để buộc render lại (nút hoàn tác)
-    var s7 = useState(0);      var pages = s7[0];     var setPages = s7[1];
+    var s7 = useState([]);     var blocks = s7[0];    var setBlocks = s7[1]; // SỬA 10/11/2026 — [{key, pages}] thay cho 1 số trang
+    var s9 = useState(loadToolbarPos); var pos = s9[0]; var setPos = s9[1];  // vị trí thanh bút (null = mặc định giữa đáy)
     var s8 = useState('oli');  var paper = s8[0];     var setPaper = s8[1];
 
     // Các handler luôn đọc giá trị mới nhất qua ref
@@ -407,8 +474,11 @@
       fingerDraws: !!props.fingerDraws,
       scrollEl: props.scrollEl || null
     };
-    var paperStateRef = useRef({ pages: 0, paper: 'oli' });
-    paperStateRef.current = { pages: pages, paper: paper };
+    var paperStateRef = useRef({ blocks: [], paper: 'oli' });
+    paperStateRef.current = { blocks: blocks, paper: paper };
+    var blocksRef = useRef([]);
+    blocksRef.current = blocks;
+    var pages = sumPages(blocks); // tổng số trang giấy
 
     function bump() {
       setRev(function (x) { return x + 1; });
@@ -556,28 +626,150 @@
       currentRef.current = null;
       activeRef.current = null;
       laserRef.current = [];
-      setPages(0);
+      pendingRef.current = null;
+      scrollKeyRef.current = null;
+      setBlocks([]);
       renderBase();
       paint();
       bump();
     }, [props.resetKey]);
 
-    // Vừa thêm giấy -> cuộn tới trang mới
-    useEffect(function () {
-      if (!scrollToPaperRef.current || !pages || !paperRef.current) return;
-      scrollToPaperRef.current = false;
-      var pg = paperRef.current;
-      var host = props.scrollEl;
-      try {
-        if (host) {
-          var top = pg.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop + (pages - 1) * PAGE_H - 40;
-          host.scrollTo({ top: top, behavior: 'smooth' });
-        } else {
-          var y = pg.getBoundingClientRect().top + global.pageYOffset + (pages - 1) * PAGE_H - 40;
-          global.scrollTo({ top: y, behavior: 'smooth' });
+    // THÊM 10/11/2026 — sau mỗi lần thêm/bớt giấy (DOM đã đổi, chưa vẽ lên màn hình): đo độ cao thật của nội dung,
+    // dời các nét nằm bên dưới chỗ chèn cho khớp, dọn các <div> giấy không còn dùng, rồi cấp lại canvas.
+    useLayoutEffect(function () {
+      var wrap = wrapRef.current;
+      var p = pendingRef.current;
+      pendingRef.current = null;
+      var list = blocksRef.current;
+      // dọn khối giấy đã bỏ (hết trang, hoặc đổi câu)
+      var hosts = hostsRef.current;
+      for (var k in hosts) {
+        if (!Object.prototype.hasOwnProperty.call(hosts, k)) continue;
+        if (!findBlock(list, k)) {
+          if (hosts[k].parentNode) hosts[k].parentNode.removeChild(hosts[k]);
+          delete hosts[k];
         }
+      }
+      if (p && wrap) {
+        var delta = wrap.getBoundingClientRect().height - p.h0;
+        if (Math.abs(delta) > 0.5) {
+          var cache = new Map();
+          strokesRef.current = shiftStrokes(strokesRef.current, p.y, delta, cache);
+          historyRef.current = historyRef.current.map(function (snap) { return shiftStrokes(snap, p.y, delta, cache); });
+        }
+      }
+      sizeRef.current = { w: 0, h: 0, d: 0 }; // chiều cao đổi -> buộc cấp lại canvas đúng cỡ
+      resize();
+      renderBase();
+      paint();
+      bump();
+    }, [blocks]);
+
+    // Câu bị React dựng lại (đổi bộ lọc…) -> đưa tờ giấy về ngay sau câu của nó
+    useEffect(function () {
+      var hosts = hostsRef.current;
+      for (var k in hosts) {
+        if (!Object.prototype.hasOwnProperty.call(hosts, k)) continue;
+        var an = findAnchor(k);
+        if (an && an.parentNode && hosts[k].previousSibling !== an) an.parentNode.insertBefore(hosts[k], an.nextSibling);
+      }
+    });
+
+    // Vừa thêm giấy -> cuộn tới trang mới (chỉ khi trang mới chưa nằm trong tầm nhìn)
+    useEffect(function () {
+      var key = scrollKeyRef.current;
+      if (!key) return;
+      scrollKeyRef.current = null;
+      var b = findBlock(blocks, key);
+      var el = key === END_KEY ? endRef.current : hostsRef.current[key];
+      if (!b || !el) return;
+      try {
+        var vp = viewportRect();
+        var top = el.getBoundingClientRect().top + (b.pages - 1) * PAGE_H;
+        if (top >= vp.top + 8 && top <= vp.bottom - 240) return;
+        var want = vp.top + (vp.bottom - vp.top) * 0.3;
+        var host = props.scrollEl;
+        if (host) host.scrollTo({ top: host.scrollTop + (top - want), behavior: 'smooth' });
+        else global.scrollTo({ top: global.pageYOffset + (top - want), behavior: 'smooth' });
       } catch (e) {}
-    }, [pages]);
+    }, [blocks]);
+
+    // Kẹp thanh bút trong màn hình khi xoay iPad / đổi cỡ cửa sổ / mở-thu gọn thanh
+    useLayoutEffect(function () {
+      var tb = tbRef.current;
+      if (!tb || !pos || dragRef.current) return;
+      var r = tb.getBoundingClientRect();
+      var nx = clamp(r.left, EDGE, Math.max(EDGE, global.innerWidth - r.width - EDGE));
+      var ny = clamp(r.top, EDGE, Math.max(EDGE, global.innerHeight - r.height - EDGE));
+      if (Math.abs(nx - pos.x) > 0.5 || Math.abs(ny - pos.y) > 0.5) setPos({ x: nx, y: ny });
+    });
+    useEffect(function () {
+      function onWinResize() { bump(); }
+      global.addEventListener('resize', onWinResize);
+      return function () { global.removeEventListener('resize', onWinResize); };
+    }, []);
+
+    // THÊM 10/11/2026 — tìm câu / tờ giấy đang chiếm nhiều chỗ nhất trên màn hình
+    function viewportRect() {
+      var top = 0, bottom = global.innerHeight || document.documentElement.clientHeight;
+      var host = optRef.current.scrollEl;
+      if (host) {
+        var hr = host.getBoundingClientRect();
+        top = Math.max(top, hr.top);
+        bottom = Math.min(bottom, hr.bottom);
+      }
+      if (bottom < top) bottom = top;
+      return { top: top, bottom: bottom };
+    }
+    function getAnchors() {
+      var wrap = wrapRef.current;
+      if (!wrap) return [];
+      var out = [];
+      var nodes = wrap.querySelectorAll(ANCHOR_SEL);
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var inPaper = false;
+        for (var hk in hostsRef.current) if (hostsRef.current[hk].contains(el)) inPaper = true;
+        if (!inPaper) out.push({ el: el, key: anchorKey(el, out.length) });
+      }
+      return out;
+    }
+    function findAnchor(key) {
+      var as = getAnchors();
+      for (var i = 0; i < as.length; i++) if (as[i].key === key) return as[i].el;
+      return null;
+    }
+    // Trả về { key, anchor } của nơi đang xem: tờ giấy hoặc câu có diện tích nhìn thấy lớn nhất (không có thì gần giữa màn hình nhất)
+    function currentTarget() {
+      var as = getAnchors();
+      if (!as.length || !ReactDOM || !ReactDOM.createPortal) return null;
+      var vp = viewportRect();
+      var mid = (vp.top + vp.bottom) / 2;
+      var best = null, bestVis = 0, near = null, nearD = Infinity;
+      function consider(el, key, anchorEl) {
+        var r = el.getBoundingClientRect();
+        var vis = Math.min(r.bottom, vp.bottom) - Math.max(r.top, vp.top);
+        if (vis > bestVis) { bestVis = vis; best = { key: key, anchor: anchorEl }; }
+        var d = Math.abs((r.top + r.bottom) / 2 - mid);
+        if (d < nearD) { nearD = d; near = { key: key, anchor: anchorEl }; }
+      }
+      for (var i = 0; i < as.length; i++) consider(as[i].el, as[i].key, as[i].el);
+      for (var i2 = 0; i2 < as.length; i2++) {
+        var hst = hostsRef.current[as[i2].key];
+        if (hst && findBlock(blocksRef.current, as[i2].key)) consider(hst, as[i2].key, as[i2].el);
+      }
+      return best || near;
+    }
+    // Đảm bảo có <div> chứa giấy ngay sau câu `key` (tạo mới nếu chưa có); null nếu không tìm thấy câu
+    function ensureHost(key) {
+      if (hostsRef.current[key]) return hostsRef.current[key];
+      var an = findAnchor(key);
+      if (!an || !an.parentNode) return null;
+      var host = document.createElement('div');
+      an.parentNode.insertBefore(host, an.nextSibling);
+      hostsRef.current[key] = host;
+      return host;
+    }
 
     // ---- Hành động ----
     function pushHistory() {
@@ -602,23 +794,67 @@
       bump();
     }
 
+    // SỬA 10/11/2026 — thêm giấy ngay dưới câu đang xem (hoặc thêm trang vào tờ giấy đang xem)
     function addPage() {
-      if (pages >= MAX_PAGES) return;
-      scrollToPaperRef.current = true;
-      setPages(pages + 1);
+      var wrap = wrapRef.current;
+      if (!wrap || pages >= MAX_PAGES) return;
+      var list = blocksRef.current;
+      var tg = currentTarget();
+      var key = END_KEY;
+      var y = Infinity;
+      if (tg) {
+        var host = ensureHost(tg.key);
+        if (host) {
+          key = tg.key;
+          var wr = wrap.getBoundingClientRect();
+          var exist0 = findBlock(list, key);
+          // nét có điểm đầu nằm dưới mép dưới của câu (hoặc của tờ giấy hiện có) sẽ bị đẩy xuống
+          y = (exist0 ? host : tg.anchor).getBoundingClientRect().bottom - wr.top - 1;
+        }
+      }
+      pendingRef.current = { y: y, h0: wrap.getBoundingClientRect().height };
+      scrollKeyRef.current = key;
+      var exist = findBlock(list, key);
+      setBlocks(exist
+        ? list.map(function (b) { return b.key === key ? { key: key, pages: b.pages + 1 } : b; })
+        : list.concat([{ key: key, pages: 1 }]));
     }
     function removePage() {
-      if (!pages) return;
-      var limitY = paperRef.current ? paperRef.current.offsetTop + (pages - 1) * PAGE_H : Infinity;
-      var lost = strokesRef.current.some(function (s) { return s.points.some(function (p) { return p[1] > limitY; }); });
-      if (lost && !global.confirm('Trang giấy cuối có nét viết. Vẫn bỏ trang này (xoá luôn các nét trên đó)?')) return;
+      var wrap = wrapRef.current;
+      var list = blocksRef.current;
+      if (!wrap || !list.length) return;
+      // chọn tờ giấy để bớt: tờ ở câu đang xem; không có thì tờ gần giữa màn hình nhất
+      var tg = currentTarget();
+      var target = tg ? findBlock(list, tg.key) : null;
+      var vp = viewportRect();
+      var mid = (vp.top + vp.bottom) / 2;
+      if (!target) {
+        var nd = Infinity;
+        list.forEach(function (b) {
+          var el = b.key === END_KEY ? endRef.current : hostsRef.current[b.key];
+          if (!el) return;
+          var r = el.getBoundingClientRect();
+          var d = Math.abs((r.top + r.bottom) / 2 - mid);
+          if (d < nd) { nd = d; target = b; }
+        });
+      }
+      if (!target) target = list[list.length - 1];
+      var el2 = target.key === END_KEY ? endRef.current : hostsRef.current[target.key];
+      var wr = wrap.getBoundingClientRect();
+      var top = el2 ? el2.getBoundingClientRect().top - wr.top : Infinity;
+      var lastTop = top + (target.pages - 1) * PAGE_H;
+      var lastBottom = top + target.pages * PAGE_H;
+      var inLast = function (s) { return s.points.some(function (p) { return p[1] >= lastTop && p[1] < lastBottom; }); };
+      var lost = strokesRef.current.some(inLast);
+      if (lost && !global.confirm('Trang giấy này có nét viết. Vẫn bỏ trang này (xoá luôn các nét trên đó)?')) return;
       if (lost) {
         pushHistory();
-        strokesRef.current = strokesRef.current.filter(function (s) { return !s.points.some(function (p) { return p[1] > limitY; }); });
-        renderBase();
-        paint();
+        strokesRef.current = strokesRef.current.filter(function (s) { return !inLast(s); });
       }
-      setPages(pages - 1);
+      pendingRef.current = { y: lastBottom - 1, h0: wr.height };
+      setBlocks(target.pages > 1
+        ? list.map(function (b) { return b === target ? { key: b.key, pages: b.pages - 1 } : b; })
+        : list.filter(function (b) { return b !== target; }));
     }
 
     function setStrokesExternal(arr) {
@@ -637,11 +873,25 @@
           getStrokes: function () { return strokesRef.current; },
           setStrokes: setStrokesExternal,
           getState: function () {
-            return { strokes: strokesRef.current.slice(), pages: paperStateRef.current.pages, paper: paperStateRef.current.paper };
+            var bl = paperStateRef.current.blocks;
+            var endB = findBlock(bl, END_KEY);
+            return { strokes: strokesRef.current.slice(), pages: endB ? endB.pages : 0, paper: paperStateRef.current.paper, blocks: bl.slice() };
           },
           setState: function (st) {
             st = st || {};
-            setPages(Math.max(0, Math.min(MAX_PAGES, Number(st.pages) || 0)));
+            var nb = [];
+            if (Array.isArray(st.blocks)) {
+              st.blocks.forEach(function (b) {
+                if (!b || !(b.pages > 0)) return;
+                if (b.key !== END_KEY && !ensureHost(b.key)) return; // câu không còn trong danh sách -> bỏ tờ giấy
+                if (sumPages(nb) >= MAX_PAGES) return;
+                nb.push({ key: b.key, pages: Math.min(b.pages | 0, MAX_PAGES - sumPages(nb)) });
+              });
+            } else {
+              var np = Math.max(0, Math.min(MAX_PAGES, Number(st.pages) || 0));
+              if (np) nb.push({ key: END_KEY, pages: np });
+            }
+            setBlocks(nb);
             if (st.paper) setPaper(st.paper);
             // để giấy dựng xong (canvas đủ cao) rồi mới vẽ lại nét
             setTimeout(function () { setStrokesExternal(st.strokes || []); }, 0);
@@ -875,14 +1125,80 @@
       return h('span', { key: k, style: { width: 1, alignSelf: 'stretch', background: 'var(--line, #cbd5e1)', margin: '0 2px' } });
     }
 
+    // THÊM 10/11/2026 — tay nắm để kéo thanh bút
+    function onGripDown(e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      var tb = tbRef.current;
+      if (!tb) return;
+      var r = tb.getBoundingClientRect();
+      dragRef.current = { id: e.pointerId, ox: e.clientX - r.left, oy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false, x: r.left, y: r.top };
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    function onGripMove(e) {
+      var d = dragRef.current;
+      var tb = tbRef.current;
+      if (!d || !tb || d.id !== e.pointerId) return;
+      if (!d.moved && Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) < 4) return;
+      d.moved = true;
+      var r = tb.getBoundingClientRect();
+      d.x = clamp(e.clientX - d.ox, EDGE, Math.max(EDGE, global.innerWidth - r.width - EDGE));
+      d.y = clamp(e.clientY - d.oy, EDGE, Math.max(EDGE, global.innerHeight - r.height - EDGE));
+      // đổi style trực tiếp cho mượt (không render lại); thả tay mới lưu vào state
+      tb.style.left = d.x + 'px';
+      tb.style.top = d.y + 'px';
+      tb.style.bottom = 'auto';
+      tb.style.transform = 'none';
+      e.preventDefault();
+    }
+    function onGripEnd(e) {
+      var d = dragRef.current;
+      if (!d || d.id !== e.pointerId) return;
+      dragRef.current = null;
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
+      if (d.moved) {
+        var np = { x: d.x, y: d.y };
+        setPos(np);
+        saveToolbarPos(np);
+        lastTapRef.current = 0;
+      } else {
+        var t = Date.now();
+        if (t - lastTapRef.current < 400) { // chạm đúp -> về vị trí mặc định
+          setPos(null);
+          saveToolbarPos(null);
+          lastTapRef.current = 0;
+          var tb = tbRef.current;
+          if (tb) { tb.style.left = ''; tb.style.top = ''; tb.style.bottom = ''; tb.style.transform = ''; }
+        } else {
+          lastTapRef.current = t;
+        }
+      }
+    }
+    var grip = h('span', {
+      key: 'grip',
+      title: 'Kéo để dời thanh bút (chạm đúp: về giữa đáy)',
+      onPointerDown: onGripDown,
+      onPointerMove: onGripMove,
+      onPointerUp: onGripEnd,
+      onPointerCancel: onGripEnd,
+      style: {
+        minWidth: 28, minHeight: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 20, lineHeight: 1, color: 'var(--muted, #64748b)', cursor: 'grab', touchAction: 'none',
+        userSelect: 'none', WebkitUserSelect: 'none', borderRadius: 8, background: 'color-mix(in srgb, var(--line, #cbd5e1) 45%, transparent)'
+      }
+    }, '⠿');
+
     var toolbar;
     if (collapsed) {
-      toolbar = h('div', { style: toolbarBox() },
+      toolbar = h('div', { ref: tbRef, style: toolbarBox(pos) },
+        grip,
         btn(writing ? '✏️' : '✋', function () { setCollapsed(false); }, { title: 'Mở thanh công cụ' }));
     } else {
       var paperIdx = 0;
       for (var pi = 0; pi < PAPERS.length; pi++) if (PAPERS[pi].v === paper) paperIdx = pi;
-      toolbar = h('div', { style: toolbarBox() },
+      toolbar = h('div', { ref: tbRef, style: toolbarBox(pos) },
+        grip,
         btn(writing ? '✏️ Viết' : '✋ Cuộn', function () { setWriting(!writing); },
           { active: writing, title: 'Bật/tắt chế độ viết' }),
         sep('s1'),
@@ -913,17 +1229,30 @@
         btn('↶', undo, { disabled: !historyRef.current.length, title: 'Hoàn tác' }),
         btn('🗑', clearAll, { disabled: !strokesRef.current.length, title: 'Xoá hết nét vẽ' }),
         sep('s5'),
-        btn('📄 + Giấy', addPage, { disabled: pages >= MAX_PAGES, title: 'Thêm 1 trang giấy nháp bên dưới để viết tự do' }),
-        pages ? btn('−', removePage, { title: 'Bỏ trang giấy cuối' }) : null,
+        btn('📄 + Giấy', addPage, { disabled: pages >= MAX_PAGES, title: 'Thêm 1 trang giấy nháp ngay dưới câu đang xem để viết tự do' }),
+        pages ? btn('−', removePage, { title: 'Bớt 1 trang giấy (ở câu đang xem)' }) : null,
         pages ? btn(PAPERS[paperIdx].t, function () { setPaper(PAPERS[(paperIdx + 1) % PAPERS.length].v); }, { title: 'Đổi kiểu giấy: ô li / ô vuông / trắng' }) : null,
         btn('✕', function () { setCollapsed(true); }, { title: 'Thu gọn' }));
     }
 
+    function paperBlock(b, ref) {
+      return h('div', { key: b.key, ref: ref, style: paperStyle(paper, b.pages) },
+        h('div', { style: { position: 'absolute', right: 10, top: 6, fontSize: 11, color: '#a8a29e', fontFamily: 'inherit', pointerEvents: 'none' } },
+          'Giấy nháp · ' + b.pages + ' trang'));
+    }
+    // Giấy chèn sau từng câu: portal vào <div> đã chèn ngay sau câu trong DOM; giấy ở cuối đề: vẽ thẳng như cũ
+    var paperNodes = [];
+    for (var bi = 0; bi < blocks.length; bi++) {
+      var blk = blocks[bi];
+      if (blk.key === END_KEY) paperNodes.push(paperBlock(blk, endRef));
+      else if (hostsRef.current[blk.key] && ReactDOM && ReactDOM.createPortal) {
+        paperNodes.push(ReactDOM.createPortal(paperBlock(blk), hostsRef.current[blk.key], blk.key));
+      }
+    }
+
     return h('div', { ref: wrapRef, style: { position: 'relative' } },
       props.children,
-      pages ? h('div', { ref: paperRef, style: paperStyle(paper, pages) },
-        h('div', { style: { position: 'absolute', right: 10, top: 6, fontSize: 11, color: '#a8a29e', fontFamily: 'inherit', pointerEvents: 'none' } },
-          'Giấy nháp · ' + pages + ' trang')) : null,
+      paperNodes,
       h('canvas', {
         ref: canvasRef,
         onPointerDown: onDown,
@@ -943,9 +1272,13 @@
       toolbar);
   }
 
-  function toolbarBox() {
+  function toolbarBox(pos) {
+    // SỬA 10/11/2026 — có vị trí do thầy kéo thì dùng left/top, chưa có thì giữa đáy như cũ
+    var place = pos
+      ? { left: pos.x, top: pos.y, width: 'max-content' }
+      : { left: '50%', bottom: 16, transform: 'translateX(-50%)' };
     return {
-      position: 'fixed', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 20,
+      position: 'fixed', left: place.left, top: place.top, bottom: place.bottom, transform: place.transform, width: place.width, zIndex: 20,
       display: 'flex', alignItems: 'center', gap: 6, padding: 8, flexWrap: 'wrap', justifyContent: 'center',
       maxWidth: '96vw', background: 'color-mix(in srgb, var(--surface, #ffffff) 96%, transparent)', border: '1px solid var(--line, #cbd5e1)',
       borderRadius: 14, boxShadow: '0 6px 24px rgba(15,23,42,0.18)', touchAction: 'manipulation'

@@ -1,0 +1,7 @@
+Bút viết: thanh công cụ kéo được; "+ Giấy" chèn đúng dưới câu đang xem
+
+- ink-overlay.js: thêm tay nắm ⠿ để kéo thanh bút khắp màn hình (nhớ vị trí, chạm đúp để về giữa đáy, tự kẹp trong màn hình)
+- "+ Giấy" chèn tờ giấy ngay dưới câu chiếm nhiều chỗ nhất trên màn hình (thay vì luôn ở cuối đề); bấm tiếp thì thêm trang vào tờ đang xem; "−" bớt trang của tờ đang xem
+- Nét viết nằm dưới chỗ chèn tự dời theo (kể cả lịch sử hoàn tác); màn giảng 1 câu không có câu neo -> giấy vẫn nối ở cuối như cũ
+
+Co-Authored-By: Claude <noreply@anthropic.com>
