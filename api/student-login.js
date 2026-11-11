@@ -75,13 +75,28 @@ export default async function handler(req, res){
     return;
   }
 
+  // Tên đăng nhập chứa "/" sẽ làm Firestore ném lỗi đường dẫn (→ 500) — coi như không tồn tại.
+  if(username.indexOf('/') !== -1 || username === '.' || username === '..' || username.length > 200){
+    res.status(401).json({ error: 'Không tìm thấy tài khoản này. Kiểm tra lại tên đăng nhập hoặc liên hệ thầy cô.' });
+    return;
+  }
+
+  var step = 'start';
   try{
+    step = 'read-username';
     var mapSnap = await db.collection('usernames').doc(username).get();
     if(!mapSnap.exists){
       res.status(401).json({ error: 'Không tìm thấy tài khoản này. Kiểm tra lại tên đăng nhập hoặc liên hệ thầy cô.' });
       return;
     }
     var studentId = (mapSnap.data() || {}).studentId;
+    // studentId có thể bị lưu dạng số / có khoảng trắng / chứa "/" → ép về chuỗi hợp lệ.
+    if(studentId != null) studentId = String(studentId).trim();
+    if(studentId && (studentId.indexOf('/') !== -1 || studentId.length > 128)){
+      console.error('studentId không hợp lệ cho username', username, studentId);
+      studentId = '';
+    }
+    step = 'read-student';
     var stuRef = studentId ? db.collection('students').doc(studentId) : null;
     var stuSnap = stuRef ? await stuRef.get() : null;
     if(!stuSnap || !stuSnap.exists){
@@ -104,7 +119,15 @@ export default async function handler(req, res){
     }
 
     var storedPw = String(student.password || '');
-    var passOk = looksHashed(storedPw) ? bcrypt.compareSync(password, storedPw) : (storedPw === password);
+    var passOk = false;
+    step = 'check-password';
+    try{
+      passOk = looksHashed(storedPw) ? bcrypt.compareSync(password, storedPw) : (storedPw === password);
+    }catch(e){
+      // Hash bị hỏng/cắt cụt trong dữ liệu → coi là sai mật khẩu thay vì 500.
+      console.error('bcrypt lỗi cho', studentId, e && e.message);
+      passOk = false;
+    }
 
     if(!passOk){
       var nextFail = (Number(student.loginFailCount) || 0) + 1;
@@ -128,10 +151,11 @@ export default async function handler(req, res){
       console.error('Lỗi cập nhật trạng thái đăng nhập/mã hoá mật khẩu:', err);
     });
 
+    step = 'create-token';
     var token = await admin.auth(app).createCustomToken(studentId);
     res.status(200).json({ ok: true, token: token, studentId: studentId });
   }catch(err){
-    console.error('Lỗi đăng nhập học sinh:', err);
+    console.error('Lỗi đăng nhập học sinh [bước: ' + step + '] username=' + username + ':', err);
     res.status(500).json({ error: 'Lỗi kết nối tới máy chủ — thử lại sau ít phút.' });
   }
 }
