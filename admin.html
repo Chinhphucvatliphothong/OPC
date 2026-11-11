@@ -598,7 +598,25 @@
     // bị permission-denied. Đặt tên app riêng 'opc-admin' để hai phiên không đụng nhau.
     var app = initializeApp(firebaseConfig, 'opc-admin');
     var auth = getAuth(app);
-    var db = getFirestore(app);
+    // SỬA 11/11/2026 — GIẢM LƯỢT ĐỌC FIRESTORE CỦA TRANG ADMIN. Mỗi tab trong trang
+    // này tự mở onSnapshot riêng tới cả collection (de_thi, students, student_stats...)
+    // và đóng lại khi rời tab. Với bộ nhớ đệm mặc định, đóng listener là xoá luôn dữ
+    // liệu → quay lại tab là ĐỌC LẠI TOÀN BỘ collection (300 đề = 300 lượt đọc mỗi
+    // lần bấm tab). Dùng bộ nhớ đệm có "LRU garbage collector": dữ liệu + mốc đồng bộ
+    // được giữ lại trong RAM suốt phiên, nên mở lại listener (trong vòng 30 phút) chỉ
+    // tính tiền các document THỰC SỰ thay đổi. Chỉ giữ trong RAM (không ghi ra ổ đĩa)
+    // nên đóng tab là sạch — an toàn cả khi thầy cô mở admin trên máy dùng chung.
+    var db;
+    try{
+      db = fsMod.initializeFirestore(app, {
+        localCache: fsMod.memoryLocalCache({
+          garbageCollector: fsMod.memoryLruGarbageCollector({ cacheSizeBytes: 200 * 1024 * 1024 })
+        })
+      });
+    }catch(e){
+      console.warn('Không bật được bộ nhớ đệm LRU cho Firestore, dùng mặc định:', e);
+      db = getFirestore(app);
+    }
     var storage = getStorage(app);
 
     OPC.onAuthStateChanged = function(cb){ return onAuthStateChanged(auth, cb); };

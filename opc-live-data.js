@@ -77,6 +77,10 @@ async function loginStudent(usernameRaw, passwordRaw){
 }
 
 function logoutStudent(){
+  // SỬA 11/11/2026 — xoá ngân hàng đề + số liệu Radar đã lưu trên máy khi đăng xuất,
+  // để người dùng sau trên MÁY CÔNG CỘNG không mở DevTools xem được đề/đáp án.
+  bankCacheClear();
+  try{ localStorage.removeItem(PEER_RADAR_CACHE_KEY); }catch(e){}
   signOut(auth).catch(function(e){ console.error('Lỗi đăng xuất:', e); });
 }
 
@@ -609,6 +613,9 @@ var lastBankError = null;
 // thêm. Chưa có settings/bankVersion (admin chưa cập nhật) → cache sống 6 giờ.
 var BANK_CACHE_DB = 'opc-cache', BANK_CACHE_STORE = 'kv', BANK_CACHE_KEY = 'de_thi_v1';
 var BANK_CACHE_TTL_NO_VERSION = 6 * 3600 * 1000;
+// Dù số phiên bản khớp, bản lưu quá 24 giờ vẫn tải lại — phòng khi đề được sửa
+// trực tiếp trên Firebase Console (không qua admin.html nên không tăng bankVersion).
+var BANK_CACHE_MAX_AGE = 24 * 3600 * 1000;
 function bankCacheOpen(){
   return new Promise(function(resolve, reject){
     if(!window.indexedDB){ reject(new Error('no-idb')); return; }
@@ -637,6 +644,9 @@ async function bankCacheSet(val){
       tx.oncomplete = resolve; tx.onerror = resolve; tx.onabort = resolve;
     });
   }catch(e){}
+}
+function bankCacheClear(){
+  try{ if(window.indexedDB) indexedDB.deleteDatabase(BANK_CACHE_DB); }catch(e){}
 }
 async function readBankVersion(){
   try{
@@ -687,9 +697,10 @@ async function loadRealQuestionBank(){
   var version = await readBankVersion();
   var cached = await bankCacheGet();
   if(cached && Array.isArray(cached.raw) && cached.raw.length){
+    var age = Date.now() - (cached.savedAt || 0);
     var fresh = version != null
-      ? cached.version === version
-      : (Date.now() - (cached.savedAt || 0) < BANK_CACHE_TTL_NO_VERSION);
+      ? (cached.version === version && age < BANK_CACHE_MAX_AGE)
+      : (age < BANK_CACHE_TTL_NO_VERSION);
     if(fresh){
       try{ return buildBankFromRaw(cached.raw); }catch(e){ console.warn('Cache ngân hàng đề hỏng, tải lại:', e); }
     }
