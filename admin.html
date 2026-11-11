@@ -686,7 +686,15 @@
         return qs === data.questions ? data : Object.assign({}, data, { questions: qs });
       }catch(e){ console.warn('linkPrevContext lỗi:', e); return data; }
     }
+    // THÊM 11/11/2026 — báo cho máy học sinh biết ngân hàng de_thi vừa đổi (xem cache
+    // trong opc-live-data.js → loadRealQuestionBank). Chỉ 1 lượt ghi mỗi lần sửa đề.
+    function bumpBankVersion(COL){
+      if(COL !== 'de_thi') return Promise.resolve();
+      return setDoc(doc(db, 'settings', 'bankVersion'), { de_thi: Date.now() }, { merge: true })
+        .catch(function(e){ console.warn('Không cập nhật được settings/bankVersion:', e); });
+    }
     function makeExamBankApi(COL){
+      function bumped(p){ return Promise.resolve(p).then(function(r){ return bumpBankVersion(COL).then(function(){ return r; }); }); }
       return {
         // SỬA 14/10/2026 — mọi nơi đọc ngân hàng đề đều nhận câu "dựa vào câu trên" ĐÃ GẮN dữ kiện câu trước
         // (PrepScholarEngine.linkPrevContext) → tạo đề cá nhân hoá / đề lớp / phiếu ôn bốc lẻ câu vẫn đủ ngữ cảnh.
@@ -702,7 +710,7 @@
         },
         newRef: function(){ return doc(collection(db, COL)); },
         save: function(refDoc, data){
-          return setDoc(refDoc, Object.assign({}, data, { createdAt: serverTimestamp() }));
+          return bumped(setDoc(refDoc, Object.assign({}, data, { createdAt: serverTimestamp() })));
         },
         // Lưu toàn bộ dữ liệu đề thi, nội dung .tex gốc và ảnh minh họa trực tiếp vào Firestore
         // Tự động phân tách sang subcollection nếu dữ liệu ảnh lớn để không bao giờ chạm trần 1MB của Firestore
@@ -715,7 +723,7 @@
           var payloadSize = JSON.stringify(docToSave).length;
           // Nếu toàn bộ dữ liệu < 650KB, lưu trực tiếp vào document cha cho tốc độ tức thì
           if(payloadSize < 650000){
-            return setDoc(refDoc, docToSave);
+            return bumped(setDoc(refDoc, docToSave));
           }
   
           // Nếu ảnh nhiều hoặc dung lượng lớn, lưu ảnh vào subcollection "images" của đề thi
@@ -734,6 +742,7 @@
             var subRef = doc(collection(db, COL, refDoc.id, 'images'), 'img_' + i);
             await setDoc(subRef, images[i]);
           }
+          await bumpBankVersion(COL);
         },
         // THÊM 4/10/2026 — đọc 1 đề theo id (kèm ảnh) cho màn "Xem lại bài làm" của học sinh. null nếu đề đã bị xoá.
         getExam: async function(examId){
@@ -776,18 +785,18 @@
               }
             }
           }catch(e){}
-          return deleteDoc(doc(db, COL, id));
+          return bumped(deleteDoc(doc(db, COL, id)));
         },
         // Cập nhật lại mảng câu hỏi của 1 đề (VD sau khi thầy sửa đáp án đúng của
         // 1 câu vì phát hiện sai sót trong file gốc) — không đụng tới các trường
         // khác của đề (tex gốc, hình ảnh, thống kê...).
         updateQuestions: function(examId, questions){
-          return updateDoc(doc(db, COL, examId), { questions: questions });
+          return bumped(updateDoc(doc(db, COL, examId), { questions: questions }));
         },
         // THÊM 1/10/2026 — Video chữa đề: ghi { url, videoId, marks, updatedAt }
         // (hoặc null để gỡ) vào chính doc đề. Chỉ đụng đúng trường này.
         updateVideoWalkthrough: function(examId, vw){
-          return updateDoc(doc(db, COL, examId), { videoWalkthrough: vw });
+          return bumped(updateDoc(doc(db, COL, examId), { videoWalkthrough: vw }));
         },
         uploadFile: function(examId, file, kind, onProgress){
           return new Promise(function(resolve, reject){

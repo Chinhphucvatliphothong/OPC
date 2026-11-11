@@ -423,7 +423,19 @@ async function saveStudentStats(studentId, stats){
 // chuẩn quốc gia "THPT 2026" (không có nguồn dữ liệu đó) nên giao diện phải
 // ghi rõ "Mặt bằng chung OPC", không được gắn nhãn quốc gia dễ gây hiểu nhầm.
 // Trả về null nếu chưa có học sinh nào có đủ số liệu cho ít nhất 1 chiều.
+// SỬA 11/11/2026 — đọc cả collection student_stats tốn 1 lượt đọc/học sinh
+// MỖI lần mở trang → lưu kết quả trung bình trên máy 12 giờ.
+var PEER_RADAR_CACHE_KEY = 'opc_peerRadar5_v1', PEER_RADAR_TTL = 12 * 3600 * 1000;
 async function loadPeerRadar5(){
+  try{
+    var c = JSON.parse(localStorage.getItem(PEER_RADAR_CACHE_KEY) || 'null');
+    if(c && Date.now() - c.t < PEER_RADAR_TTL) return c.v;
+  }catch(e){}
+  var v = await loadPeerRadar5Uncached();
+  if(v){ try{ localStorage.setItem(PEER_RADAR_CACHE_KEY, JSON.stringify({ t: Date.now(), v: v })); }catch(e){} }
+  return v;
+}
+async function loadPeerRadar5Uncached(){
   try{
     var snap = await getDocs(collection(db, 'student_stats'));
     var sums = { lyThuyet: 0, vdc: 0, neBayTF: 0, doThi: 0, tinhNhanh: 0 };
@@ -586,36 +598,113 @@ function transformQuestion(q, examMeta){
 // nên ngân hàng lớn chờ rất lâu sau đăng nhập) và ghi lại mã lỗi cuối cùng vào
 // lastBankError để giao diện biết "tải lỗi" khác "ngân hàng thật sự trống".
 var lastBankError = null;
-async function loadRealQuestionBank(){
+
+// SỬA 11/11/2026 — CACHE NGÂN HÀNG ĐỀ trên máy học sinh (IndexedDB).
+// Trước đây MỖI LẦN mở trang, mỗi học sinh đọc lại TOÀN BỘ collection de_thi
+// + toàn bộ subcollection images của từng đề → vài chục em mở trang buổi tối
+// là vượt hạn mức miễn phí 50.000 lượt đọc/ngày của Firestore (gói Spark),
+// sau đó MỌI lượt đọc (kể cả api/student-login) bị từ chối → đăng nhập lỗi 500.
+// Giờ: chỉ đọc 1 document settings/bankVersion (admin.html tăng số này mỗi khi
+// thầy lưu/sửa/xoá đề). Nếu khớp bản đã lưu trên máy → dùng luôn, 0 lượt đọc
+// thêm. Chưa có settings/bankVersion (admin chưa cập nhật) → cache sống 6 giờ.
+var BANK_CACHE_DB = 'opc-cache', BANK_CACHE_STORE = 'kv', BANK_CACHE_KEY = 'de_thi_v1';
+var BANK_CACHE_TTL_NO_VERSION = 6 * 3600 * 1000;
+function bankCacheOpen(){
+  return new Promise(function(resolve, reject){
+    if(!window.indexedDB){ reject(new Error('no-idb')); return; }
+    var rq = indexedDB.open(BANK_CACHE_DB, 1);
+    rq.onupgradeneeded = function(){ rq.result.createObjectStore(BANK_CACHE_STORE); };
+    rq.onsuccess = function(){ resolve(rq.result); };
+    rq.onerror = function(){ reject(rq.error); };
+  });
+}
+async function bankCacheGet(){
   try{
-    lastBankError = null;
-    var snap = await getDocs(query(collection(db, 'de_thi'), orderBy('createdAt', 'desc')));
-    var docs = [];
-    snap.forEach(function(d){ docs.push(d); });
-    var imagesList = await Promise.all(docs.map(function(d){
-      var ex = d.data() || {};
-      return loadExamImages(d.id, ex.images);
-    }));
-    var all = [];
-    for(var i = 0; i < docs.length; i++){
-      var d = docs[i];
-      var exam = d.data() || {};
-      var resolvedImages = imagesList[i];
-      var meta = { examId: d.id, title: exam.title || '', images: resolvedImages };
-      // SỬA 14/10/2026 — gắn dữ kiện câu trước cho câu "dựa vào câu trên" (PrepScholarEngine.linkPrevContext)
-      linkCtx(exam.questions || []).forEach(function(q){
-        all.push(transformQuestion(q, meta));
-      });
-      // THÊM 1/10/2026 — VIDEO CHỮA ĐỀ: ghi lại mốc video của đề này vào bảng
-      // tra OPC_WALKTHROUGH (theo examId). Giao diện tra theo mã câu hỏi
-      // (examId + '_q' + index) LÚC HIỂN THỊ — nên đề đã giao trước khi thêm
-      // video, hay câu bị bốc/xáo ở chế độ nào, đều tìm đúng đoạn.
-      if(window.OPC_WALKTHROUGH) window.OPC_WALKTHROUGH.register(d.id, exam.title || '', exam.videoWalkthrough || null);
+    var dbc = await bankCacheOpen();
+    return await new Promise(function(resolve){
+      var rq = dbc.transaction(BANK_CACHE_STORE, 'readonly').objectStore(BANK_CACHE_STORE).get(BANK_CACHE_KEY);
+      rq.onsuccess = function(){ resolve(rq.result || null); };
+      rq.onerror = function(){ resolve(null); };
+    });
+  }catch(e){ return null; }
+}
+async function bankCacheSet(val){
+  try{
+    var dbc = await bankCacheOpen();
+    await new Promise(function(resolve){
+      var tx = dbc.transaction(BANK_CACHE_STORE, 'readwrite');
+      tx.objectStore(BANK_CACHE_STORE).put(val, BANK_CACHE_KEY);
+      tx.oncomplete = resolve; tx.onerror = resolve; tx.onabort = resolve;
+    });
+  }catch(e){}
+}
+async function readBankVersion(){
+  try{
+    var s = await getDoc(doc(db, 'settings', 'bankVersion'));
+    var v = s.exists() ? (s.data() || {}).de_thi : null;
+    return v == null ? null : String(v);
+  }catch(e){ return null; }
+}
+function stripForCache(exam){
+  var o = Object.assign({}, exam);
+  delete o.createdAt; // Timestamp — không cần cho học sinh, tránh lỗi clone
+  return o;
+}
+
+async function fetchBankRaw(){
+  var snap = await getDocs(query(collection(db, 'de_thi'), orderBy('createdAt', 'desc')));
+  var docs = [];
+  snap.forEach(function(d){ docs.push(d); });
+  var imagesList = await Promise.all(docs.map(function(d){
+    var ex = d.data() || {};
+    return loadExamImages(d.id, ex.images);
+  }));
+  return docs.map(function(d, i){
+    var exam = stripForCache(d.data() || {});
+    exam.images = imagesList[i];
+    return { id: d.id, exam: exam };
+  });
+}
+
+function buildBankFromRaw(raw){
+  var all = [];
+  raw.forEach(function(r){
+    var exam = r.exam || {};
+    var meta = { examId: r.id, title: exam.title || '', images: exam.images || [] };
+    // SỬA 14/10/2026 — gắn dữ kiện câu trước cho câu "dựa vào câu trên" (PrepScholarEngine.linkPrevContext)
+    linkCtx(exam.questions || []).forEach(function(q){
+      all.push(transformQuestion(q, meta));
+    });
+    // THÊM 1/10/2026 — VIDEO CHỮA ĐỀ: ghi lại mốc video của đề này vào bảng
+    // tra OPC_WALKTHROUGH (theo examId).
+    if(window.OPC_WALKTHROUGH) window.OPC_WALKTHROUGH.register(r.id, exam.title || '', exam.videoWalkthrough || null);
+  });
+  return all;
+}
+
+async function loadRealQuestionBank(){
+  lastBankError = null;
+  var version = await readBankVersion();
+  var cached = await bankCacheGet();
+  if(cached && Array.isArray(cached.raw) && cached.raw.length){
+    var fresh = version != null
+      ? cached.version === version
+      : (Date.now() - (cached.savedAt || 0) < BANK_CACHE_TTL_NO_VERSION);
+    if(fresh){
+      try{ return buildBankFromRaw(cached.raw); }catch(e){ console.warn('Cache ngân hàng đề hỏng, tải lại:', e); }
     }
-    return all;
+  }
+  try{
+    var raw = await fetchBankRaw();
+    bankCacheSet({ version: version, savedAt: Date.now(), raw: raw });
+    return buildBankFromRaw(raw);
   }catch(e){
     console.error('Lỗi tải ngân hàng đề thật:', e);
     lastBankError = (e && (e.code || e.message)) || 'unknown';
+    // Hết hạn mức / mất mạng: vẫn cho học bằng bản cache cũ (nếu có) thay vì trống trơn.
+    if(cached && Array.isArray(cached.raw) && cached.raw.length){
+      try{ lastBankError = null; return buildBankFromRaw(cached.raw); }catch(e2){}
+    }
     return [];
   }
 }
