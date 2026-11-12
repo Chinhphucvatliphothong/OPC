@@ -1761,8 +1761,20 @@
     {key:'nhiet', label:'Vật lí nhiệt', mastery:85},
     {key:'khi', label:'Khí lí tưởng', mastery:68},
     {key:'tu-truong', label:'Từ trường', mastery:60},
-    {key:'hat-nhan', label:'Vật lí hạt nhân', mastery:42}
+    {key:'hat-nhan', label:'Vật lí hạt nhân', mastery:42, khoi:12},
+    {key:'k11-dao-dong', label:'Dao động', mastery:72, khoi:11},
+    {key:'k11-song', label:'Sóng', mastery:58, khoi:11},
+    {key:'k11-dien-truong', label:'Điện trường', mastery:64, khoi:11},
+    {key:'k11-dong-dien', label:'Dòng điện, mạch điện', mastery:46, khoi:11},
+    {key:'k10-mo-dau', label:'Mở đầu', mastery:90, khoi:10},
+    {key:'k10-dong-hoc', label:'Động học', mastery:66, khoi:10},
+    {key:'k10-dong-luc-hoc', label:'Động lực học', mastery:52, khoi:10},
+    {key:'k10-nang-luong', label:'Năng lượng, công, công suất', mastery:61, khoi:10},
+    {key:'k10-dong-luong', label:'Động lượng', mastery:48, khoi:10},
+    {key:'k10-tron-deu', label:'Chuyển động tròn đều', mastery:70, khoi:10},
+    {key:'k10-bien-dang', label:'Biến dạng vật rắn – Áp suất chất lỏng', mastery:55, khoi:10}
   ];
+  SUBJECTS.slice(0,4).forEach(function(x){ x.khoi = 12; });
   function subjectStatus(v){ return v<50?'critical':(v<75?'warning':'good'); }
   function statusColor(st){ return st==='critical' ? 'var(--critical)' : st==='warning' ? 'var(--warning)' : 'var(--good)'; }
 
@@ -1793,7 +1805,13 @@
     {id:'r6', subject:'khi', topic:'Phương trình trạng thái khí lí tưởng (Clapeyron)', level:5, lastWrong:'2026-09-05'},
     {id:'r7', subject:'khi', topic:'Định luật Boyle – Charles, đồ thị p–V–T', level:3, lastWrong:'2026-08-30'},
     {id:'r8', subject:'hat-nhan', topic:'Cấu tạo hạt nhân, số khối và điện tích', level:2, lastWrong:'2026-09-15'},
-    {id:'r9', subject:'nhiet', topic:'Nội năng, định luật I nhiệt động lực học', level:6, lastWrong:'2026-08-20'}
+    {id:'r9', subject:'nhiet', topic:'Nội năng, định luật I nhiệt động lực học', level:6, lastWrong:'2026-08-20'},
+    {id:'r10', subject:'k11-dao-dong', topic:'Con lắc lò xo, con lắc đơn', level:5, lastWrong:'2026-09-10'},
+    {id:'r11', subject:'k11-song', topic:'Giao thoa sóng, sóng dừng', level:6, lastWrong:'2026-09-06'},
+    {id:'r12', subject:'k11-dong-dien', topic:'Định luật Ohm cho toàn mạch', level:4, lastWrong:'2026-09-12'},
+    {id:'r13', subject:'k10-dong-luc-hoc', topic:'Định luật II Newton', level:4, lastWrong:'2026-09-11'},
+    {id:'r14', subject:'k10-dong-hoc', topic:'Chuyển động thẳng biến đổi đều', level:3, lastWrong:'2026-09-09'},
+    {id:'r15', subject:'k10-dong-luong', topic:'Định luật bảo toàn động lượng', level:5, lastWrong:'2026-09-04'}
   ];
   function reviewStatus(item){
     var days = daysBetween(item.lastWrong);
@@ -1832,8 +1850,13 @@
     var sourceState = useState('personalized'); var source = sourceState[0], setSource = sourceState[1];
     var soDeState = useState(1); var soDe = soDeState[0], setSoDe = soDeState[1];
     var namDeState = useState('2026'); var namDe = namDeState[0], setNamDe = namDeState[1];
-    var topicsState = useState(function(){ return SUBJECTS.map(function(s){return s.key;}); });
+    var khoiState = useState(12); var khoi = khoiState[0], setKhoi = khoiState[1];
+    var topicsState = useState(function(){ return SUBJECTS.filter(function(s){return s.khoi===12;}).map(function(s){return s.key;}); });
     var topics = topicsState[0], setTopics = topicsState[1];
+    function pickKhoi(k){
+      setKhoi(k);
+      setTopics(SUBJECTS.filter(function(s){return s.khoi===k;}).map(function(s){return s.key;}));
+    }
     var countsState = useState(DEFAULT_COUNTS.slice()); var counts = countsState[0], setCounts = countsState[1];
     var onlyNewState = useState(false); var onlyNew = onlyNewState[0], setOnlyNew = onlyNewState[1];
     var prioritizeWrongState = useState(true); var prioritizeWrong = prioritizeWrongState[0], setPrioritizeWrong = prioritizeWrongState[1];
@@ -1932,10 +1955,18 @@
         )
       ),
       h('div',{className:'field-block'},
-        h('div',{className:'field-label'}, 'Chuyên đề Vật Lí'),
+        h('div',{className:'field-label'}, 'Khối lớp'),
+        h('div',{className:'topic-chips'},
+          [10,11,12].map(function(k){
+            return h('button',{key:k, type:'button', className: cx('topic-chip', khoi===k && 'active'), onClick:function(){ pickKhoi(k); }}, 'Lớp '+k);
+          })
+        )
+      ),
+      h('div',{className:'field-block'},
+        h('div',{className:'field-label'}, 'Chuyên đề Vật Lí — Lớp '+khoi),
         !isPersonalized ? h('div',{className:'field-hint'}, 'Chỉ áp dụng khi chọn nguồn "Cá nhân hoá theo điểm yếu".') : null,
         h('div',{className: cx('topic-chips', !isPersonalized && 'field-disabled')},
-          SUBJECTS.map(function(s){
+          SUBJECTS.filter(function(s){ return s.khoi===khoi; }).map(function(s){
             var active = topics.indexOf(s.key)>-1;
             var color = statusColor(subjectStatus(s.mastery));
             return h('button',{
