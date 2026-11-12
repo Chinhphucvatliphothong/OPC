@@ -11330,6 +11330,8 @@
     var selectedSoTruongExamIdState = React.useState(''); var selectedSoTruongExamId = selectedSoTruongExamIdState[0], setSelectedSoTruongExamId = selectedSoTruongExamIdState[1];
     var goalProfileState = React.useState('foundation'); var goalProfile = goalProfileState[0], setGoalProfile = goalProfileState[1];
     var selectedTopicState = React.useState('Tất cả'); var selectedTopic = selectedTopicState[0], setSelectedTopic = selectedTopicState[1];
+    // THÊM 12/11/2026 — KHỐI LỚP của đề cá nhân hoá (10/11/12): mặc định theo khối của học sinh đang chọn ('' = theo em), admin có thể đổi.
+    var genKhoiState = React.useState(''); var genKhoiPick = genKhoiState[0], setGenKhoiPick = genKhoiState[1];
     var examStructureState = React.useState('moet28'); var examStructure = examStructureState[0], setExamStructure = examStructureState[1]; // moet28 | quick15 | custom
     var examCodeState = React.useState('101'); var examCode = examCodeState[0], setExamCode = examCodeState[1];
     // THÊM 27/10/2026 — MA TRẬN ĐỀ (cấu trúc đề 'matrix'): trọng số chủ đề (%) × tỉ lệ mức độ M1–M4 (%) × số câu mỗi Phần
@@ -11464,11 +11466,24 @@
         function(err){ console.error('Lỗi tải settings/curriculum (Tạo đề cá nhân hóa):', err); });
       return function(){ unsub(); };
     }, []);
+    // Khối đang tạo đề: admin chọn, nếu chưa chọn thì theo khối của học sinh (thiếu = 12).
+    var genKhoi = React.useMemo(function(){
+      if(!window.OPC_CURRICULUM) return 12;
+      var st = students.filter(function(s){ return s.id === selectedStudentId; })[0];
+      var sk = window.OPC_CURRICULUM.khoiOf(st || null);
+      return genKhoiPick ? Number(genKhoiPick) : sk;
+    }, [students, selectedStudentId, genKhoiPick]);
     var selectedStudentChapters = React.useMemo(function(){
       if(!window.OPC_CURRICULUM) return [];
       var st = students.filter(function(s){ return s.id === selectedStudentId; })[0];
-      return window.OPC_CURRICULUM.getUnlockedChapters(st || null, genCur);
-    }, [students, selectedStudentId, genCur]);
+      // Khối khác khối của em: dùng chương mở mặc định của khối đó (chương riêng của em chỉ áp cho khối của em).
+      var stForKhoi = (st && window.OPC_CURRICULUM.khoiOf(st) === genKhoi) ? st : { khoi: genKhoi };
+      return window.OPC_CURRICULUM.getUnlockedChapters(stForKhoi, genCur);
+    }, [students, selectedStudentId, genCur, genKhoi]);
+    // Đổi khối / đổi em -> bỏ chuyên đề đã chọn nếu không thuộc khối mới
+    React.useEffect(function(){
+      if(selectedTopic !== 'Tất cả' && chuDeListFor(genKhoi).indexOf(selectedTopic) < 0) setSelectedTopic('Tất cả');
+    }, [genKhoi]);
     // THÊM 28/10/2026 — bài đang khoá của em này (riêng em hoặc mặc định lớp) + đề đang khoá trong ngân hàng:
     // câu thuộc chúng bị loại khỏi đề cá nhân hoá, giống hệt phía trang học sinh (prepscholar.js applyChapterFilter).
     var accessRules = React.useMemo(function(){
@@ -11504,7 +11519,7 @@
     var matrixRows = React.useMemo(function(){
       var set = {}; questionPool.forEach(function(q){ var n = q.chuDeLon || q.chuDe; if(n) set[n] = (set[n] || 0) + 1; });
       var names = Object.keys(set);
-      names.sort(function(a, b){ var ia = CHU_DE_LIST.indexOf(a), ib = CHU_DE_LIST.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+      names.sort(function(a, b){ var ALLCD = CHU_DE_UPLOAD_LIST, ia = ALLCD.indexOf(a), ib = ALLCD.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
       return names;
     }, [questionPool]);
     var matrixSpec = React.useMemo(function(){
@@ -12090,7 +12105,8 @@
               h('label',null,'1. Chọn học sinh nhận đề *'),
               h('select',{value:selectedStudentId, onChange:function(e){ setSelectedStudentId(e.target.value); }},
                 students.map(function(s){
-                  return h('option',{key:s.id, value:s.id}, s.name + (s.targetScore ? ' (Mục tiêu ' + s.targetScore + '+)' : ''));
+                  var sk = (Number(s.khoi) === 10 || Number(s.khoi) === 11) ? Number(s.khoi) : 12;
+                  return h('option',{key:s.id, value:s.id}, s.name + ' · Lớp ' + sk + (s.targetScore ? ' (Mục tiêu ' + s.targetScore + '+)' : ''));
                 })
               )
             ),
@@ -12117,10 +12133,17 @@
               ),
 
               h('div',{className:'sm-field', style:{marginTop:14}},
-                h('label',null,'3. Chuyên đề áp dụng'),
+                h('label',null,'3a. Khối lớp'),
+                h('select',{value:genKhoi, onChange:function(e){ setGenKhoiPick(e.target.value); setSelectedTopic('Tất cả'); }},
+                  [10, 11, 12].map(function(k){ return h('option',{key:k, value:k}, 'Khối ' + k + (student && window.OPC_CURRICULUM && window.OPC_CURRICULUM.khoiOf(student) === k ? ' (khối của em)' : '')); })
+                )
+              ),
+
+              h('div',{className:'sm-field', style:{marginTop:14}},
+                h('label',null,'3b. Chuyên đề áp dụng'),
                 h('select',{value:selectedTopic, onChange:function(e){ setSelectedTopic(e.target.value); }},
-                  h('option',{value:'Tất cả'}, 'Tất cả chuyên đề'),
-                  CHU_DE_LIST.map(function(c){ return h('option',{key:c, value:c}, c); })
+                  h('option',{value:'Tất cả'}, 'Tất cả chuyên đề (khối ' + genKhoi + ')'),
+                  chuDeListFor(genKhoi).map(function(c){ return h('option',{key:c, value:c}, c); })
                 )
               ),
 
