@@ -452,6 +452,14 @@
     (sorted || []).forEach(function(a){
       (a.wrongQuestions || []).forEach(function(q){ tally(q, false); });
       (a.rightQuestions || []).forEach(function(q){ tally(q, true); });
+      // THÊM 14/11/2026 — lượt có đo thời gian TỪNG CÂU (Luyện tập thích ứng): dùng chuẩn/thực tế của từng câu
+      // (giới hạn 0.25..2 để 1 câu bấm vội không làm lệch), không dùng tổng phiên vì tổng phiên gồm cả lúc đọc lời giải.
+      var perQ = (a.rightQuestions || []).concat(a.wrongQuestions || []).filter(function(q){ return q.timeSec > 0; });
+      if(perQ.length){
+        var sumR = perQ.reduce(function(s, q){ return s + Math.max(0.25, Math.min(2, benchmarkSec(q) / q.timeSec)); }, 0);
+        timeRatios.push(sumR / perQ.length);
+        return;
+      }
       if(a.timeAllocatedSec > 0 && a.timeUsedSec > 0){
         timeRatios.push(a.timeAllocatedSec / a.timeUsedSec);
       }
@@ -560,7 +568,7 @@
       if(!ids.length) ids = nanoIdsOf(rec);
       ids.forEach(function(nanoId){
         var cur = (nanoAgg[nanoId] != null) ? nanoAgg[nanoId] : MASTERY_NEUTRAL_START;
-        nanoAgg[nanoId] = bumpNanoMastery(cur, correct, rec.level, ids.length);
+        nanoAgg[nanoId] = bumpNanoMastery(cur, correct, rec.level, ids.length, speedClassOf(rec.timeSec, bankById[rec.qId] || rec));
       });
     }
     sorted.forEach(function(a){
@@ -686,11 +694,56 @@
   // trường/sở thường gộp 2-3 nano-point. Đúng -> mỗi nano-point được cộng đủ (câu đúng chứng tỏ đã vận dụng
   // cả hai). Sai -> chưa biết em hổng nano-point nào nên trừ CHIA SẺ: 1 nano -20, 2 nano -10 mỗi nano, 3 nano -8
   // mỗi nano (không dưới 8) — để không "phạt chồng" nhiều nano-point chỉ vì một câu sai.
-  function bumpNanoMastery(current, correct, level, tagCount){
+  // THÊM 14/11/2026 — speed (tuỳ chọn): 'fast' | 'normal' | 'slow' so với THỜI GIAN CHUẨN của câu (xem speedClassOf).
+  // Đúng nhưng CHẬM (> 2× chuẩn) → chưa phản xạ nhanh, chỉ cộng 40% mức thường. Đúng NHANH (≤ chuẩn) → +5 thưởng.
+  // Sai: không xét tốc độ. Không truyền speed (lượt cũ, Drill/Thi thử không đo từng câu) → y như trước.
+  function bumpNanoMastery(current, correct, level, tagCount, speed){
     var cur = (current != null) ? current : MASTERY_NEUTRAL_START;
     var n = (tagCount && tagCount > 1) ? tagCount : 1;
     var delta = correct ? ((level === 'M3' || level === 'M4') ? 25 : 15) : -Math.max(8, Math.round(20 / n));
+    if(correct && speed === 'slow') delta = Math.round(delta * 0.4);
+    else if(correct && speed === 'fast') delta += 5;
     return Math.max(0, Math.min(100, cur + delta));
+  }
+
+  // THÊM 14/11/2026 — THỜI GIAN CHUẨN (Benchmark Time) cho 1 câu, tính bằng giây: thời gian một học sinh đã thành thạo
+  // cần để làm câu đó (không tính thời gian đọc lời giải). Câu có trường benchSec (giáo viên nhập) thì dùng nguyên;
+  // không có thì ước theo mức độ × phần. Đây là ĐẦU VÀO tốc độ cho mô hình thành thạo của Luyện tập thích ứng.
+  var BENCH_BASE_SEC = { M1: 45, M2: 75, M3: 110, M4: 150 };
+  var BENCH_PART_FACTOR = { I: 1, II: 1.5, III: 1.3 };
+  function benchmarkSec(q){
+    if(!q) return BENCH_BASE_SEC.M2;
+    var own = Number(q.benchSec);
+    if(isFinite(own) && own > 0) return Math.round(own);
+    var base = BENCH_BASE_SEC[q.level] || BENCH_BASE_SEC.M2;
+    return Math.round(base * (BENCH_PART_FACTOR[q.part] || 1));
+  }
+  // Xếp loại tốc độ: ≤ chuẩn = 'fast' · > 2× chuẩn = 'slow' · còn lại 'normal'. Không có số đo → null.
+  function speedClassOf(timeSec, q){
+    var t = Number(timeSec);
+    if(!isFinite(t) || t <= 0) return null;
+    var ratio = t / benchmarkSec(q);
+    if(ratio <= 1) return 'fast';
+    if(ratio > 2) return 'slow';
+    return 'normal';
+  }
+
+  // THÊM 14/11/2026 — NĂNG LƯỢNG THÀNH THẠO (thanh cạnh tên tài khoản): trung bình mastery của MỌI nano-point có câu
+  // hỏi trong ngân hàng đề. Nano chưa luyện tính 0 để thanh phản ánh cả độ phủ. Trả { pct, green, total }.
+  function overallMastery(nanoMastery){
+    nanoMastery = nanoMastery || {};
+    var seen = {};
+    QUESTION_BANK.forEach(function(q){ nanoIdsOf(q).forEach(function(id){ seen[id] = true; }); });
+    var ids = Object.keys(seen);
+    if(!ids.length) ids = Object.keys(nanoMastery);
+    if(!ids.length) return { pct: 0, green: 0, total: 0 };
+    var sum = 0, green = 0;
+    ids.forEach(function(id){
+      var v = Number(nanoMastery[id]) || 0;
+      sum += v;
+      if(v >= MASTERY_GREEN_MIN) green++;
+    });
+    return { pct: Math.round(sum / ids.length), green: green, total: ids.length };
   }
   // THÊM 5/10/2026 — danh sách nano-point của 1 câu hỏi: ưu tiên mảng nanoIds (nhiều nano), rơi về nanoId cũ.
   function nanoIdsOf(q){
@@ -797,8 +850,13 @@
   }
 
   var lastPickInfo = null;
-  function pickAdaptiveQuestion(nanoMastery, askedIds, priorityOrder){
+  // THÊM 14/11/2026 — opts (tuỳ chọn): { lastQ, lastCorrect, lastSpeed } của câu VỪA chấm, để dùng thời gian chuẩn:
+  //  · Đúng nhưng CHẬM → ở lại đúng Tag đó, cùng mức độ (câu tương tự) để rèn tốc độ, bỏ qua thứ tự AI/gốc lỗi.
+  //  · Đúng NHANH → nếu câu kế tiếp cùng Tag, nâng độ khó ngay 1 bậc so với câu vừa làm.
+  var LEVEL_ORDER = ['M1', 'M2', 'M3', 'M4'];
+  function pickAdaptiveQuestion(nanoMastery, askedIds, priorityOrder, opts){
     lastPickInfo = null;
+    opts = opts || {};
     if(!QUESTION_BANK.length) return null;
     nanoMastery = nanoMastery || {};
     askedIds = askedIds || {};
@@ -827,6 +885,17 @@
     // nhất. Các Tag không nằm trong priorityOrder (ví dụ AI không được gửi
     // hết danh sách) vẫn dùng đúng thứ tự cũ làm phương án dự phòng.
     var targetNanoId = null;
+    var lastQ = opts.lastQ || null;
+    var lastLevelIdx = lastQ ? LEVEL_ORDER.indexOf(lastQ.level) : -1;
+    if(lastQ && opts.lastCorrect && opts.lastSpeed === 'slow'){
+      var slowNano = nanoIdsOf(lastQ).filter(function(id){ return poolByNano[id] && poolByNano[id].length; })[0];
+      if(slowNano){
+        var sameLevel = poolByNano[slowNano].filter(function(q){ return q.level === lastQ.level; });
+        var slowPool = sameLevel.length ? sameLevel : poolByNano[slowNano];
+        lastPickInfo = { requestedId: slowNano, targetId: slowNano, redirected: false, path: [slowNano], reason: 'speed' };
+        return slowPool[Math.floor(Math.random() * slowPool.length)];
+      }
+    }
     if(Array.isArray(priorityOrder) && priorityOrder.length){
       var availableSet = {};
       availableNanoIds.forEach(function(id){ availableSet[id] = true; });
@@ -848,6 +917,10 @@
 
     var preferredLevels = targetMastery < MASTERY_YELLOW_MIN ? ['M1', 'M2'] :
       (targetMastery < MASTERY_GREEN_MIN ? ['M2', 'M3'] : ['M3', 'M4']);
+    if(lastQ && opts.lastCorrect && opts.lastSpeed === 'fast' && lastLevelIdx > -1 && nanoIdsOf(lastQ).indexOf(targetNanoId) > -1){
+      var up = Math.min(LEVEL_ORDER.length - 1, lastLevelIdx + 1);
+      preferredLevels = LEVEL_ORDER.slice(up, up + 2);
+    }
 
     var candidates = poolByNano[targetNanoId];
     var byLevel = candidates.filter(function(q){ return preferredLevels.indexOf(q.level) > -1; });
@@ -1411,6 +1484,9 @@
     getRedTags: getRedTags,
     bumpNanoMastery: bumpNanoMastery,
     pickAdaptiveQuestion: pickAdaptiveQuestion,
+    benchmarkSec: benchmarkSec,
+    speedClassOf: speedClassOf,
+    overallMastery: overallMastery,
     MASTERY_GREEN_MIN: MASTERY_GREEN_MIN,
     MASTERY_YELLOW_MIN: MASTERY_YELLOW_MIN,
     MASTERY_NEUTRAL_START: MASTERY_NEUTRAL_START,
