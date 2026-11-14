@@ -50,6 +50,50 @@
   font-size: 0.78rem;
   color: var(--muted);
 }
+/* THÊM 14/11/2026 — Năng lượng thành thạo cạnh tên tài khoản */
+.ps-energy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.74rem;
+  color: var(--muted);
+  --energy: var(--critical);
+}
+.ps-energy.yellow { --energy: var(--warning); }
+.ps-energy.green { --energy: var(--good); }
+.ps-energy-label { font-weight: 600; white-space: nowrap; }
+.ps-energy-bar {
+  position: relative;
+  flex: 1 1 auto;
+  width: 140px;
+  min-width: 80px;
+  max-width: 180px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.ps-energy-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--energy) 65%, transparent), var(--energy));
+  transition: width 0.6s ease, background 0.6s ease;
+}
+.ps-energy-val {
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 700;
+  color: var(--energy);
+  min-width: 3ch;
+}
+@media (max-width: 480px) {
+  .ps-energy-label { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ps-energy-fill { transition: none; }
+}
 .ps-student-select {
   padding: 7px 12px;
   border-radius: 8px;
@@ -572,6 +616,20 @@
   color: var(--critical);
   border-color: var(--critical);
   animation: pulse 1s infinite;
+}
+/* THÊM 14/11/2026 — đồng hồ từng câu của Luyện tập thích ứng: nhẹ nhàng, không đỏ/nhấp nháy */
+.ps-adaptive-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ps-adaptive-clock { font-size: 1rem; padding: 5px 12px; }
+.ps-adaptive-clock.paused { opacity: 0.7; }
+.ps-adaptive-clock-bench {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 /* Question Navigator Grid */

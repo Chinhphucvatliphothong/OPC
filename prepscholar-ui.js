@@ -593,7 +593,9 @@
       ensureSocraticCss();
       setIdle(false); setOpen(false); setMsgs([]); setInput(''); setBusy(false); setErr('');
       clearTimeout(timerRef.current);
-      if(show && q) timerRef.current = setTimeout(function(){ setIdle(true); }, socraticIdleMs(q));
+      // SỬA 14/11/2026 — props.idleMs (tuỳ chọn): Luyện tập thích ứng truyền 1,5× THỜI GIAN CHUẨN của câu
+      var idleMs = (props.idleMs > 0 && window.OPC_SOCRATIC_IDLE_SEC == null) ? props.idleMs : socraticIdleMs(q);
+      if(show && q) timerRef.current = setTimeout(function(){ setIdle(true); }, idleMs);
       return function(){ clearTimeout(timerRef.current); };
     }, [qid, show]);
     if(!q || !show || !idle) return null;
@@ -1168,6 +1170,29 @@
     var adaptiveLastResult = adaptiveLastResultState[0];
     var setAdaptiveLastResult = adaptiveLastResultState[1];
 
+    // THÊM 14/11/2026 — ĐỒNG HỒ TỪNG CÂU của Luyện tập thích ứng. Đếm XUÔI thời gian LÀM câu hiện tại; dừng khi bấm
+    // "Kiểm tra đáp án" (thời gian đọc lời giải/AI phân tích KHÔNG bị tính), tạm dừng khi em rời tab. Số giây đo được so
+    // với THỜI GIAN CHUẨN (PrepScholarEngine.benchmarkSec) → tín hiệu tốc độ cho mastery + chọn câu kế tiếp.
+    // adaptiveClockRef: { qId, accumMs, runningSince (ms|0) } · adaptiveTimesRef: { qId: giây } các câu đã chấm.
+    var adaptiveClockRef = React.useRef({ qId: null, accumMs: 0, runningSince: 0 });
+    var adaptiveTimesRef = React.useRef({});
+    var adaptiveLastSpeedRef = React.useRef(null); // { qId, correct, speed } của câu vừa chấm
+    var adaptiveElapsedState = React.useState(0); // giây — chỉ để vẽ đồng hồ
+    var adaptiveElapsed = adaptiveElapsedState[0];
+    var setAdaptiveElapsed = adaptiveElapsedState[1];
+    function adaptiveClockMs(){
+      var c = adaptiveClockRef.current;
+      return c.accumMs + (c.runningSince ? Date.now() - c.runningSince : 0);
+    }
+    function adaptiveClockStart(qId){
+      adaptiveClockRef.current = { qId: qId, accumMs: 0, runningSince: document.hidden ? 0 : Date.now() };
+      setAdaptiveElapsed(0);
+    }
+    function adaptiveClockPause(){
+      var c = adaptiveClockRef.current;
+      if(c.runningSince){ c.accumMs += Date.now() - c.runningSince; c.runningSince = 0; }
+    }
+
     // ===== Màn hình Học & Vá lỗi (Learning & Remediation Flow) =====
     // Khi bấm vào 1 Tag màu Đỏ ở Trang chủ: khoá các phần khác (ẩn thanh
     // điều hướng + hồ sơ + chỉ số) và dẫn qua quy trình 3 bước khép kín:
@@ -1488,6 +1513,15 @@
     // tới bản mới nhất (bài làm, hồ sơ, sổ câu sai hiện tại) và gọi ngoài updater.
     var submitRef = React.useRef(null);
     submitRef.current = handleSubmitExam;
+    // THÊM 14/11/2026 — hết trần thời gian phiên Luyện tập thích ứng. Trả true = đã xử lý (không gọi nộp mặc định).
+    // Chưa chấm câu nào thì không nộp gì, để em làm tiếp bình thường.
+    var adaptiveTimeoutRef = React.useRef(null);
+    adaptiveTimeoutRef.current = function(){
+      if(!examSession || examSession.type !== 'adaptive') return false;
+      var qs = adaptiveChecked ? examSession.questions : examSession.questions.slice(0, -1);
+      if(qs.length) handleSubmitExam(qs);
+      return true;
+    };
     var timeLeftRef = React.useRef(timeLeft);
     timeLeftRef.current = timeLeft;
     React.useEffect(function(){
@@ -1496,6 +1530,9 @@
         if(timeLeftRef.current <= 1){
           clearInterval(timer);
           setTimeLeft(0);
+          // SỬA 14/11/2026 — Luyện tập thích ứng hết trần thời gian phiên: chấm ĐÚNG các câu đã bấm "Kiểm tra" (như nút
+          // "Dừng & chấm điểm"), không tính câu đang làm dở là bỏ trống.
+          if(adaptiveTimeoutRef.current && adaptiveTimeoutRef.current()) return;
           if(submitRef.current) submitRef.current();
           return;
         }
@@ -1503,6 +1540,20 @@
       }, 1000);
       return function(){ clearInterval(timer); };
     }, [examSession]);
+
+    // THÊM 14/11/2026 — chạy đồng hồ từng câu của Luyện tập thích ứng (xem adaptiveClockRef).
+    React.useEffect(function(){
+      if(!examSession || examSession.type !== 'adaptive' || examSession.isSubmitted || adaptiveChecked) return;
+      var c = adaptiveClockRef.current;
+      if(!c.runningSince && !document.hidden) c.runningSince = Date.now();
+      function onVis(){
+        if(document.hidden) adaptiveClockPause();
+        else if(!adaptiveClockRef.current.runningSince) adaptiveClockRef.current.runningSince = Date.now();
+      }
+      document.addEventListener('visibilitychange', onVis);
+      var t = setInterval(function(){ setAdaptiveElapsed(Math.floor(adaptiveClockMs() / 1000)); }, 1000);
+      return function(){ clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
+    }, [examSession, adaptiveChecked]);
     // Chống nộp 2 lần (bấm đúp, hoặc hết giờ đúng lúc đang bấm) → khỏi lưu trùng lượt.
     var submittedSessionRef = React.useRef(null);
     // THÊM 29/10/2026 — số lượt gợi mở Socratic theo từng câu của phiên hiện tại (ghi vào bài làm, trường hints)
@@ -2196,13 +2247,18 @@
         targetCount: targetCount,
         clientId: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), // THÊM 7/10/2026 — id bản ghi của phiên (lưu tiến độ + nộp bài dùng chung)
         startedAtIso: new Date().toISOString(),
-        initialTimeSec: targetCount * 90
+        // SỬA 14/11/2026 — trần phiên 3 phút/câu (trước 90 giây): giờ đây là LƯỚI AN TOÀN, không phải áp lực — thời gian
+        // đọc lời giải + phân tích AI nằm trong đó. Tốc độ thật đo bằng đồng hồ TỪNG CÂU (adaptiveClockRef).
+        initialTimeSec: targetCount * 180
       };
       setExamSession(session);
       setUserAnswers({});
       setFlagged({});
       setCurQIdx(0);
-      setTimeLeft(targetCount * 90);
+      setTimeLeft(targetCount * 180);
+      adaptiveTimesRef.current = {};
+      adaptiveLastSpeedRef.current = null;
+      adaptiveClockStart(firstQ.id);
       setScoreResult(null);
       setMasteryImpact(null);
       setAdaptiveNanoMastery(seedMastery);
@@ -2316,6 +2372,13 @@
       var scored = window.PrepScholarEngine.scoreExam([curQ], userAnswers);
       var res = scored.perQuestionResults[0];
       if(!res) return;
+      // THÊM 14/11/2026 — dừng đồng hồ câu này, so với thời gian chuẩn → tín hiệu tốc độ (chỉ chạy ngầm, không hiện cho em)
+      adaptiveClockPause();
+      var usedSec = Math.max(1, Math.round(adaptiveClockMs() / 1000));
+      adaptiveTimesRef.current[curQ.id] = usedSec;
+      setAdaptiveElapsed(usedSec);
+      var speed = window.PrepScholarEngine.speedClassOf(usedSec, curQ);
+      adaptiveLastSpeedRef.current = { qId: curQ.id, correct: !!res.isFullCorrect, speed: speed };
       setAdaptiveNanoMastery(function(prev){
         // SỬA 5/10/2026 — câu có 2-3 nano-point: cập nhật TẤT CẢ (bumpNanoMastery chia mức trừ khi sai)
         var ids = window.PrepScholarEngine.nanoIdsOf(curQ);
@@ -2323,7 +2386,7 @@
         var next = Object.assign({}, prev);
         ids.forEach(function(nid){
           var cur = (next[nid] != null) ? next[nid] : window.PrepScholarEngine.MASTERY_NEUTRAL_START;
-          next[nid] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, curQ.level, ids.length);
+          next[nid] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, curQ.level, ids.length, speed);
         });
         return next;
       });
@@ -2343,7 +2406,10 @@
       }
       var askedIds = {};
       examSession.questions.forEach(function(q){ askedIds[q.id] = true; });
-      var nextQ = window.PrepScholarEngine.pickAdaptiveQuestion(adaptiveNanoMastery, askedIds, aiAdaptive.priority);
+      var lastQ = examSession.questions[examSession.questions.length - 1];
+      var ls = adaptiveLastSpeedRef.current;
+      var nextQ = window.PrepScholarEngine.pickAdaptiveQuestion(adaptiveNanoMastery, askedIds, aiAdaptive.priority,
+        (ls && lastQ && ls.qId === lastQ.id) ? { lastQ: lastQ, lastCorrect: ls.correct, lastSpeed: ls.speed } : null);
       var nextInfo = window.PrepScholarEngine.getLastPickInfo && window.PrepScholarEngine.getLastPickInfo();
       if(nextQ && nextInfo && nextInfo.redirected) adaptiveRootRef.current[nextQ.id] = nextInfo;
       if(!nextQ){
@@ -2354,6 +2420,7 @@
         return Object.assign({}, prev, { questions: prev.questions.concat([nextQ]) });
       });
       setCurQIdx(function(i){ return i + 1; });
+      adaptiveClockStart(nextQ.id);
       setAdaptiveChecked(false);
       setAdaptiveLastResult(null);
     }
@@ -2396,13 +2463,19 @@
     // THÊM 7/10/2026 — dựng danh sách câu sai/câu đúng (kèm nanoId(s), mức, phần, có ảnh…) từ kết quả chấm — dùng CHUNG
     // cho bản ghi nộp bài (handleSubmitExam) và bản ghi tiến độ làm dở của luyện thích ứng (saveAdaptiveProgress).
     function buildAttemptQuestionLists(scored){
+      // THÊM 14/11/2026 — Luyện tập thích ứng: lưu số giây LÀM từng câu (timeSec) để tính lại mastery có xét tốc độ
+      var isAdaptive = examSession && examSession.type === 'adaptive';
+      function timeOf(qId){ return isAdaptive ? (adaptiveTimesRef.current[qId] || 0) : 0; }
       var wrongQuestions = scored.perQuestionResults.filter(function(r){ return !r.isFullCorrect; }).map(function(r){
         var w = { qId: r.question.id, topicKey: r.question.topicKey, topicName: r.question.topicName, subtopic: r.question.subtopic, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
         if(r.part === 'II' && r.correctSubCount != null) w.subOk = r.correctSubCount; // THÊM 16/10/2026 — số ý Đúng/Sai làm đúng (cho dự đoán điểm)
+        if(timeOf(r.question.id)) w.timeSec = timeOf(r.question.id);
         return w;
       });
       var rightQuestions = scored.perQuestionResults.filter(function(r){ return r.isFullCorrect; }).map(function(r){
-        return { qId: r.question.id, topicKey: r.question.topicKey || null, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+        var rq = { qId: r.question.id, topicKey: r.question.topicKey || null, nanoId: r.question.nanoId || null, nanoIds: window.PrepScholarEngine.nanoIdsOf(r.question), baiKey: r.question.baiKey || null, level: r.question.level || null, part: r.question.part || null, hasImage: !!(r.question.images && r.question.images.length) };
+        if(timeOf(r.question.id)) rq.timeSec = timeOf(r.question.id);
+        return rq;
       });
       return { wrongQuestions: wrongQuestions, rightQuestions: rightQuestions };
     }
@@ -2439,7 +2512,8 @@
         var ids = window.PrepScholarEngine.nanoIdsOf(q); // SỬA 5/10/2026 — nhiều nano-point/câu
         ids.forEach(function(nanoId){
           var cur = (newNanoMastery[nanoId] != null) ? newNanoMastery[nanoId] : 50;
-          newNanoMastery[nanoId] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, q.level, ids.length);
+          var qSpeed = examSession.type === 'adaptive' ? window.PrepScholarEngine.speedClassOf(adaptiveTimesRef.current[q.id], q) : null;
+          newNanoMastery[nanoId] = window.PrepScholarEngine.bumpNanoMastery(cur, res.isFullCorrect, q.level, ids.length, qSpeed);
         });
       });
 
@@ -2668,6 +2742,12 @@
     // chỉ để lại 1 thanh mỏng "Thoát" — đúng "tự động khóa các phần khác".
     var lockedMode = !!remediation || (examSession && examSession.fromRemediation && !examSession.isSubmitted);
 
+    // THÊM 14/11/2026 — NĂNG LƯỢNG THÀNH THẠO cạnh tên tài khoản. Đang luyện thích ứng: dùng mastery chạy tức thì
+    // (adaptiveNanoMastery) để thanh nhích lên/xuống ngay sau mỗi câu chấm; ngoài phiên dùng student.nanoMastery.
+    var energySrc = (examSession && examSession.type === 'adaptive' && !examSession.isSubmitted) ? adaptiveNanoMastery : (student.nanoMastery || {});
+    var energy = window.PrepScholarEngine.overallMastery(energySrc);
+    var energyTier = energy.pct >= window.PrepScholarEngine.MASTERY_GREEN_MIN ? 'green' : (energy.pct >= window.PrepScholarEngine.MASTERY_YELLOW_MIN ? 'yellow' : 'red');
+
     return h('div', { className: 'ps-wrapper', key: 'bank-' + bankVersion },
       bankIsLive ? null : h('div', { className: 'banner warn', style: { marginBottom: '14px' } },
         h('span', null, 'ℹ️'),
@@ -2694,6 +2774,15 @@
           h('div', { className: 'ps-avatar-badge' }, student.name.charAt(0)),
           h('div', { className: 'ps-student-meta' },
             h('h4', null, student.name),
+            h('div', {
+              className: 'ps-energy ' + energyTier,
+              title: energy.total ? ('Đã vững (Xanh) ' + energy.green + '/' + energy.total + ' nano-point') : 'Chưa có dữ liệu thành thạo',
+              role: 'meter', 'aria-label': 'Năng lượng thành thạo', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': energy.pct
+            },
+              h('span', { className: 'ps-energy-label' }, '⚡ Năng lượng thành thạo'),
+              h('span', { className: 'ps-energy-bar' }, h('span', { className: 'ps-energy-fill', style: { width: energy.pct + '%' } })),
+              h('span', { className: 'ps-energy-val' }, energy.pct + '%')
+            ),
             h('p', null, 'Tài khoản luyện thi cá nhân hóa · ' + student.email)
           )
         ),
@@ -3006,6 +3095,17 @@
                         ? '🔎 Em đang yếu "' + nanoNameOf(adaptiveRootRef.current[curQ.id].requestedId) + '" — hệ thống kiểm tra thử nền tảng "' + nanoNameOf(adaptiveRootRef.current[curQ.id].targetId) + '" để tìm gốc lỗi.'
                         : '🧱 Em đang yếu "' + nanoNameOf(adaptiveRootRef.current[curQ.id].requestedId) + '" vì nền tảng "' + nanoNameOf(adaptiveRootRef.current[curQ.id].targetId) + '" chưa vững — luyện nền tảng trước.') : null
                   ),
+                  h('div', { className: 'ps-adaptive-actions' },
+                  // THÊM 14/11/2026 — đồng hồ LÀM câu hiện tại (đếm xuôi, không đỏ/nhấp nháy). Dừng khi đã chấm để em đọc lời giải thoải mái.
+                  h('div', {
+                    className: 'ps-exam-timer ps-adaptive-clock' + (adaptiveChecked ? ' paused' : ''),
+                    title: adaptiveChecked ? 'Đồng hồ đã dừng — em cứ đọc lời giải thoải mái, thời gian đọc không bị tính.' : 'Thời gian làm câu này. Thời gian đọc lời giải sau khi chấm không bị tính.',
+                    'aria-label': 'Thời gian làm câu: ' + formatTime(adaptiveElapsed)
+                  },
+                    h('span', { 'aria-hidden': 'true' }, adaptiveChecked ? '⏸' : '⏱️'),
+                    h('span', null, formatTime(adaptiveElapsed)),
+                    h('span', { className: 'ps-adaptive-clock-bench' }, 'chuẩn ~' + formatTime(window.PrepScholarEngine.benchmarkSec(curQ)))
+                  ),
                   h('button', {
                     type: 'button',
                     className: 'btn btn-secondary',
@@ -3021,6 +3121,7 @@
                       }, 'Chấm điểm');
                     }
                   }, 'Dừng & chấm điểm')
+                  )
                 ),
 
                 h('div', { className: 'ps-q-meta-row' },
@@ -3036,7 +3137,7 @@
                 studyWrap(examSession, curQ, [renderGroupPassage(curQ), h('div', { key: 'stem', className: 'ps-q-stem' }, renderLatexText(curQ.stem))]),
                 renderQuestionImages(curQ),
                 // THÊM 29/10/2026 — gợi mở Socratic khi em dừng lâu (ẩn sau khi đã chấm câu)
-                h(SocraticCoach, { key: 'soc-' + curQ.id, q: curQ, show: !adaptiveChecked, answer: userAnswers[curQ.id], onUse: noteSocratic }),
+                h(SocraticCoach, { key: 'soc-' + curQ.id, q: curQ, show: !adaptiveChecked, answer: userAnswers[curQ.id], onUse: noteSocratic, idleMs: Math.round(window.PrepScholarEngine.benchmarkSec(curQ) * 1.5 * 1000) }),
 
                 curQ.part === 'I' ? (
                   h('div', { className: 'ps-choice-list' },
