@@ -6847,7 +6847,20 @@
           h('div',null, h('div',{className:'sm-stat-label'},'Đã làm'), h('div',{className:'sm-stat-value'}, (selected.completedExamsCount||0)+' đề')),
           h('div',null, h('div',{className:'sm-stat-label'},'Hoàn thành'), h('div',{className:'sm-stat-value', style:{color:'var(--accent)'}}, selKpi.completionRatePct)),
           h('div',null, h('div',{className:'sm-stat-label'},'Điểm TB'), h('div',{className:'sm-stat-value', style:{color:'var(--accent-strong)'}}, selKpi.avgScore)),
-          h('div',null, h('div',{className:'sm-stat-label'},'Mục tiêu'), h('div',{className:'sm-stat-value', style:{color:'var(--good)'}}, (selected.targetScore||0).toFixed(1)+'+'))),
+          // SỬA 15/11/2026 — cho thầy đổi mục tiêu điểm ngay trong hồ sơ học sinh (trước đây chỉ đặt được lúc tạo tài khoản, tạo cả lớp mặc định 8.0)
+          h('div',null, h('div',{className:'sm-stat-label'},'Mục tiêu'),
+            h('select',{
+              'aria-label':'Mục tiêu điểm của ' + selected.name,
+              value: String(Number(selected.targetScore) || 8),
+              style:{color:'var(--good)', fontWeight:700, fontSize:'1.05rem', padding:'2px 4px', border:'1px solid var(--line, #ccc)', borderRadius:'6px', background:'transparent'},
+              onChange:function(e){
+                var v = Number(e.target.value), old = selected.targetScore;
+                setSelected(Object.assign({}, selected, { targetScore: v }));
+                OPCref.students.update(selected.id, { targetScore: v })
+                  .then(function(){ props.fireToast('Đã đổi mục tiêu của ' + selected.name + ' thành ' + v.toFixed(1) + '+.'); })
+                  .catch(function(){ setSelected(Object.assign({}, selected, { targetScore: old })); props.fireToast('Không đổi được mục tiêu — thử lại.', true); });
+              }
+            }, [5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10].map(function(x){ return h('option',{key:x, value:String(x)}, x.toFixed(1) + (x < 10 ? '+' : '')); })))),
         h('div',{className:'sm-info-block'},
           h('div',{className:'sm-info-title'}, '📈 Chỉ số hiệu suất học tập (KPI)'),
           h('p',null, h('b',null,'Đánh giá học lực: '), h('span',{style:{fontWeight:600, color:'var(--accent-strong)'}}, selKpi.rating)),

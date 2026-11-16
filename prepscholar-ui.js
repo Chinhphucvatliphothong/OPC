@@ -839,11 +839,17 @@
     // khi học sinh bấm nút để chạy lại cả chuỗi.
     var bankFailState = React.useState(false); var bankFailed = bankFailState[0], setBankFailed = bankFailState[1];
     var bankTickState = React.useState(0); var bankReloadTick = bankTickState[0], setBankReloadTick = bankTickState[1];
+    // THÊM 16/11/2026 — bankEmpty: đã tải xong nhưng ngân hàng thật sự trống (khác với "đang tải" / "lỗi mạng").
+    // pendingAdaptive: em bấm Luyện tập thích ứng khi dữ liệu CHƯA tải xong (hay gặp trên điện thoại mạng yếu) →
+    // ghi nhớ lại, tự bắt đầu bài ngay khi tải xong thay vì báo nhầm "ngân hàng đề chưa có đủ câu".
+    var bankEmptyState = React.useState(false); var bankEmpty = bankEmptyState[0], setBankEmpty = bankEmptyState[1];
+    var pendingAdaptiveState = React.useState(null); var pendingAdaptive = pendingAdaptiveState[0], setPendingAdaptive = pendingAdaptiveState[1];
     React.useEffect(function(){
       if(!liveReady || !authed) return;
       var cancelled = false;
       var delays = [1500, 3000, 6000];
       setBankFailed(false);
+      setBankEmpty(false);
       // THÊM 5/10/2026 — nạp nano-point thầy tự thêm (settings/nanoExtra) TRƯỚC khi dựng bản đồ/ngân hàng,
       // để tên nano-point mới hiện đúng ngay lần vào đầu tiên. Chỉ làm 1 lần mỗi lượt chạy hiệu ứng này.
       function attempt(n){
@@ -858,7 +864,7 @@
             return;
           }
           var err = window.OPC_LIVE.getLastBankError && window.OPC_LIVE.getLastBankError();
-          if(!err) return; // ngân hàng thật sự trống (chưa nạp đề) — không phải lỗi
+          if(!err){ setBankEmpty(true); return; } // ngân hàng thật sự trống (chưa nạp đề) — không phải lỗi
           if(n < delays.length){ setTimeout(function(){ if(!cancelled) attempt(n + 1); }, delays[n]); }
           else { setBankFailed(true); }
         });
@@ -1119,6 +1125,18 @@
     var examSessionState = React.useState(null);
     var examSession = examSessionState[0];
     var setExamSession = examSessionState[1];
+
+    // THÊM 16/11/2026 — tự bắt đầu Luyện tập thích ứng đã bấm trong lúc chờ tải dữ liệu (xem pendingAdaptive).
+    // Nếu em đã vào một bài khác trong lúc chờ thì bỏ yêu cầu cũ, không tự mở bài ngoài ý muốn.
+    React.useEffect(function(){
+      if(!pendingAdaptive) return;
+      if(examSession){ setPendingAdaptive(null); return; }
+      if((bankIsLive || bankEmpty) && curriculum.loaded){
+        var c = pendingAdaptive.count;
+        setPendingAdaptive(null);
+        startAdaptiveDrill(c || undefined);
+      }
+    }, [pendingAdaptive, bankIsLive, bankEmpty, curriculum.loaded, bankVersion, examSession]);
 
     var curQIdxState = React.useState(0);
     var curQIdx = curQIdxState[0];
@@ -2230,13 +2248,21 @@
     // với cách dạy theo cụm 5 câu. Hàm này cũng gắn trực tiếp vào onClick nên tham số đầu có thể là sự kiện chuột.
     function startAdaptiveDrill(count){
       var targetCount = (typeof count === 'number' && count > 0) ? count : ADAPTIVE_TARGET_COUNT;
+      // THÊM 16/11/2026 — dữ liệu chưa tải xong (ngân hàng đề hoặc cấu hình chương mở/khoá): chưa chọn câu được.
+      // Ghi nhớ yêu cầu, hiện "Đang tải…" rồi tự bắt đầu khi xong; nếu đã lỗi mạng thì tự tải lại luôn.
+      if(!((bankIsLive || bankEmpty) && curriculum.loaded)){
+        setPendingAdaptive({ count: (typeof count === 'number' && count > 0) ? count : null });
+        if(bankFailed) setBankReloadTick(function(t){ return t + 1; });
+        return;
+      }
       var seedMastery = Object.assign({}, student.nanoMastery || {});
       var firstQ = window.PrepScholarEngine.pickAdaptiveQuestion(seedMastery, {});
       adaptiveRootRef.current = {};
       var firstInfo = window.PrepScholarEngine.getLastPickInfo && window.PrepScholarEngine.getLastPickInfo();
       if(firstQ && firstInfo && firstInfo.redirected) adaptiveRootRef.current[firstQ.id] = firstInfo;
       if(!firstQ){
-        alert('Ngân hàng đề chưa có đủ câu hỏi gắn Tag để luyện thích ứng — thầy cô cần nạp thêm đề (.tex) có gắn nano-point.');
+        // SỬA 16/11/2026 — chỉ tới đây khi dữ liệu ĐÃ tải xong mà thật sự không có câu gắn nano trong các chương đang mở.
+        alert('Các chương em đang học chưa có câu hỏi cho phần luyện thích ứng. Em thử "Thi thử & Chẩn đoán" hoặc "Sổ tay câu sai" trước, và báo thầy biết nhé.');
         return;
       }
       var session = {
@@ -2749,6 +2775,13 @@
     var energyTier = energy.pct >= window.PrepScholarEngine.MASTERY_GREEN_MIN ? 'green' : (energy.pct >= window.PrepScholarEngine.MASTERY_YELLOW_MIN ? 'yellow' : 'red');
 
     return h('div', { className: 'ps-wrapper', key: 'bank-' + bankVersion },
+      // THÊM 16/11/2026 — báo rõ cho em biết bài luyện đang chờ tải dữ liệu, sẽ tự bắt đầu
+      pendingAdaptive ? h('div', { className: 'banner', style: { marginBottom: '14px' } },
+        h('span', null, '⏳'),
+        h('div', null, bankFailed
+          ? 'Mạng đang yếu nên chưa tải được đề. Em bấm "🔄 Tải lại" ở dưới (hoặc chuyển Wi-Fi) — bài luyện sẽ tự bắt đầu khi tải xong.'
+          : 'Đang tải ngân hàng đề… bài luyện sẽ tự bắt đầu ngay khi tải xong, em không cần bấm lại.',
+          ' ', h('button', { type: 'button', className: 'btn btn-secondary', style: { marginLeft: '6px', fontSize: '0.8rem' }, onClick: function(){ setPendingAdaptive(null); } }, 'Huỷ'))) : null,
       bankIsLive ? null : h('div', { className: 'banner warn', style: { marginBottom: '14px' } },
         h('span', null, 'ℹ️'),
         bankFailed
