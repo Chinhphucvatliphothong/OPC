@@ -40,15 +40,28 @@
     var bai = n && N.getBai ? N.getBai(n.baiKey) : null;
     return { id: id, name: n ? n.name : id, bai: bai ? bai.name : '', topic: bai ? bai.chuDeKey : String(id).split('-')[0] };
   }
+  // THÊM 16/11/2026 — báo cáo phụ huynh theo ĐÚNG KHỐI của em (10/11/12): chủ đề, điểm kiến thức, dự đoán điểm thi
+  // chỉ lấy của khối đó. Trước đây luôn dùng 4 chủ đề Vật lí 12 nên học sinh lớp 10/11 bị ghi "chưa có dữ liệu Vật lí nhiệt…".
+  function khoiOfStu(stu){ return window.OPC_CURRICULUM && window.OPC_CURRICULUM.khoiOf ? window.OPC_CURRICULUM.khoiOf(stu) : ((Number(stu && stu.khoi) === 10 || Number(stu && stu.khoi) === 11) ? Number(stu.khoi) : 12); }
+  function topicNamesForKhoi(khoi){
+    var E = window.PrepScholarEngine, N = window.OPC_NANO;
+    if(khoi === 12 || !E || !E.getTopicKeysForKhoi) return TOPIC_NAMES;
+    var out = {};
+    E.getTopicKeysForKhoi(khoi).forEach(function(k){ var c = N && N.getChuDe ? N.getChuDe(k) : null; out[k] = String((c && c.name) || k).replace(/\s*\(VL1[01]\)\s*$/, ''); });
+    return out;
+  }
   function buildParentSnapshot(stu, attempts){
     var E = window.PrepScholarEngine;
+    var khoi = khoiOfStu(stu), names = topicNamesForKhoi(khoi);
+    var keySet = {}; (E.getTopicKeysForKhoi ? E.getTopicKeysForKhoi(khoi) : Object.keys(names)).forEach(function(k){ keySet[k] = 1; });
     attempts = (attempts || []).slice().sort(function(a, b){ return new Date(a.createdAt) - new Date(b.createdAt); });
-    var st = E.computeStudentStatsFromAttempts(attempts);
+    var st = E.computeStudentStatsFromAttempts(attempts, khoi);
     var pr = st.prediction || null;
     var now = Date.now();
     var old = E.computeStudentStatsFromAttempts(attempts.filter(function(a){ return new Date(a.createdAt).getTime() < now - 30 * 86400000; }));
     var nm = st.nanoMastery || {}, om = old.nanoMastery || {};
-    var ids = Object.keys(nm);
+    // chỉ giữ điểm kiến thức thuộc chủ đề của khối em (lớp 12 giữ nguyên như cũ)
+    var ids = Object.keys(nm).filter(function(id){ return khoi === 12 || !!keySet[nanoInfo(id).topic]; });
     var red = [], yellow = [], green = 0;
     ids.forEach(function(id){
       var v = nm[id], c = E.classifyMastery(v), info = nanoInfo(id);
@@ -69,17 +82,23 @@
     var wkQ = wk.reduce(function(s, a){ return s + (a.wrongQuestions || []).length + (a.rightQuestions || []).length; }, 0);
     var wkF = wk.filter(function(a){ return !a.partial && isFinite(Number(a.scaledScore10)); });
     var topics = {};
-    Object.keys(TOPIC_NAMES).forEach(function(k){ if(st.mastery && st.mastery[k] != null) topics[k] = { name: TOPIC_NAMES[k], pct: st.mastery[k] }; });
+    Object.keys(names).forEach(function(k){ if(st.mastery && st.mastery[k] != null) topics[k] = { name: names[k], pct: st.mastery[k] }; });
+    var nanoTotal = 0;
+    if(window.OPC_NANO && window.OPC_NANO.NANO){
+      // đếm điểm kiến thức của ĐÚNG khối em (trước đây đếm cả 3 khối nên mẫu số "Đã kiểm tra x/y" bị phồng)
+      nanoTotal = window.OPC_NANO.NANO.filter(function(n){ var b = window.OPC_NANO.getBai ? window.OPC_NANO.getBai(n.baiKey) : null; return b && keySet[b.chuDeKey]; }).length
+        || window.OPC_NANO.NANO.length;
+    }
     var focus = red.slice(0, 3).map(function(x){ return x.name + (x.bai ? ' (' + x.bai.replace(/^Bài \d+:\s*/, '') + ')' : ''); });
     return {
-      v: 1, studentId: stu.id, name: stu.name || '', school: stu.school && stu.school !== 'Chưa cập nhật' ? stu.school : '', lop: stu.lop || '',
+      v: 1, khoi: khoi, studentId: stu.id, name: stu.name || '', school: stu.school && stu.school !== 'Chưa cập nhật' ? stu.school : '', lop: stu.lop || '',
       target: Number(stu.targetScore) || null, updatedAt: new Date().toISOString(),
       predicted: pr && pr.predicted != null ? { p: pr.predicted, low: pr.low, high: pr.high, conf: pr.confidence, parts: pr.parts, tips: pr.tips || [], cov: pr.coverage, n: pr.nItems } : null,
       reason: pr && pr.predicted == null ? (pr.reason || '') : '',
       avg: st.completedExamsCount ? st.averageScore : null, completed: st.completedExamsCount || 0,
       week: { attempts: wk.length, questions: wkQ, avg: wkF.length ? Math.round(wkF.reduce(function(s, a){ return s + Number(a.scaledScore10); }, 0) / wkF.length * 10) / 10 : null },
       scores: scores, topics: topics,
-      gaps: { red: red.slice(0, 10), yellow: yellow.slice(0, 8), green: green, tested: ids.length, total: (window.OPC_NANO && window.OPC_NANO.NANO ? window.OPC_NANO.NANO.length : 0), fixed30: fixed.slice(0, 12), fixed30Count: fixed.length },
+      gaps: { red: red.slice(0, 10), yellow: yellow.slice(0, 8), green: green, tested: ids.length, total: nanoTotal, fixed30: fixed.slice(0, 12), fixed30Count: fixed.length },
       focus: focus, note: String(stu.parentNote || '').slice(0, 1200),
       mistakes: st.mistakeTotal != null ? st.mistakeTotal : (st.mistakeLog || []).length
     };

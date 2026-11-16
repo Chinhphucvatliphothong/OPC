@@ -182,20 +182,28 @@ function render(v){
   const firstFull = fulls[0], lastFull = fulls[fulls.length - 1];
   const topics = Object.keys(v.topics || {}).map(k => v.topics[k]);
   const partNames = { I: 'Phần I · Trắc nghiệm 4 lựa chọn', II: 'Phần II · Đúng/Sai', III: 'Phần III · Trả lời ngắn' };
+  // THÊM 16/11/2026 — học sinh lớp 10/11: không có "điểm thi tốt nghiệp dự đoán" (chỉ dành cho lớp 12) → thẻ chính hiện
+  // điểm trung bình các bài làm; mục tiêu so với điểm trung bình. Báo cáo cũ không có trường khoi = lớp 12 như trước.
+  const k = (Number(v.khoi) === 10 || Number(v.khoi) === 11) ? Number(v.khoi) : 12;
+  const lower = k !== 12;
+  const cmp = lower ? (v.avg != null ? Number(v.avg) : null) : (p ? p.p : null);
   document.title = 'Tiến độ học Vật lí — ' + v.name;
   $app.innerHTML = `
   <div class="hero">
     <div class="kicker">Báo cáo tiến độ · cập nhật ${esc(vnDate(v.updatedAt))}</div>
     <h1>${esc(v.name)}</h1>
-    <div class="sub">${[v.school, v.lop ? 'Lớp ' + v.lop : ''].filter(Boolean).map(esc).join(' · ') || 'Luyện thi tốt nghiệp THPT môn Vật lí'}</div>
+    <div class="sub">${[v.school, v.lop ? 'Lớp ' + v.lop : ''].filter(Boolean).map(esc).join(' · ') || (lower ? 'Học Vật lí lớp ' + k : 'Luyện thi tốt nghiệp THPT môn Vật lí')}</div>
   </div>
   <div class="grid">
-    <div class="card kpi main"><div class="lbl">Điểm thi dự đoán</div>
+    ${lower ? `<div class="card kpi main"><div class="lbl">Điểm trung bình các bài</div>
+      <div class="val">${cmp != null ? f1(cmp) : '—'}<small> /10</small></div>
+      <div class="note">${v.completed ? 'Trên ' + v.completed + ' bài đã nộp · Vật lí ' + k : 'Con chưa nộp bài nào'}</div></div>`
+    : `<div class="card kpi main"><div class="lbl">Điểm thi dự đoán</div>
       <div class="val">${p ? f1(p.p) : '—'}<small> /10</small></div>
-      <div class="note">${p ? 'Khoảng ' + f1(p.low) + ' – ' + f1(p.high) + ' <span class="pill ' + confCls + '">tin cậy ' + esc(p.conf) + '</span>' : esc(v.reason || 'Chưa đủ dữ liệu — con cần làm thêm bài')}</div></div>
+      <div class="note">${p ? 'Khoảng ' + f1(p.low) + ' – ' + f1(p.high) + ' <span class="pill ' + confCls + '">tin cậy ' + esc(p.conf) + '</span>' : esc(v.reason || 'Chưa đủ dữ liệu — con cần làm thêm bài')}</div></div>`}
     <div class="card kpi"><div class="lbl">Mục tiêu</div>
       <div class="val">${target ? f1(target) : '—'}<small>${target ? '+' : ''}</small></div>
-      <div class="note">${p && target ? (p.p >= target ? '✅ Đang ở mức mục tiêu' : 'Còn cách ' + f1(target - p.p) + ' điểm') : ''}</div></div>
+      <div class="note">${cmp != null && target ? (cmp >= target ? '✅ Đang ở mức mục tiêu' : 'Còn cách ' + f1(target - cmp) + ' điểm') : ''}</div></div>
     <div class="card kpi"><div class="lbl">Lỗ hổng đã vá · 30 ngày</div>
       <div class="val" style="color:var(--good)">${g.fixed30Count || 0}</div>
       <div class="note">${(g.red || []).length ? 'Còn ' + (g.red || []).length + (g.red.length >= 10 ? '+' : '') + ' phần cần vá' : 'Không còn phần nào ở mức yếu'}</div></div>
@@ -219,7 +227,7 @@ function render(v){
     </div>
   </section>
   <div class="two">
-    ${p && p.parts ? `<section class="card"><h2>🎯 Điểm dự đoán theo phần đề</h2>
+    ${!lower && p && p.parts ? `<section class="card"><h2>🎯 Điểm dự đoán theo phần đề</h2>
       ${['I', 'II', 'III'].map(k => p.parts[k] ? `<div class="bar"><span>${partNames[k]}</span><span class="tr"><i style="width:${Math.max(3, p.parts[k].exp / p.parts[k].max * 100)}%;background:${barColor(p.parts[k].exp / p.parts[k].max * 100)}"></i></span><b>${f1(p.parts[k].exp)}/${f1(p.parts[k].max)}</b></div>` : '').join('')}
       ${(p.tips || []).length ? '<ul class="clean">' + p.tips.map(t => `<li>${esc(t)}</li>`).join('') + '</ul>' : ''}
       <p class="sub" style="font-size:.78rem;margin-top:8px">Dự đoán dựa trên ${p.n || 0} câu con đã làm, áp vào cấu trúc đề thi tốt nghiệp. Đây là ước lượng, không phải cam kết.</p></section>` : ''}

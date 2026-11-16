@@ -10836,7 +10836,15 @@
               h('option',{value:12},'Vật lí 12'), h('option',{value:11},'Vật lí 11'), h('option',{value:10},'Vật lí 10'))),
           h('div',{className:'sm-form-grid', style:{marginTop:12}},
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-chude'},'Chuyên đề chính *'),
-              h('select',{id:'eb-chude', value:form.chuDe, onChange:function(e){ setField('chuDe', e.target.value); }},
+              // SỬA 16/11/2026 — đề ĐGNL (V-ACT) gồm kiến thức Vật lí 10, 11 và 12 → hiện chuyên đề của cả 3 khối, chia nhóm theo khối
+              // (trước đây ô Khối bị ẩn với ĐGNL nên chỉ còn chuyên đề Vật lí 12). Các tab khác vẫn lọc theo ô Khối như cũ.
+              specialMode === 'dgnl'
+                ? h('select',{id:'eb-chude', value:form.chuDe, onChange:function(e){ setField('chuDe', e.target.value); }},
+                    h('option',{value:'Tổng hợp nhiều chuyên đề'},'Tổng hợp nhiều chuyên đề (đề ĐGNL đầy đủ)'),
+                    [[12,'Vật lí 12'],[11,'Vật lí 11'],[10,'Vật lí 10']].map(function(g){
+                      return h('optgroup',{key:g[0], label:g[1]}, chuDeListFor(g[0]).map(function(c){ return h('option',{key:c, value:c}, c); }));
+                    }))
+                : h('select',{id:'eb-chude', value:form.chuDe, onChange:function(e){ setField('chuDe', e.target.value); }},
                 chuDeListFor(form.khoi).concat(['Tổng hợp nhiều chuyên đề']).map(function(c){ return h('option',{key:c, value:c}, c); }))),
             h('div',{className:'sm-field'}, h('label',{htmlFor:'eb-mucdo'},'Mức độ tổng quan *'),
               h('select',{id:'eb-mucdo', value:form.mucDo, onChange:function(e){ setField('mucDo', Number(e.target.value)); }},

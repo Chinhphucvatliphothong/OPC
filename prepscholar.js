@@ -581,6 +581,13 @@
     // Nay dùng mô hình predictExamScore (ước lượng xác suất đúng theo chuyên đề × mức độ, áp vào ma trận đề thi thật, có
     // khoảng điểm + độ tin cậy). Chưa đủ dữ liệu → predicted = null ("Chưa đủ dữ liệu"), không bịa số.
     var pr = predictExamScore(sorted, bankById);
+    // SỬA 16/11/2026 — điểm dự đoán dựa trên MA TRẬN ĐỀ THI TỐT NGHIỆP (toàn chủ đề Vật lí 12) → chỉ có nghĩa với học sinh
+    // lớp 12. Lớp 10/11 không dự đoán, để không hiện "Chưa đủ dữ liệu: Vật lí nhiệt, Khí lí tưởng…" (chủ đề lớp 12).
+    // Gọi không truyền khối (dữ liệu cũ) vẫn coi là lớp 12 như trước.
+    if(khoi != null && normKhoi(khoi) !== 12){
+      pr = { predicted: null, low: null, high: null, sigma: null, confidence: null, nItems: pr.nItems || 0, coverage: 0, anchors: 0,
+        parts: null, topics: null, tips: [], missingTopics: [], reason: 'Điểm dự đoán thi tốt nghiệp chỉ áp dụng cho học sinh lớp 12' };
+    }
     result.predicted = pr.predicted;
     result.prediction = pr;
 
