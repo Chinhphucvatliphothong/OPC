@@ -194,18 +194,18 @@
     { key:'k11-1', chuDeKey:'k11-dao-dong', name:'Bài 1: Dao động điều hoà' },
     { key:'k11-2', chuDeKey:'k11-dao-dong', name:'Bài 2: Mô tả dao động điều hoà' },
     { key:'k11-3', chuDeKey:'k11-dao-dong', name:'Bài 3: Vận tốc, gia tốc trong dao động điều hoà' },
-    { key:'k11-4', chuDeKey:'k11-dao-dong', name:'Bài 4: Bài tập về dao động điều hoà' },
+    { key:'k11-4', chuDeKey:'k11-dao-dong', name:'Bài 4: Một số dao động điều hoà thường gặp (con lắc lò xo, con lắc đơn)' },
     { key:'k11-5', chuDeKey:'k11-dao-dong', name:'Bài 5: Động năng. Thế năng. Sự chuyển hoá năng lượng trong dao động điều hoà' },
     { key:'k11-6', chuDeKey:'k11-dao-dong', name:'Bài 6: Dao động tắt dần. Dao động cưỡng bức. Hiện tượng cộng hưởng' },
     { key:'k11-7', chuDeKey:'k11-dao-dong', name:'Bài 7: Bài tập về sự chuyển hoá năng lượng trong dao động điều hoà' },
-    { key:'s11-1', chuDeKey:'k11-song', name:'Bài 8: Mô tả sóng' },
-    { key:'s11-2', chuDeKey:'k11-song', name:'Bài 9: Sóng ngang. Sóng dọc. Sự truyền năng lượng của sóng cơ' },
-    { key:'s11-3', chuDeKey:'k11-song', name:'Bài 10: Thực hành: Đo tần số của sóng âm' },
-    { key:'s11-4', chuDeKey:'k11-song', name:'Bài 11: Sóng điện từ' },
-    { key:'s11-5', chuDeKey:'k11-song', name:'Bài 12: Giao thoa sóng' },
-    { key:'s11-6', chuDeKey:'k11-song', name:'Bài 13: Sóng dừng' },
-    { key:'k11-14', chuDeKey:'k11-song', name:'Bài 14: Bài tập về sóng' },
-    { key:'s11-7', chuDeKey:'k11-song', name:'Bài 15: Thực hành: Đo tốc độ truyền âm' },
+    // SỬA 18/11/2026 — Sóng (VL11) theo ĐÚNG mã nano thầy gắn trong .tex (song-1 … song-7). Key cũ s11-1…s11-7, k11-14 tra qua BAI_ALIAS.
+    { key:'song-1', chuDeKey:'k11-song', name:'Bài 1: Mô tả sóng' },
+    { key:'song-2', chuDeKey:'k11-song', name:'Bài 2: Sóng ngang. Sóng dọc. Sự truyền năng lượng của sóng cơ' },
+    { key:'song-3', chuDeKey:'k11-song', name:'Bài 3: Các đặc trưng vật lí của sóng' },
+    { key:'song-4', chuDeKey:'k11-song', name:'Bài 4: Sóng âm' },
+    { key:'song-5', chuDeKey:'k11-song', name:'Bài 5: Sóng điện từ' },
+    { key:'song-6', chuDeKey:'k11-song', name:'Bài 6: Giao thoa sóng (sóng cơ, ánh sáng)' },
+    { key:'song-7', chuDeKey:'k11-song', name:'Bài 7: Sóng dừng' },
     { key:'dt11-1', chuDeKey:'k11-dien-truong', name:'Bài 16: Lực tương tác giữa các điện tích' },
     { key:'dt11-2', chuDeKey:'k11-dien-truong', name:'Bài 17: Khái niệm điện trường' },
     { key:'dt11-3', chuDeKey:'k11-dien-truong', name:'Bài 18: Điện trường đều' },
@@ -631,52 +631,31 @@
     { id:'k11-7.2', baiKey:'k11-7', name:'Bài tập biến đổi Wđ, Wt theo thời gian (thời gian Wđ = Wt…)' },
     { id:'k11-7.3', baiKey:'k11-7', name:'Bài tập đồ thị năng lượng' },
 
-    { id:'s11-1.1', baiKey:'s11-1', name:'Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ' },
-    { id:'s11-1.2', baiKey:'s11-1', name:'Các đại lượng đặc trưng: biên độ, chu kì, tần số, bước sóng, tốc độ truyền sóng' },
-    { id:'s11-1.3', baiKey:'s11-1', name:'Liên hệ v = λf = λ/T' },
-    { id:'s11-1.4', baiKey:'s11-1', name:'Đồ thị li độ – khoảng cách (hình dạng sóng) và li độ – thời gian' },
-    { id:'s11-1.5', baiKey:'s11-1', name:'Năng lượng sóng, cường độ sóng I = P/S' },
-    { id:'s11-1.6', baiKey:'s11-1', name:'Độ lệch pha giữa hai điểm trên phương truyền sóng Δφ = 2πd/λ' },
-    { id:'s11-1.7', baiKey:'s11-1', name:'Bài tập đại lượng đặc trưng (λ, v, f, T, khoảng cách đỉnh sóng)' },
-    { id:'s11-1.8', baiKey:'s11-1', name:'Bài tập đồ thị sóng (đọc λ, A; chiều truyền sóng, chiều chuyển động phần tử)' },
-    { id:'s11-1.9', baiKey:'s11-1', name:'Bài tập độ lệch pha, phương trình sóng, điểm cùng pha – ngược pha – vuông pha' },
-    { id:'s11-1.10', baiKey:'s11-1', name:'Bài tập cường độ sóng, năng lượng sóng' },
+    // SỬA 18/11/2026 — Sóng (VL11): thay 51 nano s11- bằng ĐÚNG 17 mã song- thầy đã gắn trong ngân hàng .tex
+    //      (tên đặt theo nội dung các câu đã gắn mã). Mã cũ s11-x.y trong file .tex cũ tự quy đổi qua NANO_TEX_ALIAS.
+    { id:'song-1.1', baiKey:'song-1', name:'Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng' },
+    { id:'song-1.2', baiKey:'song-1', name:'Đồ thị sóng (li độ – khoảng cách, li độ – thời gian): đọc λ, A, T, chiều truyền sóng' },
+    { id:'song-1.3', baiKey:'song-1', name:'Phần tử môi trường chỉ dao động tại chỗ, không truyền đi theo sóng' },
 
-    { id:'s11-2.1', baiKey:'s11-2', name:'Sóng ngang: định nghĩa, môi trường truyền' },
-    { id:'s11-2.2', baiKey:'s11-2', name:'Sóng dọc: định nghĩa, môi trường truyền' },
-    { id:'s11-2.3', baiKey:'s11-2', name:'Sự truyền năng lượng của sóng cơ' },
-    { id:'s11-2.4', baiKey:'s11-2', name:'Sóng âm: bản chất, môi trường truyền, tốc độ âm trong các môi trường' },
-    { id:'s11-2.5', baiKey:'s11-2', name:'Âm nghe được, hạ âm, siêu âm và ứng dụng' },
-    { id:'s11-2.6', baiKey:'s11-2', name:'Bài tập sóng âm (tốc độ âm, tiếng vang, đo độ sâu bằng siêu âm)' },
+    { id:'song-2.1', baiKey:'song-2', name:'Sóng ngang, sóng dọc: phương dao động, môi trường truyền; sự truyền năng lượng của sóng' },
 
-    { id:'s11-3.1', baiKey:'s11-3', name:'Dao động kí điện tử: cấu tạo, cách đọc đồ thị trên màn hình' },
-    { id:'s11-3.2', baiKey:'s11-3', name:'Thực hành đo tần số sóng âm bằng dao động kí' },
+    { id:'song-3.1', baiKey:'song-3', name:'Các đại lượng đặc trưng của sóng: A, T, f, λ, tốc độ truyền sóng; v = λf (lí thuyết)' },
+    { id:'song-3.2', baiKey:'song-3', name:'Bài tập đại lượng đặc trưng, phương trình sóng, độ lệch pha giữa hai điểm' },
 
-    { id:'s11-4.1', baiKey:'s11-4', name:'Khái niệm sóng điện từ, tính chất (sóng ngang, truyền được trong chân không, c = 3.10^8 m/s)' },
-    { id:'s11-4.2', baiKey:'s11-4', name:'Thang sóng điện từ: vô tuyến, vi sóng, hồng ngoại, ánh sáng nhìn thấy, tử ngoại, tia X, tia gamma' },
-    { id:'s11-4.3', baiKey:'s11-4', name:'Ứng dụng các vùng sóng điện từ trong đời sống, kĩ thuật' },
-    { id:'s11-4.4', baiKey:'s11-4', name:'Bài tập λ = c/f, xác định vùng sóng điện từ' },
+    { id:'song-4.1', baiKey:'song-4', name:'Sóng âm: nguồn âm, môi trường truyền, tốc độ âm; âm nghe được, hạ âm, siêu âm (lí thuyết)' },
+    { id:'song-4.2', baiKey:'song-4', name:'Bài tập sóng âm: tốc độ âm, tiếng vang, dao động kí, cường độ âm, mức cường độ âm' },
 
-    { id:'s11-5.1', baiKey:'s11-5', name:'Hiện tượng giao thoa, nguồn kết hợp, điều kiện giao thoa' },
-    { id:'s11-5.2', baiKey:'s11-5', name:'Giao thoa sóng mặt nước: cực đại, cực tiểu, điều kiện hiệu đường đi' },
-    { id:'s11-5.3', baiKey:'s11-5', name:'Giao thoa ánh sáng (thí nghiệm Young): vân sáng, vân tối' },
-    { id:'s11-5.4', baiKey:'s11-5', name:'Khoảng vân i = λD/a, vị trí vân sáng, vân tối' },
-    { id:'s11-5.5', baiKey:'s11-5', name:'Bài tập giao thoa sóng mặt nước: tính chất điểm, số cực đại – cực tiểu trên đoạn' },
-    { id:'s11-5.6', baiKey:'s11-5', name:'Bài tập giao thoa sóng mặt nước nâng cao (cực trị trên đường tròn, hình vuông; điểm cùng pha – ngược pha nguồn)' },
-    { id:'s11-5.7', baiKey:'s11-5', name:'Bài tập giao thoa ánh sáng: khoảng vân, vị trí vân, tính λ' },
-    { id:'s11-5.8', baiKey:'s11-5', name:'Bài tập giao thoa ánh sáng: số vân trên vùng giao thoa, thay đổi a, D, λ' },
-    { id:'s11-5.9', baiKey:'s11-5', name:'Bài tập giao thoa ánh sáng nhiều bức xạ, ánh sáng trắng' },
+    { id:'song-5.1', baiKey:'song-5', name:'Sóng điện từ: tính chất, thang sóng điện từ, ứng dụng (lí thuyết)' },
+    { id:'song-5.2', baiKey:'song-5', name:'Bài tập sóng điện từ: λ = c/f, radar – vệ tinh, truyền trong môi trường chiết suất n' },
 
-    { id:'s11-6.1', baiKey:'s11-6', name:'Sóng phản xạ (đầu cố định, đầu tự do), sự tạo thành sóng dừng' },
-    { id:'s11-6.2', baiKey:'s11-6', name:'Nút sóng, bụng sóng; khoảng cách giữa các nút, bụng' },
-    { id:'s11-6.3', baiKey:'s11-6', name:'Điều kiện sóng dừng dây hai đầu cố định ℓ = kλ/2' },
-    { id:'s11-6.4', baiKey:'s11-6', name:'Điều kiện sóng dừng một đầu cố định, một đầu tự do ℓ = (2k + 1)λ/4' },
-    { id:'s11-6.5', baiKey:'s11-6', name:'Sóng dừng trong cột không khí, ứng dụng trong nhạc cụ' },
-    { id:'s11-6.6', baiKey:'s11-6', name:'Bài tập sóng dừng: số nút, số bụng, tần số, tốc độ truyền sóng' },
-    { id:'s11-6.7', baiKey:'s11-6', name:'Bài tập sóng dừng nâng cao: biên độ điểm, tần số liên tiếp, thời gian dây duỗi thẳng' },
+    { id:'song-6.1', baiKey:'song-6', name:'Giao thoa sóng cơ: nguồn kết hợp, điều kiện giao thoa, cực đại – cực tiểu (lí thuyết)' },
+    { id:'song-6.2', baiKey:'song-6', name:'Bài tập giao thoa sóng mặt nước: tính chất điểm, số cực đại – cực tiểu' },
+    { id:'song-6.3', baiKey:'song-6', name:'Giao thoa ánh sáng – thí nghiệm Young: vân sáng, vân tối, đo bước sóng ánh sáng (lí thuyết)' },
+    { id:'song-6.4', baiKey:'song-6', name:'Bài tập giao thoa ánh sáng: khoảng vân, vị trí vân, số vân, tính λ' },
 
-    { id:'s11-7.1', baiKey:'s11-7', name:'Thực hành đo tốc độ truyền âm: dụng cụ, phương án (cộng hưởng cột khí)' },
-    { id:'s11-7.2', baiKey:'s11-7', name:'Xử lí số liệu, sai số trong thực hành đo tốc độ truyền âm' },
+    { id:'song-7.1', baiKey:'song-7', name:'Sóng phản xạ, sóng dừng: nút, bụng, khoảng cách nút – bụng, điều kiện sóng dừng (lí thuyết)' },
+    { id:'song-7.2', baiKey:'song-7', name:'Bài tập sóng dừng: số nút, số bụng, tần số, tốc độ truyền sóng' },
+    { id:'song-7.3', baiKey:'song-7', name:'Thí nghiệm sóng dừng trên dây với máy phát dao động âm tần' },
 
     { id:'dt11-1.1', baiKey:'dt11-1', name:'Hai loại điện tích, điện tích điểm, vật nhiễm điện – vật trung hoà' },
     { id:'dt11-1.2', baiKey:'dt11-1', name:'Sự nhiễm điện do cọ xát, tiếp xúc, hưởng ứng' },
@@ -802,10 +781,88 @@
     // THÊM 18/11/2026 — key bài cũ VL10 (Bài 21, 23–34) -> key mới theo mã nano
     'k10-21':'cbvr-2', 'k10-23':'nl-1', 'k10-24':'nl-3', 'k10-25':'nl-4', 'k10-26':'nl-6', 'k10-27':'nl-7',
     'k10-28':'dl-1', 'k10-29':'dl-2', 'k10-30':'dl-4', 'k10-31':'ctr-1', 'k10-32':'ctr-3', 'k10-33':'bdr-1', 'k10-34':'bdr-3',
-    'k11-8':'s11-1', 'k11-9':'s11-2', 'k11-10':'s11-3', 'k11-11':'s11-4', 'k11-12':'s11-5', 'k11-13':'s11-6', 'k11-15':'s11-7',
+    // SỬA 18/11/2026 — Sóng VL11 chuyển sang key song-1…song-7 (mã trong .tex của thầy)
+    'k11-8':'song-1', 'k11-9':'song-2', 'k11-10':'song-4', 'k11-11':'song-5', 'k11-12':'song-6', 'k11-13':'song-7', 'k11-14':'song-3', 'k11-15':'song-4',
+    's11-1':'song-1', 's11-2':'song-2', 's11-3':'song-4', 's11-4':'song-5', 's11-5':'song-6', 's11-6':'song-7', 's11-7':'song-4',
     'k11-16':'dt11-1', 'k11-17':'dt11-2', 'k11-18':'dt11-3', 'k11-19':'dt11-4', 'k11-20':'dt11-5', 'k11-21':'dt11-6',
     'k11-22':'dd11-1', 'k11-23':'dd11-2', 'k11-24':'dd11-3', 'k11-25':'dd11-4'
   };
+  // ============================================================
+  // THÊM 18/11/2026 — QUY ĐỔI MÃ NANO TRONG .tex VẬT LÍ 11 SANG MÃ CỦA BẢN ĐỒ.
+  // Ngân hàng .tex VL11 của thầy gắn: Dao động "dd-x.y", Sóng "song-x.y", Điện trường "dien-x.y", Dòng điện "dd-x.y".
+  // Bản đồ dùng k11- / song- / dt11- / dd11- (cùng số thứ tự). Dao động và Dòng điện CÙNG tiền tố "dd-" nên phải dựa
+  // vào thẻ chủ đề của câu (% [M1][Dao động][…] hoặc [Dòng điện]) để phân biệt. Riêng Dao động: dd-5.7/5.8/5.9 (bài tập
+  // năng lượng) = k11-7.1/7.2/7.3. Mã s11- cũ (danh mục 7/11/2026) quy về song- gần nghĩa nhất.
+  // Mã đã có sẵn trong bản đồ (vd. khi-1.3, tt-2.1, k11-2.7) giữ nguyên. VL10: dl10-x.y và mã chữ bd-dlh-/bd-cbvr- (xem dưới).
+  // ============================================================
+  var NANO_TEX_ALIAS = {
+    'k11-5.7':'k11-7.1', 'k11-5.8':'k11-7.2', 'k11-5.9':'k11-7.3',
+    's11-1.1':'song-1.1', 's11-1.2':'song-3.1', 's11-1.3':'song-3.1', 's11-1.4':'song-1.2', 's11-1.5':'song-2.1',
+    's11-1.6':'song-3.1', 's11-1.7':'song-3.2', 's11-1.8':'song-1.2', 's11-1.9':'song-3.2', 's11-1.10':'song-3.2',
+    's11-2.1':'song-2.1', 's11-2.2':'song-2.1', 's11-2.3':'song-2.1', 's11-2.4':'song-4.1', 's11-2.5':'song-4.1', 's11-2.6':'song-4.2',
+    's11-3.1':'song-4.1', 's11-3.2':'song-4.2',
+    's11-4.1':'song-5.1', 's11-4.2':'song-5.1', 's11-4.3':'song-5.1', 's11-4.4':'song-5.2',
+    's11-5.1':'song-6.1', 's11-5.2':'song-6.1', 's11-5.3':'song-6.3', 's11-5.4':'song-6.3', 's11-5.5':'song-6.2',
+    's11-5.6':'song-6.2', 's11-5.7':'song-6.4', 's11-5.8':'song-6.4', 's11-5.9':'song-6.4',
+    's11-6.1':'song-7.1', 's11-6.2':'song-7.1', 's11-6.3':'song-7.1', 's11-6.4':'song-7.1', 's11-6.5':'song-7.1',
+    's11-6.6':'song-7.2', 's11-6.7':'song-7.2', 's11-7.1':'song-7.3', 's11-7.2':'song-7.3',
+    // THÊM 18/11/2026 — VL10 Động lượng: file lí thuyết ABCD gắn dl10-x.y (đánh số riêng) -> mã dl- của bản đồ
+    'dl10-1.1':'dl-1.1', 'dl10-1.2':'dl-1.3', 'dl10-1.3':'dl-1.4', 'dl10-1.4':'dl-1.1',
+    'dl10-2.1':'dl-1.2', 'dl10-2.2':'dl-1.2', 'dl10-2.3':'dl-1.2', 'dl10-2.4':'dl-1.5',
+    'dl10-3.1':'dl-2.1', 'dl10-3.2':'dl-2.1', 'dl10-3.3':'dl-2.2',
+    'dl10-4.1':'dl-3.4', 'dl10-4.2':'dl-3.1',
+    'dl10-5.1':'dl-4.1', 'dl10-5.2':'dl-4.2', 'dl10-5.3':'dl-4.3'
+  };
+  // THÊM 18/11/2026 — VL10 Động lực học & Cân bằng vật rắn: .tex gắn mã dạng chữ "bd-dlh-…", "bd-cbvr-…"
+  // (bản đúng/sai có thêm "ds-"). Quy về nano của bản đồ; "luc-ma-sat" chọn theo tên bài/dạng trong thẻ chủ đề.
+  var NANO_TEX_SLUG = {
+    'bd-dlh-tong-hop-luc':'dlh-1.1', 'bd-dlh-can-bang-luc':'dlh-1.3', 'bd-dlh-dl1-newton':'dlh-2.1',
+    'bd-dlh-luc-gia-toc':'dlh-3.1', 'bd-dlh-dl2-newton':'dlh-3.2', 'bd-dlh-dl3-newton':'dlh-4.1',
+    'bd-dlh-trong-luc':'dlh-5.1', 'bd-dlh-luc-cang':'dlh-5.2', 'bd-dlh-luc-ma-sat':'dlh-6.1',
+    'bd-dlh-ma-sat-mpn':'dlh-6.4', 'bd-dlh-co-he':'dlh-6.5', 'bd-dlh-luc-can':'dlh-7.1', 'bd-dlh-luc-nang':'dlh-7.2',
+    'bd-cbvr-tong-hop-dong-quy':'cbvr-1.1', 'bd-cbvr-tong-hop-song-song':'cbvr-1.2', 'bd-cbvr-moment-luc':'cbvr-2.1',
+    'bd-cbvr-ngau-luc':'cbvr-2.2', 'bd-cbvr-can-bang-tong-quat':'cbvr-2.3'
+  };
+  function mapTexSlug(slug, baiText){
+    var k = slug.replace(/^bd-(dlh|cbvr)-ds-/, 'bd-$1-');
+    if(k === 'bd-dlh-luc-ma-sat'){
+      var b = stripDiacritics(baiText || '');
+      if(b.indexOf('nghieng') > -1) return 'dlh-6.4';
+      if(b.indexOf('xien') > -1) return 'dlh-6.3';
+      if(b.indexOf('nam ngang') > -1) return 'dlh-6.2';
+    }
+    return Object.prototype.hasOwnProperty.call(NANO_TEX_SLUG, k) ? NANO_TEX_SLUG[k] : '';
+  }
+  function mapTexId(id, chuDeText){
+    id = String(id || '').toLowerCase().trim();
+    var cd = stripDiacritics(chuDeText || '');
+    var m = /^([a-z0-9]+)-(\d+\.\d+)$/.exec(id);
+    if(m){
+      var pre = m[1], num = m[2];
+      if(pre === 'dien') id = 'dt11-' + num;
+      else if(pre === 'dd'){
+        if(cd.indexOf('dao dong') > -1) id = 'k11-' + num;
+        else if(cd.indexOf('dong dien') > -1 && cd.indexOf('xoay chieu') < 0) id = 'dd11-' + num;
+      }
+    }
+    if(Object.prototype.hasOwnProperty.call(NANO_TEX_ALIAS, id) && !getNano(id)) id = NANO_TEX_ALIAS[id];
+    return id;
+  }
+  function mapTexIds(ids, chuDeText){
+    var out = [];
+    (ids || []).forEach(function(id){ var k = mapTexId(id, chuDeText); if(k && out.indexOf(k) < 0) out.push(k); });
+    return out;
+  }
+  // THÊM 18/11/2026 — đọc cả dòng "% @nano: …" (mã x.y và mã chữ bd-dlh-…/bd-cbvr-…) rồi quy đổi theo thẻ chủ đề + tên bài
+  function mapTexNanoLine(raw, chuDeText, baiText){
+    var out = [];
+    function add(k){ if(k && out.indexOf(k) < 0) out.push(k); }
+    String(raw || '').toLowerCase().split(/[,;\s]+/).forEach(function(tok){
+      if(/^bd-(dlh|cbvr)-[a-z0-9-]+$/.test(tok)) add(mapTexSlug(tok, baiText));
+    });
+    mapTexIds(parseIdList(raw), chuDeText).forEach(add);
+    return out;
+  }
   function resolveBaiKey(baiKey){
     return Object.prototype.hasOwnProperty.call(BAI_ALIAS, baiKey) ? BAI_ALIAS[baiKey] : baiKey;
   }
@@ -1315,47 +1372,24 @@
     'k11-7.1': ['k11-5.5', 'k11-5.6'],
     'k11-7.2': ['k11-7.1', 'k11-2.8'],
     'k11-7.3': ['k11-7.1', 'k11-5.3'],
-    // ---- VL11 Sóng ----
-    's11-1.1': ['k11-1.1'],
-    's11-1.2': ['s11-1.1', 'k11-2.4'],
-    's11-1.3': ['s11-1.2'],
-    's11-1.4': ['s11-1.2', 'k11-1.3'],
-    's11-1.5': ['s11-1.1'],
-    's11-1.6': ['s11-1.3', 'k11-2.6'],
-    's11-1.7': ['s11-1.3'],
-    's11-1.8': ['s11-1.4'],
-    's11-1.9': ['s11-1.6'],
-    's11-1.10': ['s11-1.5'],
-    's11-2.1': ['s11-1.1'],
-    's11-2.2': ['s11-1.1'],
-    's11-2.3': ['s11-2.1', 's11-2.2', 's11-1.5'],
-    's11-2.4': ['s11-2.2'],
-    's11-2.5': ['s11-2.4'],
-    's11-2.6': ['s11-2.4', 's11-1.3'],
-    's11-3.1': ['s11-1.4'],
-    's11-3.2': ['s11-3.1', 's11-2.4'],
-    's11-4.1': ['s11-2.1'],
-    's11-4.2': ['s11-4.1'],
-    's11-4.3': ['s11-4.2'],
-    's11-4.4': ['s11-4.1', 's11-1.3'],
-    's11-5.1': ['s11-1.6'],
-    's11-5.2': ['s11-5.1'],
-    's11-5.3': ['s11-5.1', 's11-4.2'],
-    's11-5.4': ['s11-5.3'],
-    's11-5.5': ['s11-5.2'],
-    's11-5.6': ['s11-5.5', 's11-1.9'],
-    's11-5.7': ['s11-5.4'],
-    's11-5.8': ['s11-5.7'],
-    's11-5.9': ['s11-5.8'],
-    's11-6.1': ['s11-1.1'],
-    's11-6.2': ['s11-6.1'],
-    's11-6.3': ['s11-6.2'],
-    's11-6.4': ['s11-6.2'],
-    's11-6.5': ['s11-6.4', 's11-2.4'],
-    's11-6.6': ['s11-6.3', 's11-6.4', 's11-1.3'],
-    's11-6.7': ['s11-6.6', 's11-1.6'],
-    's11-7.1': ['s11-6.5', 's11-1.3'],
-    's11-7.2': ['s11-7.1', 'md-3.2'],
+    // ---- VL11 Sóng (SỬA 18/11/2026 — theo mã song- trong .tex) ----
+    'song-1.1': ['k11-1.1'],
+    'song-1.2': ['song-1.1', 'k11-1.3'],
+    'song-1.3': ['song-1.1'],
+    'song-2.1': ['song-1.1'],
+    'song-3.1': ['song-1.1', 'k11-2.4'],
+    'song-3.2': ['song-3.1', 'song-1.2', 'k11-2.6'],
+    'song-4.1': ['song-2.1'],
+    'song-4.2': ['song-4.1', 'song-3.2'],
+    'song-5.1': ['song-3.1'],
+    'song-5.2': ['song-5.1', 'song-3.2'],
+    'song-6.1': ['song-3.1', 'k11-2.6'],
+    'song-6.2': ['song-6.1', 'song-3.2'],
+    'song-6.3': ['song-6.1', 'song-5.1'],
+    'song-6.4': ['song-6.3'],
+    'song-7.1': ['song-6.1', 'song-1.1'],
+    'song-7.2': ['song-7.1', 'song-3.2'],
+    'song-7.3': ['song-7.1'],
     // ---- VL11 Điện trường ----
     'dt11-1.2': ['dt11-1.1'],
     'dt11-1.3': ['dt11-1.1'],
@@ -1595,6 +1629,8 @@
     isValidNanoId: isValidNanoId,
     nextNanoId: nextNanoId,
     parseIdList: parseIdList,
+    mapTexIds: mapTexIds,   // THÊM 18/11/2026 — quy đổi mã nano .tex VL11 (dd-/dien-/song-)
+    mapTexNanoLine: mapTexNanoLine,   // THÊM 18/11/2026 — cả mã chữ VL10 (bd-dlh-…, bd-cbvr-…) và dl10-
     suggestNanos: suggestNanos,
     // quan hệ tiên quyết (6/10/2026)
     getPrereqs: getPrereqs,

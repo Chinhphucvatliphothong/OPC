@@ -112,7 +112,8 @@
     // SỬA 7/11/2026 — thêm tiền tố danh mục nano-point VL10 (md-, cd-, bd-, dlh-) và VL11 (s11-, dt11-, dd11-)
     var N0 = window.OPC_NANO;
     // SỬA 18/11/2026 — thêm tiền tố VL10 phần còn lại: cbvr-, nl-, dl-, ctr-, bdr-
-    if(N0 && /^(k1[01]|md|cd|bd|dlh|cbvr|nl|dl|ctr|bdr|s11|dt11|dd11)-\d/.test(s)){
+    // SỬA 18/11/2026 — Sóng VL11 dùng tiền tố song- (mã trong .tex của thầy)
+    if(N0 && /^(k1[01]|md|cd|bd|dlh|cbvr|nl|dl|ctr|bdr|s11|song|dt11|dd11)-\d/.test(s)){
       var bk = s.split('.')[0];
       var bb = N0.getBai ? N0.getBai(bk) : null;
       if(bb && TOPIC_TO_CHUONG[bb.chuDeKey]) return TOPIC_TO_CHUONG[bb.chuDeKey];

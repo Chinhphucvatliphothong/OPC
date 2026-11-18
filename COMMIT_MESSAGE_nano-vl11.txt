@@ -1,0 +1,21 @@
+Cập nhật nano-point Vật lí 10 và Vật lí 11 theo thẻ @nano trong ngân hàng .tex
+
+- nano-map.js:
+  + Sóng (VL11): thay 51 nano s11- bằng đúng 17 mã song-1.1 … song-7.3 thầy gắn trong .tex
+    (7 bài), kèm quan hệ tiên quyết; key bài cũ s11-*, k11-8…k11-15 tra qua BAI_ALIAS.
+  + mapTexIds()/mapTexNanoLine(): quy đổi mã .tex sang mã bản đồ khi nạp đề, theo thẻ chủ đề
+    và tên bài của từng câu:
+    VL11 — Dao động dd- → k11- (dd-5.7/5.8/5.9 → k11-7.1/7.2/7.3), Dòng điện dd- → dd11-,
+    Điện trường dien- → dt11-, mã s11- cũ → song-;
+    VL10 — Động lượng dl10-x.y → dl-x.y; mã chữ bd-dlh-… (Động lực học) → dlh-x.y,
+    bd-cbvr-… (Cân bằng vật rắn) → cbvr-x.y (bản "ds-" như bản thường; lực ma sát chọn
+    6.1–6.4 theo tên bài).
+  + Đổi tên Bài 4 Dao động cho khớp .tex.
+- admin.html: khi đọc .tex (nạp đề và "Đọc thẻ @nano từ file .tex") dùng mapTexNanoLine.
+- curriculum.js: nhận tiền tố song- khi suy ra chương của câu hỏi.
+- prompt-gan-nano-point-vl10-vl11.md, quan-he-tien-quyet.md: cập nhật mục Sóng (VL11), ghi chú mã cũ.
+
+Đã kiểm tra: VL11 1550/1550 câu (108 file) và VL10 1542/1542 câu (156 file) đều ra mã có
+trong bản đồ, đúng chủ đề.
+
+Co-Authored-By: Claude <noreply@anthropic.com>

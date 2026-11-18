@@ -577,7 +577,7 @@ Thống kê: 355 quan hệ ở 245 nano-point; không có vòng lặp.
 - `k11-3.7` Bài tập đồ thị x, v, a theo thời gian  
   ← `k11-3.2` Đồ thị vận tốc, liên hệ v – x (đường elip); `k11-3.4` Đồ thị gia tốc, liên hệ a – x (đoạn thẳng); `k11-2.7` Bài tập đại lượng đặc trưng, viết phương trình dao động
 
-**Bài 4: Bài tập về dao động điều hoà**
+**Bài 4: Một số dao động điều hoà thường gặp (con lắc lò xo, con lắc đơn)**
 
 - `k11-4.1` Tần số riêng của hệ dao động tự do (chỉ phụ thuộc đặc tính hệ)  
   ← `k11-1.2` Dao động tự do (dao động riêng)
@@ -643,108 +643,62 @@ Thống kê: 355 quan hệ ở 245 nano-point; không có vòng lặp.
 - `k11-7.3` Bài tập đồ thị năng lượng  
   ← `k11-7.1` Bài tập động năng, thế năng, cơ năng (tỉ số Wđ/Wt, vị trí Wđ = nWt); `k11-5.3` Đồ thị động năng, thế năng theo li độ và thời gian
 
-## 🌊 Sóng (VL11)
+## 🌊 Sóng (VL11) — cập nhật 18/11/2026 theo mã song- trong .tex
 
-**Bài 8: Mô tả sóng**
+**Bài 1: Mô tả sóng**
 
-- `s11-1.1` Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ  
+- `song-1.1` Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng  
   ← `k11-1.1` Khái niệm dao động cơ, dao động tuần hoàn
-- `s11-1.2` Các đại lượng đặc trưng: biên độ, chu kì, tần số, bước sóng, tốc độ truyền sóng  
-  ← `s11-1.1` Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ; `k11-2.4` Tần số góc, liên hệ ω – T – f
-- `s11-1.3` Liên hệ v = λf = λ/T  
-  ← `s11-1.2` Các đại lượng đặc trưng: biên độ, chu kì, tần số, bước sóng, tốc độ truyền sóng
-- `s11-1.4` Đồ thị li độ – khoảng cách (hình dạng sóng) và li độ – thời gian  
-  ← `s11-1.2` Các đại lượng đặc trưng: biên độ, chu kì, tần số, bước sóng, tốc độ truyền sóng; `k11-1.3` Khái niệm và đồ thị li độ – thời gian của dao động điều hoà
-- `s11-1.5` Năng lượng sóng, cường độ sóng I = P/S  
-  ← `s11-1.1` Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ
-- `s11-1.6` Độ lệch pha giữa hai điểm trên phương truyền sóng Δφ = 2πd/λ  
-  ← `s11-1.3` Liên hệ v = λf = λ/T; `k11-2.6` Độ lệch pha hai dao động cùng chu kì (cùng, ngược, vuông pha)
-- `s11-1.7` Bài tập đại lượng đặc trưng (λ, v, f, T, khoảng cách đỉnh sóng)  
-  ← `s11-1.3` Liên hệ v = λf = λ/T
-- `s11-1.8` Bài tập đồ thị sóng (đọc λ, A; chiều truyền sóng, chiều chuyển động phần tử)  
-  ← `s11-1.4` Đồ thị li độ – khoảng cách (hình dạng sóng) và li độ – thời gian
-- `s11-1.9` Bài tập độ lệch pha, phương trình sóng, điểm cùng pha – ngược pha – vuông pha  
-  ← `s11-1.6` Độ lệch pha giữa hai điểm trên phương truyền sóng Δφ = 2πd/λ
-- `s11-1.10` Bài tập cường độ sóng, năng lượng sóng  
-  ← `s11-1.5` Năng lượng sóng, cường độ sóng I = P/S
+- `song-1.2` Đồ thị sóng (li độ – khoảng cách, li độ – thời gian): đọc λ, A, T, chiều truyền sóng  
+  ← `song-1.1` Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng; `k11-1.3` Khái niệm và đồ thị li độ – thời gian của dao động điều hoà
+- `song-1.3` Phần tử môi trường chỉ dao động tại chỗ, không truyền đi theo sóng  
+  ← `song-1.1` Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng
 
-**Bài 9: Sóng ngang. Sóng dọc. Sự truyền năng lượng của sóng cơ**
+**Bài 2: Sóng ngang. Sóng dọc. Sự truyền năng lượng của sóng cơ**
 
-- `s11-2.1` Sóng ngang: định nghĩa, môi trường truyền  
-  ← `s11-1.1` Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ
-- `s11-2.2` Sóng dọc: định nghĩa, môi trường truyền  
-  ← `s11-1.1` Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ
-- `s11-2.3` Sự truyền năng lượng của sóng cơ  
-  ← `s11-2.1` Sóng ngang: định nghĩa, môi trường truyền; `s11-2.2` Sóng dọc: định nghĩa, môi trường truyền; `s11-1.5` Năng lượng sóng, cường độ sóng I = P/S
-- `s11-2.4` Sóng âm: bản chất, môi trường truyền, tốc độ âm trong các môi trường  
-  ← `s11-2.2` Sóng dọc: định nghĩa, môi trường truyền
-- `s11-2.5` Âm nghe được, hạ âm, siêu âm và ứng dụng  
-  ← `s11-2.4` Sóng âm: bản chất, môi trường truyền, tốc độ âm trong các môi trường
-- `s11-2.6` Bài tập sóng âm (tốc độ âm, tiếng vang, đo độ sâu bằng siêu âm)  
-  ← `s11-2.4` Sóng âm: bản chất, môi trường truyền, tốc độ âm trong các môi trường; `s11-1.3` Liên hệ v = λf = λ/T
+- `song-2.1` Sóng ngang, sóng dọc: phương dao động, môi trường truyền; sự truyền năng lượng của sóng  
+  ← `song-1.1` Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng
 
-**Bài 10: Thực hành: Đo tần số của sóng âm**
+**Bài 3: Các đặc trưng vật lí của sóng**
 
-- `s11-3.1` Dao động kí điện tử: cấu tạo, cách đọc đồ thị trên màn hình  
-  ← `s11-1.4` Đồ thị li độ – khoảng cách (hình dạng sóng) và li độ – thời gian
-- `s11-3.2` Thực hành đo tần số sóng âm bằng dao động kí  
-  ← `s11-3.1` Dao động kí điện tử: cấu tạo, cách đọc đồ thị trên màn hình; `s11-2.4` Sóng âm: bản chất, môi trường truyền, tốc độ âm trong các môi trường
+- `song-3.1` Các đại lượng đặc trưng của sóng: A, T, f, λ, tốc độ truyền sóng; v = λf (lí thuyết)  
+  ← `song-1.1` Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng; `k11-2.4` Tần số góc, liên hệ ω – T – f
+- `song-3.2` Bài tập đại lượng đặc trưng, phương trình sóng, độ lệch pha giữa hai điểm  
+  ← `song-3.1` Các đại lượng đặc trưng của sóng: A, T, f, λ, tốc độ truyền sóng; v = λf (lí thuyết); `song-1.2` Đồ thị sóng (li độ – khoảng cách, li độ – thời gian): đọc λ, A, T, chiều truyền sóng; `k11-2.6` Độ lệch pha hai dao động cùng chu kì (cùng, ngược, vuông pha)
 
-**Bài 11: Sóng điện từ**
+**Bài 4: Sóng âm**
 
-- `s11-4.1` Khái niệm sóng điện từ, tính chất (sóng ngang, truyền được trong chân không, c = 3.10^8 m/s)  
-  ← `s11-2.1` Sóng ngang: định nghĩa, môi trường truyền
-- `s11-4.2` Thang sóng điện từ: vô tuyến, vi sóng, hồng ngoại, ánh sáng nhìn thấy, tử ngoại, tia X, tia gamma  
-  ← `s11-4.1` Khái niệm sóng điện từ, tính chất (sóng ngang, truyền được trong chân không, c = 3.10^8 m/s)
-- `s11-4.3` Ứng dụng các vùng sóng điện từ trong đời sống, kĩ thuật  
-  ← `s11-4.2` Thang sóng điện từ: vô tuyến, vi sóng, hồng ngoại, ánh sáng nhìn thấy, tử ngoại, tia X, tia gamma
-- `s11-4.4` Bài tập λ = c/f, xác định vùng sóng điện từ  
-  ← `s11-4.1` Khái niệm sóng điện từ, tính chất (sóng ngang, truyền được trong chân không, c = 3.10^8 m/s); `s11-1.3` Liên hệ v = λf = λ/T
+- `song-4.1` Sóng âm: nguồn âm, môi trường truyền, tốc độ âm; âm nghe được, hạ âm, siêu âm (lí thuyết)  
+  ← `song-2.1` Sóng ngang, sóng dọc: phương dao động, môi trường truyền; sự truyền năng lượng của sóng
+- `song-4.2` Bài tập sóng âm: tốc độ âm, tiếng vang, dao động kí, cường độ âm, mức cường độ âm  
+  ← `song-4.1` Sóng âm: nguồn âm, môi trường truyền, tốc độ âm; âm nghe được, hạ âm, siêu âm (lí thuyết); `song-3.2` Bài tập đại lượng đặc trưng, phương trình sóng, độ lệch pha giữa hai điểm
 
-**Bài 12: Giao thoa sóng**
+**Bài 5: Sóng điện từ**
 
-- `s11-5.1` Hiện tượng giao thoa, nguồn kết hợp, điều kiện giao thoa  
-  ← `s11-1.6` Độ lệch pha giữa hai điểm trên phương truyền sóng Δφ = 2πd/λ
-- `s11-5.2` Giao thoa sóng mặt nước: cực đại, cực tiểu, điều kiện hiệu đường đi  
-  ← `s11-5.1` Hiện tượng giao thoa, nguồn kết hợp, điều kiện giao thoa
-- `s11-5.3` Giao thoa ánh sáng (thí nghiệm Young): vân sáng, vân tối  
-  ← `s11-5.1` Hiện tượng giao thoa, nguồn kết hợp, điều kiện giao thoa; `s11-4.2` Thang sóng điện từ: vô tuyến, vi sóng, hồng ngoại, ánh sáng nhìn thấy, tử ngoại, tia X, tia gamma
-- `s11-5.4` Khoảng vân i = λD/a, vị trí vân sáng, vân tối  
-  ← `s11-5.3` Giao thoa ánh sáng (thí nghiệm Young): vân sáng, vân tối
-- `s11-5.5` Bài tập giao thoa sóng mặt nước: tính chất điểm, số cực đại – cực tiểu trên đoạn  
-  ← `s11-5.2` Giao thoa sóng mặt nước: cực đại, cực tiểu, điều kiện hiệu đường đi
-- `s11-5.6` Bài tập giao thoa sóng mặt nước nâng cao (cực trị trên đường tròn, hình vuông; điểm cùng pha – ngược pha nguồn)  
-  ← `s11-5.5` Bài tập giao thoa sóng mặt nước: tính chất điểm, số cực đại – cực tiểu trên đoạn; `s11-1.9` Bài tập độ lệch pha, phương trình sóng, điểm cùng pha – ngược pha – vuông pha
-- `s11-5.7` Bài tập giao thoa ánh sáng: khoảng vân, vị trí vân, tính λ  
-  ← `s11-5.4` Khoảng vân i = λD/a, vị trí vân sáng, vân tối
-- `s11-5.8` Bài tập giao thoa ánh sáng: số vân trên vùng giao thoa, thay đổi a, D, λ  
-  ← `s11-5.7` Bài tập giao thoa ánh sáng: khoảng vân, vị trí vân, tính λ
-- `s11-5.9` Bài tập giao thoa ánh sáng nhiều bức xạ, ánh sáng trắng  
-  ← `s11-5.8` Bài tập giao thoa ánh sáng: số vân trên vùng giao thoa, thay đổi a, D, λ
+- `song-5.1` Sóng điện từ: tính chất, thang sóng điện từ, ứng dụng (lí thuyết)  
+  ← `song-3.1` Các đại lượng đặc trưng của sóng: A, T, f, λ, tốc độ truyền sóng; v = λf (lí thuyết)
+- `song-5.2` Bài tập sóng điện từ: λ = c/f, radar – vệ tinh, truyền trong môi trường chiết suất n  
+  ← `song-5.1` Sóng điện từ: tính chất, thang sóng điện từ, ứng dụng (lí thuyết); `song-3.2` Bài tập đại lượng đặc trưng, phương trình sóng, độ lệch pha giữa hai điểm
 
-**Bài 13: Sóng dừng**
+**Bài 6: Giao thoa sóng (sóng cơ, ánh sáng)**
 
-- `s11-6.1` Sóng phản xạ (đầu cố định, đầu tự do), sự tạo thành sóng dừng  
-  ← `s11-1.1` Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ
-- `s11-6.2` Nút sóng, bụng sóng; khoảng cách giữa các nút, bụng  
-  ← `s11-6.1` Sóng phản xạ (đầu cố định, đầu tự do), sự tạo thành sóng dừng
-- `s11-6.3` Điều kiện sóng dừng dây hai đầu cố định ℓ = kλ/2  
-  ← `s11-6.2` Nút sóng, bụng sóng; khoảng cách giữa các nút, bụng
-- `s11-6.4` Điều kiện sóng dừng một đầu cố định, một đầu tự do ℓ = (2k + 1)λ/4  
-  ← `s11-6.2` Nút sóng, bụng sóng; khoảng cách giữa các nút, bụng
-- `s11-6.5` Sóng dừng trong cột không khí, ứng dụng trong nhạc cụ  
-  ← `s11-6.4` Điều kiện sóng dừng một đầu cố định, một đầu tự do ℓ = (2k + 1)λ/4; `s11-2.4` Sóng âm: bản chất, môi trường truyền, tốc độ âm trong các môi trường
-- `s11-6.6` Bài tập sóng dừng: số nút, số bụng, tần số, tốc độ truyền sóng  
-  ← `s11-6.3` Điều kiện sóng dừng dây hai đầu cố định ℓ = kλ/2; `s11-6.4` Điều kiện sóng dừng một đầu cố định, một đầu tự do ℓ = (2k + 1)λ/4; `s11-1.3` Liên hệ v = λf = λ/T
-- `s11-6.7` Bài tập sóng dừng nâng cao: biên độ điểm, tần số liên tiếp, thời gian dây duỗi thẳng  
-  ← `s11-6.6` Bài tập sóng dừng: số nút, số bụng, tần số, tốc độ truyền sóng; `s11-1.6` Độ lệch pha giữa hai điểm trên phương truyền sóng Δφ = 2πd/λ
+- `song-6.1` Giao thoa sóng cơ: nguồn kết hợp, điều kiện giao thoa, cực đại – cực tiểu (lí thuyết)  
+  ← `song-3.1` Các đại lượng đặc trưng của sóng: A, T, f, λ, tốc độ truyền sóng; v = λf (lí thuyết); `k11-2.6` Độ lệch pha hai dao động cùng chu kì (cùng, ngược, vuông pha)
+- `song-6.2` Bài tập giao thoa sóng mặt nước: tính chất điểm, số cực đại – cực tiểu  
+  ← `song-6.1` Giao thoa sóng cơ: nguồn kết hợp, điều kiện giao thoa, cực đại – cực tiểu (lí thuyết); `song-3.2` Bài tập đại lượng đặc trưng, phương trình sóng, độ lệch pha giữa hai điểm
+- `song-6.3` Giao thoa ánh sáng – thí nghiệm Young: vân sáng, vân tối, đo bước sóng ánh sáng (lí thuyết)  
+  ← `song-6.1` Giao thoa sóng cơ: nguồn kết hợp, điều kiện giao thoa, cực đại – cực tiểu (lí thuyết); `song-5.1` Sóng điện từ: tính chất, thang sóng điện từ, ứng dụng (lí thuyết)
+- `song-6.4` Bài tập giao thoa ánh sáng: khoảng vân, vị trí vân, số vân, tính λ  
+  ← `song-6.3` Giao thoa ánh sáng – thí nghiệm Young: vân sáng, vân tối, đo bước sóng ánh sáng (lí thuyết)
 
-**Bài 15: Thực hành: Đo tốc độ truyền âm**
+**Bài 7: Sóng dừng**
 
-- `s11-7.1` Thực hành đo tốc độ truyền âm: dụng cụ, phương án (cộng hưởng cột khí)  
-  ← `s11-6.5` Sóng dừng trong cột không khí, ứng dụng trong nhạc cụ; `s11-1.3` Liên hệ v = λf = λ/T
-- `s11-7.2` Xử lí số liệu, sai số trong thực hành đo tốc độ truyền âm  
-  ← `s11-7.1` Thực hành đo tốc độ truyền âm: dụng cụ, phương án (cộng hưởng cột khí); `md-3.2` Sai số phép đo (tuyệt đối, tương đối, sai số dụng cụ, sai số ngẫu nhiên)
+- `song-7.1` Sóng phản xạ, sóng dừng: nút, bụng, khoảng cách nút – bụng, điều kiện sóng dừng (lí thuyết)  
+  ← `song-6.1` Giao thoa sóng cơ: nguồn kết hợp, điều kiện giao thoa, cực đại – cực tiểu (lí thuyết); `song-1.1` Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng
+- `song-7.2` Bài tập sóng dừng: số nút, số bụng, tần số, tốc độ truyền sóng  
+  ← `song-7.1` Sóng phản xạ, sóng dừng: nút, bụng, khoảng cách nút – bụng, điều kiện sóng dừng (lí thuyết); `song-3.2` Bài tập đại lượng đặc trưng, phương trình sóng, độ lệch pha giữa hai điểm
+- `song-7.3` Thí nghiệm sóng dừng trên dây với máy phát dao động âm tần  
+  ← `song-7.1` Sóng phản xạ, sóng dừng: nút, bụng, khoảng cách nút – bụng, điều kiện sóng dừng (lí thuyết)
 
 ## ⚡ Điện trường (VL11)
 

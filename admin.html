@@ -5119,6 +5119,7 @@
     var exBuffer = [];
     var lastCommentTag = null;
     var lastNanoName = ''; // THÊM 27/10/2026 — nano tự tạo (ĐGNL)
+    var lastNanoRaw = ''; // THÊM 18/11/2026 — dòng @nano gốc (có mã chữ bd-dlh-…)
     var lastNanoIds = []; // THÊM 5/10/2026 — các mã nano đọc từ dòng "% @nano: …" ngay trước câu
     var titleCand = '';
     var preambleBuffer = [];
@@ -5161,7 +5162,7 @@
       }
 
       var nanoLine = line.match(/%.*?@nano\s*:\s*(.*)$/i);
-      if(nanoLine){ lastNanoIds = parseNanoTagIds(nanoLine[1]); }
+      if(nanoLine){ lastNanoIds = parseNanoTagIds(nanoLine[1]); lastNanoRaw = nanoLine[1]; } // SỬA 18/11/2026 — giữ dòng gốc cho mã chữ VL10
       // THÊM 27/10/2026 — nano tự tạo cho đề ĐGNL: dòng "% @nano-dgnl: Tên nano" (AI sinh khi nhập đề), không thuộc danh mục nano Vật lí 12
       var nanoNameLine = line.match(/%\s*@nano-dgnl\s*:\s*(.*)$/i);
       if(nanoNameLine){ lastNanoName = nanoNameLine[1].trim().slice(0, 80); }
@@ -5211,7 +5212,11 @@
           var full = exBuffer.join('\n');
           var tag = lastCommentTag || { level: 'M2', chuDeLon: 'Vật lí', dangBai: 'Chung' };
           lastCommentTag = null;
-          var nanoTagIds = lastNanoIds; lastNanoIds = [];
+          // SỬA 18/11/2026 — quy đổi mã nano .tex VL11 (Dao động/Dòng điện cùng "dd-", Điện trường "dien-") theo thẻ chủ đề của câu
+          // SỬA 18/11/2026 — thêm mã chữ VL10 (bd-dlh-…, bd-cbvr-…) và dl10-, chọn theo chủ đề + tên bài
+          var nanoTagIds = (window.OPC_NANO && window.OPC_NANO.mapTexNanoLine) ? window.OPC_NANO.mapTexNanoLine(lastNanoRaw, tag.chuDeLon, tag.dangBai)
+            : ((window.OPC_NANO && window.OPC_NANO.mapTexIds) ? window.OPC_NANO.mapTexIds(lastNanoIds, tag.chuDeLon) : lastNanoIds);
+          lastNanoIds = []; lastNanoRaw = '';
           var nanoName = lastNanoName; lastNanoName = '';
           var aiSolved = /%\s*AI_TU_GIAI/i.test(full), aiCheckM = full.match(/%\s*AI_CAN_KIEM_TRA\s*:?\s*(.*)/i), aiCheck = aiCheckM ? (aiCheckM[1] || 'cần kiểm tra').trim() : '';
 

@@ -1,6 +1,9 @@
 # Prompt gắn tag nano-point – Vật lí 10 và Vật lí 11 (SGK Kết nối tri thức)
 
-Bản đồng bộ với `nano-map.js` ngày 07/11/2026: Vật lí 10 có 74 nano-point (md-, cd-, bd-, dlh-), Vật lí 11 có 178 nano-point (k11-, s11-, dt11-, dd11-).
+Bản đồng bộ với `nano-map.js` ngày 07/11/2026: Vật lí 10 có 74 nano-point (md-, cd-, bd-, dlh-), Vật lí 11 có 155 nano-point (k11-, song-, dt11-, dd11-).
+SỬA 18/11/2026: Sóng (VL11) đổi sang đúng 17 mã song- trong ngân hàng .tex của thầy (thay 51 mã s11- cũ).
+Ghi chú: .tex cũ của thầy gắn dd- (Dao động, Dòng điện) và dien- (Điện trường) — web tự quy đổi khi nạp; đề MỚI hãy dùng đúng mã ở mục C.
+VL10: .tex cũ gắn dl10-x.y (Động lượng) và mã chữ bd-dlh-…, bd-cbvr-… (Động lực học, Cân bằng vật rắn) — web cũng tự quy đổi khi nạp.
 Định dạng thẻ và mức độ M1–M4 giống hệt prompt Vật lí 12 (`prompt-gan-nano-point-moi.md`).
 
 Cách dùng: copy nguyên khối trong ba dấu ``` bên dưới, dán vào Claude, thay phần D ở cuối bằng câu mẫu và đề cần chuyển.
@@ -21,8 +24,8 @@ Ví dụ:
 % [M3][Động học (VL10)][Bài 2: Chuyển động thẳng biến đổi đều]
 % @nano: bd-2.4, bd-2.2
 %Câu 7
-% [M2][Sóng (VL11)][Bài 12: Giao thoa sóng]
-% @nano: s11-5.7
+% [M2][Sóng (VL11)][Bài 6: Giao thoa sóng (sóng cơ, ánh sáng)]
+% @nano: song-6.4
 
 ======================================================================
 A. QUY TẮC CHUNG
@@ -36,7 +39,7 @@ A. QUY TẮC CHUNG
    Chuyển động biến đổi) — vì vậy luôn chép ĐỦ cả tên bài, không chỉ "Bài 1".
 3. Mã nano chỉ được chọn trong mục C. Mã, bài và chủ đề phải khớp nhau:
    md-… đi với Mở đầu (VL10); cd-… và bd-… đi với Động học (VL10); dlh-… với Động lực học (VL10);
-   k11-… với Dao động (VL11); s11-… với Sóng (VL11); dt11-… với Điện trường (VL11);
+   k11-… với Dao động (VL11); song-… với Sóng (VL11); dt11-… với Điện trường (VL11);
    dd11-… với Dòng điện, mạch điện (VL11).
 4. Chọn theo KIẾN THỨC câu hỏi kiểm tra, không theo từ khoá xuất hiện.
 5. Nano có chữ "Bài tập", "Bài toán", "Đồ thị", "Thực hành" chỉ dùng khi câu đúng dạng đó; câu thuần lí thuyết
@@ -204,7 +207,7 @@ Bài 3: Vận tốc, gia tốc trong dao động điều hoà
    k11-3.5 Lực kéo về (hợp lực tác dụng lên vật DĐĐH)
    k11-3.6 Bài tập li độ, vận tốc, gia tốc, hệ thức độc lập thời gian
    k11-3.7 Bài tập đồ thị x, v, a theo thời gian
-Bài 4: Bài tập về dao động điều hoà
+Bài 4: Một số dao động điều hoà thường gặp (con lắc lò xo, con lắc đơn)
    k11-4.1 Tần số riêng của hệ dao động tự do (chỉ phụ thuộc đặc tính hệ)
    k11-4.2 Con lắc lò xo: cấu tạo, lực đàn hồi, gia tốc a = −(k/m)x
    k11-4.3 Chu kì, tần số, tần số góc con lắc lò xo (lí thuyết)
@@ -237,53 +240,30 @@ Bài 7: Bài tập về sự chuyển hoá năng lượng trong dao động đi�
    k11-7.3 Bài tập đồ thị năng lượng
 
 ---------------- C5. Sóng (VL11) ----------------
-Bài 8: Mô tả sóng
-   s11-1.1 Khái niệm sóng cơ, môi trường truyền sóng, phần tử môi trường dao động tại chỗ
-   s11-1.2 Các đại lượng đặc trưng: biên độ, chu kì, tần số, bước sóng, tốc độ truyền sóng
-   s11-1.3 Liên hệ v = λf = λ/T
-   s11-1.4 Đồ thị li độ – khoảng cách (hình dạng sóng) và li độ – thời gian
-   s11-1.5 Năng lượng sóng, cường độ sóng I = P/S
-   s11-1.6 Độ lệch pha giữa hai điểm trên phương truyền sóng Δφ = 2πd/λ
-   s11-1.7 Bài tập đại lượng đặc trưng (λ, v, f, T, khoảng cách đỉnh sóng)
-   s11-1.8 Bài tập đồ thị sóng (đọc λ, A; chiều truyền sóng, chiều chuyển động phần tử)
-   s11-1.9 Bài tập độ lệch pha, phương trình sóng, điểm cùng pha – ngược pha – vuông pha
-   s11-1.10 Bài tập cường độ sóng, năng lượng sóng
-Bài 9: Sóng ngang. Sóng dọc. Sự truyền năng lượng của sóng cơ
-   s11-2.1 Sóng ngang: định nghĩa, môi trường truyền
-   s11-2.2 Sóng dọc: định nghĩa, môi trường truyền
-   s11-2.3 Sự truyền năng lượng của sóng cơ
-   s11-2.4 Sóng âm: bản chất, môi trường truyền, tốc độ âm trong các môi trường
-   s11-2.5 Âm nghe được, hạ âm, siêu âm và ứng dụng
-   s11-2.6 Bài tập sóng âm (tốc độ âm, tiếng vang, đo độ sâu bằng siêu âm)
-Bài 10: Thực hành: Đo tần số của sóng âm
-   s11-3.1 Dao động kí điện tử: cấu tạo, cách đọc đồ thị trên màn hình
-   s11-3.2 Thực hành đo tần số sóng âm bằng dao động kí
-Bài 11: Sóng điện từ
-   s11-4.1 Khái niệm sóng điện từ, tính chất (sóng ngang, truyền được trong chân không, c = 3.10^8 m/s)
-   s11-4.2 Thang sóng điện từ: vô tuyến, vi sóng, hồng ngoại, ánh sáng nhìn thấy, tử ngoại, tia X, tia gamma
-   s11-4.3 Ứng dụng các vùng sóng điện từ trong đời sống, kĩ thuật
-   s11-4.4 Bài tập λ = c/f, xác định vùng sóng điện từ
-Bài 12: Giao thoa sóng
-   s11-5.1 Hiện tượng giao thoa, nguồn kết hợp, điều kiện giao thoa
-   s11-5.2 Giao thoa sóng mặt nước: cực đại, cực tiểu, điều kiện hiệu đường đi
-   s11-5.3 Giao thoa ánh sáng (thí nghiệm Young): vân sáng, vân tối
-   s11-5.4 Khoảng vân i = λD/a, vị trí vân sáng, vân tối
-   s11-5.5 Bài tập giao thoa sóng mặt nước: tính chất điểm, số cực đại – cực tiểu trên đoạn
-   s11-5.6 Bài tập giao thoa sóng mặt nước nâng cao (cực trị trên đường tròn, hình vuông; điểm cùng pha – ngược pha nguồn)
-   s11-5.7 Bài tập giao thoa ánh sáng: khoảng vân, vị trí vân, tính λ
-   s11-5.8 Bài tập giao thoa ánh sáng: số vân trên vùng giao thoa, thay đổi a, D, λ
-   s11-5.9 Bài tập giao thoa ánh sáng nhiều bức xạ, ánh sáng trắng
-Bài 13: Sóng dừng
-   s11-6.1 Sóng phản xạ (đầu cố định, đầu tự do), sự tạo thành sóng dừng
-   s11-6.2 Nút sóng, bụng sóng; khoảng cách giữa các nút, bụng
-   s11-6.3 Điều kiện sóng dừng dây hai đầu cố định ℓ = kλ/2
-   s11-6.4 Điều kiện sóng dừng một đầu cố định, một đầu tự do ℓ = (2k + 1)λ/4
-   s11-6.5 Sóng dừng trong cột không khí, ứng dụng trong nhạc cụ
-   s11-6.6 Bài tập sóng dừng: số nút, số bụng, tần số, tốc độ truyền sóng
-   s11-6.7 Bài tập sóng dừng nâng cao: biên độ điểm, tần số liên tiếp, thời gian dây duỗi thẳng
-Bài 15: Thực hành: Đo tốc độ truyền âm
-   s11-7.1 Thực hành đo tốc độ truyền âm: dụng cụ, phương án (cộng hưởng cột khí)
-   s11-7.2 Xử lí số liệu, sai số trong thực hành đo tốc độ truyền âm
+Bài 1: Mô tả sóng
+   song-1.1 Khái niệm sóng cơ, sự truyền sóng; phản xạ, khúc xạ, nhiễu xạ của sóng
+   song-1.2 Đồ thị sóng (li độ – khoảng cách, li độ – thời gian): đọc λ, A, T, chiều truyền sóng
+   song-1.3 Phần tử môi trường chỉ dao động tại chỗ, không truyền đi theo sóng
+Bài 2: Sóng ngang. Sóng dọc. Sự truyền năng lượng của sóng cơ
+   song-2.1 Sóng ngang, sóng dọc: phương dao động, môi trường truyền; sự truyền năng lượng của sóng
+Bài 3: Các đặc trưng vật lí của sóng
+   song-3.1 Các đại lượng đặc trưng của sóng: A, T, f, λ, tốc độ truyền sóng; v = λf (lí thuyết)
+   song-3.2 Bài tập đại lượng đặc trưng, phương trình sóng, độ lệch pha giữa hai điểm
+Bài 4: Sóng âm
+   song-4.1 Sóng âm: nguồn âm, môi trường truyền, tốc độ âm; âm nghe được, hạ âm, siêu âm (lí thuyết)
+   song-4.2 Bài tập sóng âm: tốc độ âm, tiếng vang, dao động kí, cường độ âm, mức cường độ âm
+Bài 5: Sóng điện từ
+   song-5.1 Sóng điện từ: tính chất, thang sóng điện từ, ứng dụng (lí thuyết)
+   song-5.2 Bài tập sóng điện từ: λ = c/f, radar – vệ tinh, truyền trong môi trường chiết suất n
+Bài 6: Giao thoa sóng (sóng cơ, ánh sáng)
+   song-6.1 Giao thoa sóng cơ: nguồn kết hợp, điều kiện giao thoa, cực đại – cực tiểu (lí thuyết)
+   song-6.2 Bài tập giao thoa sóng mặt nước: tính chất điểm, số cực đại – cực tiểu
+   song-6.3 Giao thoa ánh sáng – thí nghiệm Young: vân sáng, vân tối, đo bước sóng ánh sáng (lí thuyết)
+   song-6.4 Bài tập giao thoa ánh sáng: khoảng vân, vị trí vân, số vân, tính λ
+Bài 7: Sóng dừng
+   song-7.1 Sóng phản xạ, sóng dừng: nút, bụng, khoảng cách nút – bụng, điều kiện sóng dừng (lí thuyết)
+   song-7.2 Bài tập sóng dừng: số nút, số bụng, tần số, tốc độ truyền sóng
+   song-7.3 Thí nghiệm sóng dừng trên dây với máy phát dao động âm tần
 
 ---------------- C6. Điện trường (VL11) ----------------
 Bài 16: Lực tương tác giữa các điện tích
