@@ -1,0 +1,9 @@
+Bổ sung danh mục nano-point Vật lí 10 (Bài 21, 23–34)
+
+- nano-map.js: thêm 18 bài và 62 nano-point theo mã thầy đã gắn trong .tex:
+  Cân bằng vật rắn (cbvr-), Năng lượng (nl-), Động lượng (dl-),
+  Chuyển động tròn (ctr-), Biến dạng vật rắn (bdr-); quan hệ tiên quyết;
+  key bài cũ k10-21, k10-23…k10-34 tra qua BAI_ALIAS.
+- curriculum.js: nhận tiền tố mã mới khi suy ra chương của câu hỏi.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
