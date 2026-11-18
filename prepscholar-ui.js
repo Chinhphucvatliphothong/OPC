@@ -2188,7 +2188,15 @@
           alert('Đề chuẩn BGD đầy đủ sẽ mở khi đã học đủ 4 chương.');
           return;
         }
-        questions = window.PrepScholarEngine.QUESTION_BANK.slice(0);
+        // SỬA 18/11/2026 — trước đây lấy CẢ ngân hàng (QUESTION_BANK.slice(0)) nên đề có hàng nghìn câu.
+        // Nay bốc đúng cấu trúc Bộ 18 ABCD + 4 Đúng/Sai + 6 trả lời ngắn, phủ rộng nano, không cắt chùm.
+        var mock = window.PrepScholarEngine.createRollingExam();
+        if(!mock.ok){
+          alert('Chưa tạo được Đề chuẩn BGD — ngân hàng đề chưa đủ câu:\n' +
+            mock.shortages.map(function(sh){ return '• ' + sh.label + ': thiếu ' + sh.missing + ' câu (cần ' + sh.need + ', hiện có ' + sh.have + ')'; }).join('\n'));
+          return;
+        }
+        questions = mock.questions;
         title = 'Đề thi thử chuẩn cấu trúc Bộ GD&ĐT 2025 - 2026';
         timeSec = 40 * 60;
       }
