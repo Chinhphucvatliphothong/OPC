@@ -1,0 +1,9 @@
+ĐGNL: "Làm cả đề (150 phút)" tự tạo đề đúng cấu trúc V-ACT thay cho danh sách đề thô
+
+- dgnl.js: thêm buildFullExam() — bốc từ toàn bộ ngân hàng de_thi_dgnl đề 120 câu · 150 phút
+  theo thứ tự đề thật: Tiếng Việt 30 · Tiếng Anh 30 · Toán học 30 · Logic, phân tích số liệu 12 ·
+  Suy luận khoa học 18; giữ nguyên cụm câu chung dữ kiện, mỗi phần đúng số câu, ưu tiên câu
+  chưa làm rồi câu từng sai. Phần ngân hàng chưa đủ câu → báo rõ, cho tạo đề các phần đang có
+  (1,25 phút/câu). Nhớ đề đang làm dở trên máy để "Làm tiếp"; bài nộp lưu thêm qids, generated.
+
+Co-Authored-By: Claude <noreply@anthropic.com>

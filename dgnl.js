@@ -8,6 +8,7 @@
  * điểm từng phần, điểm QUY ĐỔI THAM KHẢO thang 1.200 (đề thật chấm theo IRT — đây chỉ là ước tính), xem lời giải.
  * SỬA 27/10/2026 — (1) LỖI KHÔNG VÀO ĐƯỢC: khung danh sách bọc class 'dg2-fs' không có CSS nên bị đẩy xuống cuối trang → đổi sang 'dg2-ov' (toàn màn hình).
  *   (2) MINI TEST THÍCH ỨNG: gom câu từ mọi đề ĐGNL, chọn phần thi + số câu (5/10/20/30), ưu tiên câu chưa làm/từng sai, giữ nguyên cụm câu chung dữ kiện; lưu track 'dgnl-mini' (không lẫn điểm 1.200).
+ * SỬA 19/11/2026 — "Làm cả đề (150 phút)": hệ thống tự tạo đề 120 câu đúng cấu trúc V-ACT từ ngân hàng (buildFullExam), không còn hiện đề thô.
  * Xuất: window.OPC_DGNL = { openList(student) }
  */
 (function(window){
@@ -120,7 +121,7 @@
       if(result) return;
       if(!auto){ var miss = qs.length - Object.keys(ans).length; if(!window.confirm(miss ? 'Còn ' + miss + ' câu chưa làm. Vẫn nộp bài?' : 'Nộp bài và xem kết quả?')) return; }
       var r = score(qs, ans); r.minutesUsed = Math.round(Math.min(minutes * 60, (Date.now() - startedAt) / 1000) / 60);
-      setResult(r); if(!isMini){ try{ localStorage.removeItem(storeKey); }catch(e){} }
+      setResult(r); if(!isMini){ try{ localStorage.removeItem(storeKey); if(ex.generated) localStorage.removeItem('dgnl-auto-' + st.id); }catch(e){} } // SỬA 19/11/2026 — nộp xong thì bỏ đề tự tạo đang làm dở
       var L = live();
       if(L && L.saveSpecialAttempt){
         var sec = {}; Object.keys(r.sections).forEach(function(k){ sec[k] = { name: r.sections[k].name, correct: r.sections[k].correct, total: r.sections[k].total }; });
@@ -130,7 +131,7 @@
           return;
         }
         L.saveSpecialAttempt(st.id, { track: 'dgnl', examId: ex.id, examTitle: ex.title, autoScore: r.est1200, scaled: r.scaled, maxScaled: r.maxScaled, correct: r.correct, total: r.total,
-          sections: sec, nanos: nanoSummary(qs, ans), minutesUsed: r.minutesUsed, maxScore: 1200, selfScore: r.est1200 != null ? Math.round(r.est1200 / 60 * 100) / 100 : null, answers: ans, auto: !!auto })
+          sections: sec, nanos: nanoSummary(qs, ans), minutesUsed: r.minutesUsed, maxScore: 1200, selfScore: r.est1200 != null ? Math.round(r.est1200 / 60 * 100) / 100 : null, answers: ans, qids: qs.map(function(x){ return x.index; }), generated: !!ex.generated, auto: !!auto }) // SỬA 19/11/2026 — thêm qids (xem lại câu bỏ trống), generated (đề tự tạo)
           .then(function(res){ setSaved(!!(res && res.ok)); });
       }
     }
@@ -269,6 +270,39 @@
   }
   var SEC_NAMES = { toan: 'Toán học', logic: 'Logic & phân tích số liệu', kh: 'Suy luận khoa học', tv: 'Tiếng Việt', ta: 'Tiếng Anh', khac: 'Khác' };
 
+  // ===== THÊM 19/11/2026 — TỰ TẠO ĐỀ ĐẦY ĐỦ ĐÚNG CẤU TRÚC V-ACT ĐHQG-HCM (đề minh hoạ 2025, 2026) =====
+  // 120 câu · 150 phút, thứ tự như đề thật: Tiếng Việt 30 (câu 1–30) · Tiếng Anh 30 (31–60) · Toán học 30 (61–90) ·
+  // Logic, phân tích số liệu 12 (91–102) · Suy luận khoa học 18 (103–120). Câu bốc từ MỌI đề ĐGNL thầy đã nạp,
+  // giữ nguyên cụm câu chung dữ kiện, mỗi phần lấy ĐÚNG số câu (không lố), ưu tiên câu em chưa làm, rồi câu từng sai.
+  // Phần nào ngân hàng chưa có câu thì bỏ phần đó (báo rõ), thời gian tính 1,25 phút/câu như đề thật.
+  var FULL_PLAN = [
+    { key: 'tv', need: 30 }, { key: 'ta', need: 30 }, { key: 'toan', need: 30 }, { key: 'logic', need: 12 }, { key: 'kh', need: 18 }
+  ];
+  function buildFullExam(pool, hist){
+    var used = {}, parts = [], units = [], total = 0;
+    FULL_PLAN.forEach(function(pl){
+      var cand = pool.units.filter(function(u){ return u.sec === pl.key && u.items.length <= pl.need; });
+      var have = 0; pool.units.forEach(function(u){ if(u.sec === pl.key) have += u.items.length; });
+      function sc(u){ var x = 0; u.items.forEach(function(it){ var v = hist[it.uid]; x += v == null ? 3 : (v === 0 ? 2 : 1); }); return x / u.items.length + Math.random() * 1.2; }
+      var ranked = cand.map(function(u){ return { u: u, s: sc(u) }; }).sort(function(a, b){ return b.s - a.s; });
+      var got = 0, chosen = [];
+      // lượt 1: lấy cụm vừa khít phần còn thiếu (không vượt số câu của phần)
+      ranked.forEach(function(x){ var k = x.u.items[0].uid; if(used[k] || got + x.u.items.length > pl.need) return; used[k] = 1; chosen.push(x.u); got += x.u.items.length; });
+      // lượt 2: còn thiếu mà cụm lớn không vừa → thử đổi 1 cụm nhỏ đã chọn lấy cụm lớn hơn cho khít
+      if(got < pl.need){
+        ranked.forEach(function(x){
+          var k = x.u.items[0].uid; if(used[k] || got >= pl.need) return;
+          var over = got + x.u.items.length - pl.need; if(over <= 0) return;
+          for(var i = chosen.length - 1; i >= 0; i--){ if(chosen[i].items.length === over){ delete used[chosen[i].items[0].uid]; got -= over; chosen.splice(i, 1); used[k] = 1; chosen.push(x.u); got += x.u.items.length; break; } }
+        });
+      }
+      parts.push({ key: pl.key, name: SEC_NAMES[pl.key], need: pl.need, have: have, got: got });
+      chosen.forEach(function(u){ units.push(u); }); total += got;
+    });
+    return { units: units, parts: parts, total: total, full: parts.every(function(p){ return p.got === p.need; }) };
+  }
+  function fullPendingKey(st){ return 'dgnl-auto-' + st.id; }
+
   function List(props){
     var st = props.student;
     var ls = React.useState(null); var list = ls[0], setList = ls[1];
@@ -301,14 +335,49 @@
 
     function toggleSec(k){ var cur = sel.slice(); var i = cur.indexOf(k); if(i > -1) cur.splice(i, 1); else cur.push(k); setPicked(cur); }
 
-    function startFull(ex){
+    // SỬA 19/11/2026 — "Làm cả đề": KHÔNG còn mở nguyên đề thô trong ngân hàng; hệ thống TỰ TẠO đề 120 câu
+    // đúng cấu trúc V-ACT (buildFullExam). Đề đang làm dở được nhớ trên máy (dgnl-auto-…) để quay lại làm tiếp.
+    function loadUids(uids){
+      var need = {}; uids.forEach(function(u){ var it = pool.byUid[u]; if(it) need[it.exId] = 1; });
+      return Promise.all(Object.keys(need).map(function(id){
+        var ex = okList.filter(function(e){ return e.id === id; })[0];
+        return live().loadSpecialExam('dgnl', ex).then(function(qs){ return { id: id, qs: qs }; });
+      })).then(function(res){
+        var map = {}; res.forEach(function(r){ r.qs.forEach(function(q){ map[r.id + '_q' + q.index] = q; }); });
+        var out = []; uids.forEach(function(u){ var q = map[u]; if(q) out.push(Object.assign({}, q, { uid: u, index: u })); });
+        return out;
+      });
+    }
+    function pendingFull(){
+      try{
+        var p = JSON.parse(localStorage.getItem(fullPendingKey(st)) || 'null');
+        if(!p || !p.id || !p.uids) return null;
+        if(!localStorage.getItem('dgnl-draft-' + st.id + '-' + p.id) && Date.now() - (p.createdAt || 0) > 5 * 60 * 1000) return null; // đã nộp / bỏ
+        return p;
+      }catch(e){ return null; }
+    }
+    function openFull(p){
       setBusy('Đang tải đề…');
-      live().loadSpecialExam('dgnl', ex).then(function(qs){
-        qs = qs.filter(function(q){ return (q.options || []).length >= 2; });
+      loadUids(p.uids).then(function(qs){
         setBusy('');
-        if(!qs.length){ alert('Đề chưa có câu trắc nghiệm.'); return; }
-        setExam({ meta: Object.assign({}, ex, { minutes: ex.minutes || 150 }), questions: qs });
+        if(!qs.length){ alert('Không tải được câu hỏi — thử lại.'); return; }
+        setExam({ meta: { id: p.id, generated: true, title: p.title, minutes: p.minutes }, questions: qs });
       }).catch(function(){ setBusy(''); alert('Không tải được đề — thử lại.'); });
+    }
+    function startFull(){
+      var plan = buildFullExam(pool, history);
+      if(!plan.total){ alert('Ngân hàng ĐGNL chưa có câu để tạo đề.'); return; }
+      var miss = plan.parts.filter(function(p){ return p.got < p.need; });
+      if(miss.length && !window.confirm('Ngân hàng chưa đủ câu để tạo đề đủ 120 câu:\n' +
+          miss.map(function(p){ return '• ' + p.name + ': có ' + p.got + '/' + p.need + ' câu'; }).join('\n') +
+          '\n\nVẫn tạo đề ' + plan.total + ' câu (' + Math.ceil(plan.total * 1.25) + ' phút) với các phần đang có?')) return;
+      var uids = []; plan.units.forEach(function(u){ u.items.forEach(function(it){ uids.push(it.uid); }); });
+      var d = new Date(), stamp = d.getDate() + '/' + (d.getMonth() + 1) + ' ' + d.getHours() + 'h' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+      var p = { id: 'auto-' + Date.now().toString(36), uids: uids, createdAt: Date.now(),
+        title: 'Đề ĐGNL tổng hợp ' + (plan.full ? '120 câu' : plan.total + ' câu') + ' · ' + stamp,
+        minutes: plan.full ? 150 : Math.max(5, Math.ceil(plan.total * 1.25)) };
+      try{ localStorage.setItem(fullPendingKey(st), JSON.stringify(p)); }catch(e){}
+      openFull(p);
     }
 
     // THÊM 27/10/2026 — xem lại các câu đã sai của một bài trong lịch sử (làm lại đọc lời giải)
@@ -382,12 +451,25 @@
                 'Thích ứng: ưu tiên câu em chưa làm, câu từng sai, và phần em còn yếu'),
               h('div', { style: { fontSize: '.78rem', color: 'var(--ink-2)', margin: '8px 0 12px' } }, 'Câu được gom từ tất cả đề ĐGNL; các câu chung dữ kiện luôn đi cùng nhau (nên số câu có thể lệch 1–2 câu). Em đã làm ' + seenCount + ' câu' + (wrongCount ? ', trong đó ' + wrongCount + ' câu sai gần nhất' : '') + (weakNanos ? '; còn ' + weakNanos + ' đơn vị kiến thức (nano) cần ôn thêm.' : '.')),
               h('button', { type: 'button', className: 'dg2-b p', disabled: !!busy || !sel.length, onClick: startMini }, 'Bắt đầu mini test ➔')
-            ) : h('div', { className: 'dg2-card' }, h('b', null, '📚 Danh sách đề đầy đủ'),
-              !list.length ? h('p', { style: { color: 'var(--ink-2)' } }, 'Thầy chưa nạp đề nào.') :
-              list.map(function(ex){ return h('div', { key: ex.id, className: 'dg2-ex' },
-                h('div', null, h('b', null, ex.title), h('div', { style: { fontSize: '.78rem', color: 'var(--ink-2)' } }, ex.total + ' câu')),
-                h('button', { type: 'button', className: 'dg2-b p', disabled: !!busy, onClick: function(){ startFull(ex); } }, 'Vào thi')); })
-            ),
+            ) : (function(){ // SỬA 19/11/2026 — thay danh sách đề thô bằng thẻ tạo đề chuẩn V-ACT
+              var plan = buildFullExam(pool, history), pend = pendingFull();
+              return h('div', { className: 'dg2-card' },
+                h('b', { style: { fontSize: '1.02rem' } }, '📝 Đề tổng hợp chuẩn ĐGNL ĐHQG-HCM (V-ACT)'),
+                h('div', { style: { fontSize: '.86rem', color: 'var(--ink-2)', margin: '4px 0 10px', lineHeight: 1.55 } },
+                  'Mỗi lần bấm, hệ thống tự tạo một đề mới 120 câu · 150 phút đúng cấu trúc đề thật, bốc từ toàn bộ ngân hàng ĐGNL của thầy (ưu tiên câu em chưa làm). Câu chung dữ kiện luôn đi cùng nhau.'),
+                h('div', { className: 'dg2-score', style: { marginTop: 0 } }, plan.parts.map(function(p){
+                  return h('div', { key: p.key }, h('span', { style: { fontSize: '.78rem', fontWeight: 700 } }, p.name),
+                    h('b', { style: { color: p.got === p.need ? 'inherit' : '#b45309' } }, p.got + '/' + p.need),
+                    h('span', { style: { fontSize: '.74rem', color: 'var(--ink-2)' } }, p.got === p.need ? 'đủ câu' : (p.have ? 'ngân hàng còn thiếu' : 'chưa có câu'))); })),
+                !plan.full && plan.total ? h('div', { style: { fontSize: '.8rem', color: '#b45309', marginTop: '8px' } },
+                  'Ngân hàng chưa đủ câu cho cả 120 câu — đề sẽ gồm ' + plan.total + ' câu của các phần đang có, thời gian ' + Math.max(5, Math.ceil(plan.total * 1.25)) + ' phút (1,25 phút/câu như đề thật).') : null,
+                h('div', { style: { display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' } },
+                  pend ? h('button', { type: 'button', className: 'dg2-b', disabled: !!busy, onClick: function(){ openFull(pend); } }, '↻ Làm tiếp đề đang làm dở') : null,
+                  h('button', { type: 'button', className: 'dg2-b p', disabled: !!busy || !plan.total, onClick: function(){
+                    if(pend && !window.confirm('Em đang có một đề làm dở. Tạo đề mới thì đề cũ sẽ bỏ, không lưu kết quả. Tiếp tục?')) return;
+                    if(pend){ try{ localStorage.removeItem('dgnl-draft-' + st.id + '-' + pend.id); }catch(e){} }
+                    startFull(); } }, 'Tạo đề mới & vào thi ➔')));
+            })(),
             h('div', { className: 'dg2-card', style: { marginTop: '12px' } }, h('b', null, '🕒 Lịch sử bài làm'),
               (function(){ var hh = hist.filter(function(a){ return a.track === 'dgnl' || a.track === 'dgnl-mini'; }).slice(0, 15);
                 return hh.length === 0 ? h('p', { style: { color: 'var(--ink-2)' } }, 'Chưa có bài nào.') :
@@ -411,5 +493,5 @@
     function close(){ try{ ReactDOM.unmountComponentAtNode(host); }catch(e){} }
     ReactDOM.render(h(List, { student: student, onClose: close }), host);
   }
-  window.OPC_DGNL = { openList: openList, _score: score, _sectionOf: sectionOf, _buildPool: buildPool, _buildHistory: buildHistory, _pickMini: pickMini, _buildNanoStats: buildNanoStats };
+  window.OPC_DGNL = { openList: openList, _score: score, _sectionOf: sectionOf, _buildPool: buildPool, _buildHistory: buildHistory, _pickMini: pickMini, _buildNanoStats: buildNanoStats, _buildFullExam: buildFullExam };
 })(window);
