@@ -848,15 +848,30 @@
       if(!liveReady || !authed) return;
       var cancelled = false;
       var delays = [1500, 3000, 6000];
+      var bankKhoi = (student && student.khoi) || 12; // THÊM 19/11/2026 — khối của học sinh đang đăng nhập
       setBankFailed(false);
       setBankEmpty(false);
+      // THÊM 18/11/2026 — dùng NGAY ngân hàng đã lưu trên máy từ lần trước (nếu có), không phải chờ tải hết.
+      // Bản mới từ máy chủ vẫn tải song song bên dưới và thay vào khi xong. hasCache: nếu tải mới lỗi thì
+      // vẫn dùng bản trên máy, không hiện banner lỗi.
+      var hasCache = false, gotFresh = false;
+      if(window.OPC_LIVE.loadCachedQuestionBank){
+        window.OPC_LIVE.loadCachedQuestionBank(bankKhoi).then(function(list){
+          if(cancelled || gotFresh || !list || !list.length) return;
+          hasCache = true;
+          window.PrepScholarEngine.replaceQuestionBank(list);
+          setBankIsLive(true);
+          setBankVersion(function(v){ return v + 1; });
+        });
+      }
       // THÊM 5/10/2026 — nạp nano-point thầy tự thêm (settings/nanoExtra) TRƯỚC khi dựng bản đồ/ngân hàng,
       // để tên nano-point mới hiện đúng ngay lần vào đầu tiên. Chỉ làm 1 lần mỗi lượt chạy hiệu ứng này.
       function attempt(n){
         var pre = (n === 0 && window.OPC_LIVE.loadNanoExtra) ? window.OPC_LIVE.loadNanoExtra() : Promise.resolve();
-        Promise.resolve(pre).then(function(){ return window.OPC_LIVE.loadRealQuestionBank(); }).then(function(list){
+        Promise.resolve(pre).then(function(){ return window.OPC_LIVE.loadRealQuestionBank(bankKhoi); }).then(function(list){ // SỬA 19/11/2026 — chỉ đề đúng khối
           if(cancelled) return;
           if(list && list.length){
+            gotFresh = true; // THÊM 18/11/2026
             window.PrepScholarEngine.replaceQuestionBank(list);
             setBankIsLive(true);
             setBankFailed(false);
@@ -866,12 +881,12 @@
           var err = window.OPC_LIVE.getLastBankError && window.OPC_LIVE.getLastBankError();
           if(!err){ setBankEmpty(true); return; } // ngân hàng thật sự trống (chưa nạp đề) — không phải lỗi
           if(n < delays.length){ setTimeout(function(){ if(!cancelled) attempt(n + 1); }, delays[n]); }
-          else { setBankFailed(true); }
+          else if(!hasCache){ setBankFailed(true); } // SỬA 18/11/2026 — đã có bản trên máy thì không báo lỗi
         });
       }
       attempt(0);
       return function(){ cancelled = true; };
-    }, [liveReady, authed, bankReloadTick]);
+    }, [liveReady, authed, bankReloadTick, (student && student.khoi) || 12]); // SỬA 19/11/2026 — đổi khối thì tải lại
 
     // THÊM 28/9/2026 — KHOÁ/MỞ CHƯƠNG THEO HỌC SINH. Đọc cấu hình lớp
     // (settings/curriculum) sau khi đăng nhập, gộp với unlockedChapters riêng

@@ -686,12 +686,28 @@
         return qs === data.questions ? data : Object.assign({}, data, { questions: qs });
       }catch(e){ console.warn('linkPrevContext lỗi:', e); return data; }
     }
+    // THÊM 19/11/2026 — ĐỀ CŨ CHƯA CÓ TRƯỜNG "khoi" (soạn trước 28/10/2026, mặc định là khối 12): tự ghi khoi:12
+    // khi thầy mở trang quản trị. Xong hết (không còn đề thiếu khoi) thì đặt settings/bankMeta.khoiBackfilled = true
+    // để trang học sinh chuyển sang chỉ tải đề đúng khối cả với khối 12 (nhanh hơn, không kéo đề VL10/VL11 về).
+    var khoiBackfillBusy = false, khoiBackfillDone = false;
+    function backfillKhoi(snap){
+      if(khoiBackfillBusy || !snap || (snap.metadata && snap.metadata.fromCache)) return;
+      var missing = snap.docs.filter(function(d){ var k = d.get('khoi'); return !(Number(k) === 10 || Number(k) === 11 || Number(k) === 12); });
+      if(!missing.length && khoiBackfillDone) return; // mỗi lần ngân hàng đổi đều kiểm lại: đề mới thiếu khoi cũng được bổ sung
+      khoiBackfillBusy = true;
+      Promise.all(missing.map(function(d){ return setDoc(d.ref, { khoi: 12 }, { merge: true }); }))
+        .then(function(){ return setDoc(doc(db, 'settings', 'bankMeta'), { khoiBackfilled: true, khoiBackfilledAt: serverTimestamp() }, { merge: true }); })
+        .then(function(){ khoiBackfillDone = true; if(missing.length) console.info('Đã bổ sung khoi:12 cho ' + missing.length + ' đề cũ.'); })
+        .catch(function(e){ console.warn('Chưa bổ sung được khối cho đề cũ:', e && e.code); })
+        .then(function(){ khoiBackfillBusy = false; });
+    }
     function makeExamBankApi(COL){
       return {
         // SỬA 14/10/2026 — mọi nơi đọc ngân hàng đề đều nhận câu "dựa vào câu trên" ĐÃ GẮN dữ kiện câu trước
         // (PrepScholarEngine.linkPrevContext) → tạo đề cá nhân hoá / đề lớp / phiếu ôn bốc lẻ câu vẫn đủ ngữ cảnh.
         subscribe: function(onNext, onErr){
           return onSnapshot(query(collection(db, COL), orderBy("createdAt", "desc")), function(snap){
+            if(COL === 'de_thi') backfillKhoi(snap); // THÊM 19/11/2026 — bổ sung khoi:12 cho đề cũ (học sinh chỉ tải đề đúng khối)
             var docs = snap.docs.map(function(d){
               var memo;
               return { id: d.id, ref: d.ref, exists: function(){ return d.exists(); }, get: function(k){ return d.get(k); },

@@ -582,21 +582,86 @@ function transformQuestion(q, examMeta){
   return out;
 }
 
+// ================= THÊM 18/11/2026 — BỘ NHỚ ĐỆM NGÂN HÀNG ĐỀ TRÊN MÁY (IndexedDB) =================
+// Ngân hàng lớn (hàng nghìn câu + ảnh) nên mỗi lần đăng nhập phải chờ tải hết mới dùng được.
+// Nay lưu bản đã tải vào IndexedDB của trình duyệt: lần sau vào là dùng NGAY bản trên máy,
+// đồng thời vẫn tải bản mới từ Firestore ở chế độ nền rồi thay vào khi xong (đề thầy vừa nạp vẫn cập nhật).
+// Lỗi IndexedDB (chế độ ẩn danh, trình duyệt cũ, đầy bộ nhớ) → bỏ qua, chạy như cũ.
+var BANK_DB = 'faradayai-cache', BANK_STORE = 'kv';
+// SỬA 19/11/2026 — mỗi khối 1 bản riêng (máy phòng lab dùng chung cho học sinh khác khối)
+function bankKey(khoi){ return 'questionBank_v2_k' + (Number(khoi) === 10 || Number(khoi) === 11 ? Number(khoi) : 12); }
+function bankDbOpen(){
+  return new Promise(function(resolve, reject){
+    if(!window.indexedDB){ reject(new Error('no-idb')); return; }
+    var req = window.indexedDB.open(BANK_DB, 1);
+    req.onupgradeneeded = function(){ try{ req.result.createObjectStore(BANK_STORE); }catch(e){} };
+    req.onsuccess = function(){ resolve(req.result); };
+    req.onerror = function(){ reject(req.error); };
+  });
+}
+async function bankCacheGet(key){
+  try{
+    var dbi = await bankDbOpen();
+    return await new Promise(function(resolve){
+      var tx = dbi.transaction(BANK_STORE, 'readonly');
+      var rq = tx.objectStore(BANK_STORE).get(key);
+      rq.onsuccess = function(){ resolve(rq.result || null); };
+      rq.onerror = function(){ resolve(null); };
+    });
+  }catch(e){ return null; }
+}
+async function bankCachePut(key, val){
+  try{
+    var dbi = await bankDbOpen();
+    await new Promise(function(resolve){
+      var tx = dbi.transaction(BANK_STORE, 'readwrite');
+      tx.objectStore(BANK_STORE).put(val, key);
+      tx.oncomplete = resolve; tx.onerror = resolve; tx.onabort = resolve;
+    });
+  }catch(e){}
+}
+// Đọc ngân hàng đã lưu trên máy (null nếu chưa có). Đăng kí lại video chữa đề như khi tải thật.
+async function loadCachedQuestionBank(khoi){
+  var c = await bankCacheGet(bankKey(khoi));
+  if(!c || !c.list || !c.list.length) return null;
+  if(window.OPC_WALKTHROUGH && c.walk){
+    c.walk.forEach(function(w){ try{ window.OPC_WALKTHROUGH.register(w.id, w.title, w.video); }catch(e){} });
+  }
+  return c.list;
+}
+
 // SỬA 2/10/2026 — tải ảnh của các đề SONG SONG (trước đây tải lần lượt từng đề
 // nên ngân hàng lớn chờ rất lâu sau đăng nhập) và ghi lại mã lỗi cuối cùng vào
 // lastBankError để giao diện biết "tải lỗi" khác "ngân hàng thật sự trống".
 var lastBankError = null;
-async function loadRealQuestionBank(){
+// SỬA 19/11/2026 — CHỈ TẢI ĐỀ ĐÚNG KHỐI của học sinh (khoi: 10/11/12). Đề cũ chưa có trường khoi = khối 12.
+// Khối 10/11: hỏi thẳng where('khoi','==',k). Khối 12: khi admin đã bổ sung khoi:12 cho mọi đề cũ
+// (settings/bankMeta.khoiBackfilled — admin.html tự làm khi thầy mở trang quản trị) thì cũng hỏi where('khoi','==',12);
+// chưa bổ sung thì tải như cũ rồi lọc bỏ đề khối 10/11. Không dùng orderBy trong truy vấn có where
+// (khỏi phải tạo chỉ mục ghép) — sắp xếp mới nhất trước ngay trên máy.
+function examKhoi(ex){ var n = Number(ex && ex.khoi); return (n === 10 || n === 11) ? n : 12; }
+function createdMs(ex){ var c = ex && ex.createdAt; return c && c.toMillis ? c.toMillis() : (c && c.seconds ? c.seconds * 1000 : 0); }
+async function loadRealQuestionBank(khoiArg){
   try{
     lastBankError = null;
-    var snap = await getDocs(query(collection(db, 'de_thi'), orderBy('createdAt', 'desc')));
+    var khoi = (Number(khoiArg) === 10 || Number(khoiArg) === 11) ? Number(khoiArg) : 12;
+    var direct = khoi !== 12;
+    if(!direct){
+      var meta = await loadSettingsDoc('bankMeta');
+      direct = !!(meta && meta.khoiBackfilled);
+    }
+    var snap = direct
+      ? await getDocs(query(collection(db, 'de_thi'), where('khoi', '==', khoi)))
+      : await getDocs(query(collection(db, 'de_thi'), orderBy('createdAt', 'desc')));
     var docs = [];
-    snap.forEach(function(d){ docs.push(d); });
+    snap.forEach(function(d){ if(examKhoi(d.data()) === khoi) docs.push(d); });
+    docs.sort(function(a, b){ return createdMs(b.data()) - createdMs(a.data()); });
     var imagesList = await Promise.all(docs.map(function(d){
       var ex = d.data() || {};
       return loadExamImages(d.id, ex.images);
     }));
     var all = [];
+    var walk = []; // THÊM 18/11/2026 — lưu kèm mốc video chữa đề để dùng lại khi đọc từ bộ nhớ máy
     for(var i = 0; i < docs.length; i++){
       var d = docs[i];
       var exam = d.data() || {};
@@ -611,7 +676,9 @@ async function loadRealQuestionBank(){
       // (examId + '_q' + index) LÚC HIỂN THỊ — nên đề đã giao trước khi thêm
       // video, hay câu bị bốc/xáo ở chế độ nào, đều tìm đúng đoạn.
       if(window.OPC_WALKTHROUGH) window.OPC_WALKTHROUGH.register(d.id, exam.title || '', exam.videoWalkthrough || null);
+      walk.push({ id: d.id, title: exam.title || '', video: exam.videoWalkthrough || null });
     }
+    if(all.length) bankCachePut(bankKey(khoi), { savedAt: Date.now(), list: all, walk: walk }); // THÊM 18/11/2026 — không chờ, lưu nền (SỬA 19/11: theo khối)
     return all;
   }catch(e){
     console.error('Lỗi tải ngân hàng đề thật:', e);
@@ -878,6 +945,7 @@ window.OPC_LIVE = {
   logoutStudent: logoutStudent,
   resumeSession: resumeSession,
   loadRealQuestionBank: loadRealQuestionBank,
+  loadCachedQuestionBank: loadCachedQuestionBank, // THÊM 18/11/2026 — ngân hàng lưu trên máy, dùng ngay khi đăng nhập
   getLastBankError: function(){ return lastBankError; },
   saveAttempt: saveAttempt,
   flushPendingAttempts: flushPendingAttempts,

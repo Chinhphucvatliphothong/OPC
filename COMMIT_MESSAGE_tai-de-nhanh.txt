@@ -1,0 +1,13 @@
+Tải ngân hàng đề nhanh: lưu trên máy + chỉ tải đề đúng khối
+
+- opc-live-data.js: loadRealQuestionBank(khoi) chỉ lấy đề đúng khối của học sinh
+  (khối 10/11 hỏi thẳng where khoi==k; khối 12 hỏi where khoi==12 khi settings/bankMeta.khoiBackfilled,
+  chưa thì tải như cũ rồi lọc). Lưu ngân hàng đã tải vào IndexedDB, mỗi khối một bản; thêm
+  loadCachedQuestionBank(khoi).
+- prepscholar-ui.js: vào là dùng ngay bản trên máy, tải bản mới ở nền rồi thay vào; tải mới lỗi mà
+  đã có bản trên máy thì không báo lỗi; đổi khối thì tải lại.
+- admin.html: khi mở trang quản trị, tự ghi khoi:12 cho đề cũ chưa có trường khoi, rồi đặt
+  settings/bankMeta.khoiBackfilled = true.
+- Đề HSG/Olympic/ĐGNL không đổi: vẫn chỉ tài khoản được thầy mở khoá mới đọc được (firestore.rules).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
