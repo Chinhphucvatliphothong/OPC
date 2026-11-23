@@ -1,6 +1,6 @@
 /**
  * THÊM 15/10/2026 — "CHẨN ĐOÁN 5 PHÚT": phễu thu hút học sinh mới trên trang chủ faradayai.vn.
- *  • Khách KHÔNG cần đăng nhập: làm ~10 câu trắc nghiệm trong 5 phút (bộ câu do thầy chọn ở admin, tab "⚡ Chẩn đoán 5 phút",
+ *  • Khách KHÔNG cần đăng nhập: làm ~10 câu trắc nghiệm trong 5 phút (bộ câu do thầy chọn ở admin, tab "⚡ Thử sức 5 phút" (trước tên "Chẩn đoán 5 phút"),
  *    lưu settings/diagnostic5 — đọc công khai).
  *  • Xong bài thấy ngay điểm + mức hiện tại; để lại Họ tên + SĐT/Zalo thì mở BÁO CÁO CHI TIẾT (chuyên đề mạnh/yếu, lộ trình
  *    4 tuần gợi ý, xem lại đáp án) → lead ghi vào diag_leads cho thầy liên hệ.
@@ -133,7 +133,7 @@
     root.querySelectorAll('[data-act]').forEach(function(el){ el.addEventListener('click', onAct); });
   }
   function close(){
-    if(state && state.phase === 'quiz' && !window.confirm('Thoát bài chẩn đoán? Kết quả đang làm sẽ không được lưu.')) return;
+    if(state && state.phase === 'quiz' && !window.confirm('Thoát bài thử sức? Kết quả đang làm sẽ không được lưu.')) return;
     if(timerId){ clearInterval(timerId); timerId = null; }
     if(root){ root.remove(); root = null; }
     document.documentElement.style.overflow = '';
@@ -143,10 +143,10 @@
 
   function open(){
     ensureStyle();
-    mount('<div class="dg-p" style="padding:30px 0;text-align:center">Đang tải bài chẩn đoán…</div>');
+    mount('<div class="dg-p" style="padding:30px 0;text-align:center">Đang tải bài thử sức…</div>');
     load().then(function(c){
       if(!root) return;
-      if(!c){ mount('<div class="dg-h">Bài chẩn đoán đang được cập nhật</div><p class="dg-p">Em quay lại sau ít phút nhé, hoặc để lại thông tin ở mục Đăng ký học để thầy liên hệ.</p><button class="dg-btn" data-act="toSignup">Đến mục đăng ký</button>'); return; }
+      if(!c){ mount('<div class="dg-h">Bài thử sức đang được cập nhật</div><p class="dg-p">Em quay lại sau ít phút nhé, hoặc để lại thông tin ở mục Đăng ký học để thầy liên hệ.</p><button class="dg-btn" data-act="toSignup">Đến mục đăng ký</button>'); return; }
       intro();
     });
   }
@@ -155,7 +155,7 @@
     state = { phase: 'intro' };
     mount(
       '<div class="dg-kick">Miễn phí · Không cần đăng ký</div>' +
-      '<div class="dg-h">' + esc(cfg.title || 'Chẩn đoán Vật lí 12 trong 5 phút') + '</div>' +
+      '<div class="dg-h">' + esc((cfg.title && cfg.title !== 'Chẩn đoán Vật lí 12 trong 5 phút') ? cfg.title : 'Thử sức Vật lí 12 trong 5 phút') /* SỬA 23/11/2026 — đổi tên mặc định */ + '</div>' +
       '<p class="dg-p">Làm nhanh ' + n + ' câu trắc nghiệm bám sát đề thi tốt nghiệp THPT — FaradayAI chấm ngay và chỉ ra em đang vững, đang hổng ở chuyên đề nào.</p>' +
       '<ul class="dg-list"><li>' + n + ' câu · ' + min + ' phút · làm trên điện thoại được</li><li>Biết ngay số câu đúng và mức hiện tại của em</li><li>Báo cáo chuyên đề mạnh/yếu + lộ trình ôn 4 tuần gợi ý riêng cho em</li></ul>' +
       '<div class="dg-row"><button class="dg-btn" data-act="start">⚡ Bắt đầu làm bài</button></div>' +
@@ -230,7 +230,7 @@
     var r = state, lv = levelOf(r.score10);
     var weak = r.topics.filter(function(t){ return t.pct < 0.6; }), strong = r.topics.filter(function(t){ return t.pct >= 0.8; });
     var head =
-      '<div class="dg-kick">Kết quả chẩn đoán' + (r.auto ? ' · hết giờ, tự nộp' : '') + '</div>' +
+      '<div class="dg-kick">Kết quả thử sức' + (r.auto ? ' · hết giờ, tự nộp' : '') + '</div>' +
       '<div class="dg-score"><div class="dg-ring" style="background:' + lv.color + '1f;color:' + lv.color + ';border:4px solid ' + lv.color + '"><span class="big">' + r.correct + '/' + r.total + '</span><span class="sm">câu đúng</span></div>' +
       '<div style="flex:1;min-width:200px"><div class="dg-h" style="margin:0 0 4px">Mức hiện tại: ' + lv.name + '</div><p class="dg-p" style="margin:0">' + lv.msg + '</p>' +
       '<p class="dg-note">Thời gian làm: ' + fmtTime(r.seconds) + ' · Quy đổi thang 10: ' + String(r.score10).replace('.', ',') + '</p></div></div>';
@@ -277,7 +277,7 @@
       (levelBars.length ? '<div class="dg-card"><h4>🎯 Theo mức độ câu hỏi</h4>' + topicBars(levelBars) + '</div>' : '') +
       '<div class="dg-card"><h4>🗺️ Lộ trình 4 tuần gợi ý cho ' + esc(r.leadName || 'em') + '</h4>' + plan.map(function(w){ return '<div class="dg-week"><b>' + w[0] + '</b><span>' + w[1] + '</span></div>'; }).join('') +
         '<p class="dg-note">Học cùng FaradayAI: hệ thống tự chọn đề đúng chuyên đề em đang yếu, cập nhật lộ trình mỗi tuần và gửi báo cáo cho phụ huynh.</p></div>' +
-      '<div class="dg-row" style="margin:6px 0 4px">' + (window.OPC_SALES ? '<button class="dg-btn" data-act="book">📅 Đặt lịch thầy tư vấn 15 phút</button>' : '') + '<button class="dg-btn' + (window.OPC_SALES ? ' ghost' : '') + '" data-act="toSignup">🚀 Đăng ký học thử</button>' + zalo + '<button class="dg-btn ghost" data-act="share">🔗 Rủ bạn cùng thử</button></div>' +
+      '<div class="dg-row" style="margin:6px 0 4px">' + (window.OPC_SALES ? '<button class="dg-btn" data-act="book">📅 Đặt lịch thầy tư vấn 15 phút</button>' : '') + '<button class="dg-btn' + (window.OPC_SALES ? ' ghost' : '') + '" data-act="toSignup">🚀 Học thử miễn phí 14 ngày</button>' + zalo + '<button class="dg-btn ghost" data-act="share">🔗 Rủ bạn cùng thử</button></div>' +
       '<p class="dg-note" id="dg-share-note"></p>' +
       '<div class="dg-card"><h4>📝 Xem lại bài làm</h4>' + review + '</div>');
   }
@@ -321,9 +321,9 @@
   }
   function share(){
     var url = location.origin + '/#chan-doan';
-    var text = 'Mình vừa làm bài chẩn đoán Vật lí 12 trong 5 phút của FaradayAI — thử xem bạn được mấy điểm nhé!';
+    var text = 'Mình vừa làm bài thử sức Vật lí 12 trong 5 phút của FaradayAI — thử xem bạn được mấy điểm nhé!';
     var note = root && root.querySelector('#dg-share-note');
-    if(navigator.share){ navigator.share({ title: 'Chẩn đoán Vật lí 12 – 5 phút', text: text, url: url }).catch(function(){}); return; }
+    if(navigator.share){ navigator.share({ title: 'Thử sức Vật lí 12 – 5 phút', text: text, url: url }).catch(function(){}); return; }
     try{ navigator.clipboard.writeText(text + ' ' + url).then(function(){ if(note) note.textContent = 'Đã chép link — dán vào Zalo/Messenger gửi bạn nhé!'; }); }
     catch(e){ if(note) note.textContent = url; }
   }
@@ -338,7 +338,7 @@
     if(act === 'book' && window.OPC_SALES && state){
       var wk = (state.topics || []).filter(function(t){ return t.pct < 0.6; }).map(function(t){ return t.name; }).join(', ');
       var pre = { name: state.leadName || '', phone: state.leadPhone || '', role: 'ph', source: 'diag',
-        note: 'Chẩn đoán 5 phút: ' + state.correct + '/' + state.total + ' câu' + (wk ? ' · cần củng cố: ' + wk : '') };
+        note: 'Thử sức 5 phút: ' + state.correct + '/' + state.total + ' câu' + (wk ? ' · cần củng cố: ' + wk : '') };
       close(); return window.OPC_SALES.openBooking(pre);
     }
     if(!state || state.phase !== 'quiz') return;
@@ -369,7 +369,7 @@
       if(!document.querySelector('.dg-fab')){
         var fab = document.createElement('button');
         fab.type = 'button'; fab.className = 'dg-fab'; fab.setAttribute('data-diag-open', '');
-        fab.textContent = '⚡ Chẩn đoán 5 phút';
+        fab.textContent = '⚡ Thử sức 5 phút'; // SỬA 23/11/2026 — trước là "Chẩn đoán 5 phút"
         document.body.appendChild(fab);
       }
     });

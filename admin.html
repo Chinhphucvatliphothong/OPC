@@ -3919,7 +3919,7 @@
     }, []);
     React.useEffect(function(){
       if(cfg === undefined || draft) return;
-      setDraft({ enabled: cfg ? cfg.enabled !== false : true, title: (cfg && cfg.title) || 'Chẩn đoán Vật lí 12 trong 5 phút',
+      setDraft({ enabled: cfg ? cfg.enabled !== false : true, title: ((cfg && cfg.title && cfg.title !== 'Chẩn đoán Vật lí 12 trong 5 phút') ? cfg.title : 'Thử sức Vật lí 12 trong 5 phút'),   // SỬA 23/11/2026 — đổi tên mặc định
         minutes: (cfg && cfg.minutes) || 5, count: (cfg && cfg.questions && cfg.questions.length) || 10, zaloLink: (cfg && cfg.zaloLink) || '',
         questions: (cfg && cfg.questions) || [] });
     }, [cfg]);
@@ -3961,7 +3961,7 @@
       setSaving(true);
       OPCref.diag5.saveConfig({ enabled: !!draft.enabled, title: String(draft.title || '').slice(0, 120), minutes: Math.max(2, Math.min(30, Number(draft.minutes) || 5)),
         zaloLink: z, questions: draft.questions })
-        .then(function(){ props.fireToast(draft.enabled ? 'Đã lưu — trang chủ đã có nút "⚡ Chẩn đoán 5 phút".' : 'Đã lưu (đang TẮT trên trang chủ).'); set('zaloLink', z); })
+        .then(function(){ props.fireToast(draft.enabled ? 'Đã lưu — trang chủ đã có nút "⚡ Thử sức 5 phút".' : 'Đã lưu (đang TẮT trên trang chủ).'); set('zaloLink', z); })
         .catch(function(e){ console.error(e); props.fireToast('Không lưu được: ' + (e && e.message ? e.message : 'lỗi'), true); })
         .then(function(){ setSaving(false); });
     }
@@ -3991,7 +3991,7 @@
 
     return h('div', null,
       h('div', { className: 'card' },
-        h('h3', null, '⚡ Chẩn đoán 5 phút — phễu thu hút học sinh mới'),
+        h('h3', null, '⚡ Thử sức 5 phút — phễu thu hút học sinh mới'),
         h('p', { className: 'sm-sub' }, 'Khách vào trang chủ làm nhanh ~10 câu, thấy ngay điểm; để lại SĐT/Zalo thì xem báo cáo chuyên đề mạnh/yếu + lộ trình 4 tuần. Thầy nhận danh sách bên dưới để gọi tư vấn.'),
         h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '10px 0' } },
           stat('Bắt đầu làm (30 ngày)', events ? nStart : '…'),
@@ -7672,7 +7672,7 @@
     return [
       {
         id: 'g1', name: 'Luyện đề', price: 300000, unit: '/tháng', badge: '', featured: false, visible: true,
-        features: ['Đề chẩn đoán đầu vào theo 4 chuyên đề', 'Bản đồ năng lực cập nhật hàng tuần', 'Lộ trình luyện tập tự động theo kết quả', 'Báo cáo phụ huynh qua Zalo mỗi tuần']
+        features: ['Bài kiểm tra đầu vào theo 4 chuyên đề', 'Bản đồ năng lực cập nhật hàng tuần', 'Lộ trình luyện tập tự động theo kết quả', 'Báo cáo phụ huynh qua Zalo mỗi tuần']
       },
       {
         id: 'g2', name: 'Luyện đề + Giảng dạy', price: 450000, unit: '/tháng', badge: 'Phổ biến nhất', featured: true, visible: true,
@@ -9176,7 +9176,7 @@
       h('div', { style: { marginTop: '28px' } },
         h('div', { className: 'sm-toolbar' },
           h('div', null, h('h3', null, '🗂️ Khoá / mở đề trong ngân hàng đề (khối ' + khoiView + '): ' + lockedInView + '/' + examsK.length + ' đề đang khoá'),
-            h('p', { className: 'sm-sub' }, 'Đề bị khoá thì hệ thống KHÔNG lấy câu của đề đó cho luyện tập thích ứng, Drill, thi thử, đề cá nhân hoá, đề tự sinh cho lớp, phiếu ôn và Chẩn đoán 5 phút (áp dụng mọi học sinh). Đề đã giao sẵn cho em, đề thầy chọn thủ công và lịch sử làm bài không thay đổi.')),
+            h('p', { className: 'sm-sub' }, 'Đề bị khoá thì hệ thống KHÔNG lấy câu của đề đó cho luyện tập thích ứng, Drill, thi thử, đề cá nhân hoá, đề tự sinh cho lớp, phiếu ôn và Thử sức 5 phút (áp dụng mọi học sinh). Đề đã giao sẵn cho em, đề thầy chọn thủ công và lịch sử làm bài không thay đổi.')),
           h('div', { className: 'sm-actions' },
             h('button', { type: 'button', className: 'btn btn-secondary', disabled: bulkBusy || !cur.loaded || !examsShown.length, onClick: function(){ setAllShownExams(true); } }, '🔒 Khoá các đề đang lọc'),
             h('button', { type: 'button', className: 'btn btn-primary', disabled: bulkBusy || !cur.loaded || !examsShown.length, onClick: function(){ setAllShownExams(false); } }, '🔓 Mở các đề đang lọc'))
@@ -13038,7 +13038,7 @@
         h('button',{type:'button', className:cx('tab-btn', tab==='reports' && 'active'), onClick:function(){ setTab('reports'); }}, '🦉 Báo cáo Phụ huynh'),
         h('button',{type:'button', className:cx('tab-btn', tab==='room' && 'active'), onClick:function(){ setTab('room'); }}, '🎓 Phòng dạy'),
         h('button',{type:'button', className:cx('tab-btn', tab==='classtest' && 'active'), onClick:function(){ setTab('classtest'); }}, '📋 Kiểm tra lớp'),
-        h('button',{type:'button', className:cx('tab-btn', tab==='diag5' && 'active'), onClick:function(){ setTab('diag5'); }}, '⚡ Chẩn đoán 5 phút'),
+        h('button',{type:'button', className:cx('tab-btn', tab==='diag5' && 'active'), onClick:function(){ setTab('diag5'); }}, '⚡ Thử sức 5 phút'),   // SỬA 23/11/2026 — đổi tên từ "Chẩn đoán 5 phút"
         // THÊM 23/10/2026 — admin-growth.js
         window.OPC_SALES_ADMIN ? h('button',{type:'button', className:cx('tab-btn', tab==='sales' && 'active'), onClick:function(){ setTab('sales'); }}, '📣 Bán hàng') : null,
         window.OPC_GROWTH ? h('button',{type:'button', className:cx('tab-btn', tab==='mock' && 'active'), onClick:function(){ setTab('mock'); }}, '🏆 Thi thử tháng') : null,
