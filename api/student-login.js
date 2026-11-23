@@ -53,8 +53,10 @@ export default async function handler(req, res){
   // THÊM 23/11/2026 — ĐĂNG KÝ HỌC THỬ MIỄN PHÍ tự động (gộp vào file này vì Vercel Hobby chỉ cho tối đa 12 hàm trong api/)
   var bodyPeek = req.body;
   if(typeof bodyPeek === 'string'){ try{ bodyPeek = JSON.parse(bodyPeek); }catch(e){ bodyPeek = {}; } }
-  if((bodyPeek && bodyPeek.action === 'signup') || (req.query && req.query.action === 'signup')){
-    return handleFreeSignup(req, res, bodyPeek || {});
+  // SỬA 23/11/2026 (lần 2) — 2 bước: signup_start (gửi mã 6 số vào Gmail) → signup_verify (đúng mã mới tạo tài khoản)
+  var act = (bodyPeek && bodyPeek.action) || (req.query && req.query.action) || '';
+  if(act === 'signup_start' || act === 'signup_resend' || act === 'signup_verify'){
+    return handleFreeSignup(req, res, bodyPeek || {}, act);
   }
 
   var app;
@@ -144,22 +146,31 @@ export default async function handler(req, res){
 }
 
 
-// ================= THÊM 23/11/2026 — ĐĂNG KÝ HỌC THỬ MIỄN PHÍ (tự tạo tài khoản + gửi Gmail) =================
-// Trang chủ (index.html › form "Đăng ký học thử miễn phí") gửi POST /api/student-login { action:'signup', name, gmail, phone,
-// parentZalo, khoi, plan, planName, referralCode }. Server:
-//   1) chặn spam: ô bẫy bot, tối đa SIGNUP_PER_IP_PER_DAY lần/IP/ngày, tối đa SIGNUP_TOTAL_PER_DAY lần/ngày (giới hạn Gmail 500 thư/ngày);
-//   2) Gmail đã có tài khoản -> báo đăng nhập / nhắn thầy lấy lại mật khẩu (KHÔNG cấp lại mật khẩu, tránh người lạ đổi mật khẩu của em khác);
-//   3) tạo students/{id} (giống nút "Duyệt" ở admin) + usernames/{username}, mật khẩu đã mã hoá bcrypt, gói = gói em chọn
-//      (hoặc gói hiện đầu tiên), billing.cycle = 'trial', trialEnd = hôm nay + FREE_TRIAL_DAYS -> admin › "Việc hôm nay" tự nhắc
-//      thầy gọi phụ huynh khi còn ≤ 2 ngày học thử (đã có sẵn);
-//   4) ghi registrations/{id} status 'converted', source 'free_signup:…' để tra cứu;
-//   5) gửi Gmail tên đăng nhập + mật khẩu (nếu đã cấu hình), đồng thời trả về để trang chủ hiện ngay trên màn hình.
-// Biến môi trường (Vercel → Settings → Environment Variables), không có thì vẫn tạo tài khoản, chỉ không gửi được thư:
+// ================= THÊM 23/11/2026 — ĐĂNG KÝ HỌC THỬ MIỄN PHÍ 14 NGÀY (xác minh Gmail bằng mã 6 số) =================
+// SỬA 23/11/2026 (lần 2) — chặt hơn theo yêu cầu của thầy:
+//   • Gmail phải THẬT và của chính em: tài khoản chỉ được tạo sau khi em nhập đúng mã 6 số hệ thống gửi vào Gmail đó.
+//   • MỖI Gmail / MỖI số điện thoại (của em hoặc của phụ huynh) chỉ được học thử 1 LẦN DUY NHẤT — kể cả khi tài khoản cũ
+//     đã bị xoá. Ghi nhận ở collection trial_claims/{khoá} (Gmail đã chuẩn hoá: bỏ dấu chấm và phần +… vì Gmail coi
+//     a.b+x@gmail.com và ab@gmail.com là một). Tạo tài khoản + ghi nhận trong CÙNG 1 transaction nên không lách được.
+//   • Số điện thoại: kiểm tra đúng định dạng VN (10 số, đầu số di động) + chưa từng học thử. Muốn chắc số có thật phải
+//     gửi SMS (tốn phí, cần đăng ký thương hiệu) — chưa làm; thầy gọi chào phụ huynh trong 3 ngày đầu, số sai thì bấm
+//     "🔒 Khoá" trong admin › Việc hôm nay.
+// Các bước (trang chủ index.html gọi POST /api/student-login):
+//   1) { action:'signup_start', name, gmail, phone, parentZalo, khoi, plan, planName, referralCode, website }
+//      -> kiểm tra hợp lệ + chưa từng học thử + giới hạn lượt -> lưu signup_pending/{id} (mã đã băm, hết hạn 15 phút) -> gửi mã.
+//   2) { action:'signup_resend', pendingId } -> gửi lại mã mới (cách nhau ≥ 60 giây, tối đa 3 lần).
+//   3) { action:'signup_verify', pendingId, code } -> sai tối đa 5 lần; đúng thì tạo tài khoản, trả tên đăng nhập + mật khẩu
+//      (hiện ngay trên màn hình) và gửi thêm 1 thư lưu thông tin đăng nhập.
+// Biến môi trường BẮT BUỘC cho tính năng này (thiếu thì trang chủ tự quay về "đăng ký chờ thầy duyệt" như cũ):
 //   GMAIL_USER          — Gmail gửi thư, vd. chinhphucvatliphothong@gmail.com
 //   GMAIL_APP_PASSWORD  — "Mật khẩu ứng dụng" 16 ký tự của Gmail đó (bật Xác minh 2 bước rồi tạo ở myaccount.google.com/apppasswords)
 var FREE_TRIAL_DAYS = 14;
-var SIGNUP_PER_IP_PER_DAY = 3;
-var SIGNUP_TOTAL_PER_DAY = 80;
+var CODE_TTL_MIN = 15;
+var MAX_CODE_SENDS = 3;          // 1 lần đầu + 2 lần gửi lại
+var RESEND_GAP_SEC = 60;
+var MAX_VERIFY_TRIES = 5;
+var START_PER_IP_PER_DAY = 5;    // số lần xin mã / máy / ngày
+var START_TOTAL_PER_DAY = 150;   // tổng số thư mã / ngày (Gmail cho tối đa 500 thư/ngày)
 var SITE_URL = 'https://faradayai.vn';
 
 function vnYmd(ms){ return new Date((ms == null ? Date.now() : ms) + 7 * 3600 * 1000).toISOString().slice(0, 10); }
@@ -168,13 +179,21 @@ function normCode(v){
   return String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D')
     .toUpperCase().replace(/[^A-Z0-9_-]/g, '');
 }
-function isVNPhone(p){ var d = String(p || '').replace(/[\s.\-()]/g, '').replace(/^\+84/, '0').replace(/^84(?=\d{9}$)/, '0'); return /^0\d{9}$/.test(d); }
+// SĐT di động VN -> dạng 0xxxxxxxxx (10 số, đầu 03/05/07/08/09); sai trả ''
+function normPhone(p){
+  var d = String(p || '').replace(/[\s.\-()]/g, '').replace(/^\+84/, '0').replace(/^84(?=\d{9}$)/, '0');
+  return /^0[35789]\d{8}$/.test(d) ? d : '';
+}
+// Gmail chuẩn hoá để chống lách: bỏ dấu chấm + phần "+..." trước @ (Gmail giao thư cho cùng 1 hộp)
+function gmailKey(g){ var p = String(g || '').toLowerCase().split('@'); return p[0].split('+')[0].replace(/\./g, '') + '@gmail.com'; }
+function sha(s){ return crypto.createHash('sha256').update(String(s)).digest('hex'); }
 function genPassword(){
   var chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // bỏ ký tự dễ nhầm (i,l,o,0,1) — giống admin.html
   var out = '';
-  for(var i = 0; i < 7; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  for(var i = 0; i < 7; i++) out += chars[crypto.randomInt(chars.length)];
   return out;
 }
+function genOtp(){ return String(crypto.randomInt(0, 1000000)).padStart(6, '0'); }
 function makeReferralCode(name){
   var last = String(name || 'HS').trim().split(/\s+/).pop();
   return (normCode(last) || 'HS') + Math.floor(100 + Math.random() * 900) + 'VLY';
@@ -184,173 +203,275 @@ function clientIp(req){
   var xf = String((req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip'])) || '').split(',')[0].trim();
   return xf || 'unknown';
 }
+function mailConfigured(){ return !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD); }
+function maskGmail(g){ var p = String(g).split('@'); var u = p[0]; return (u.length <= 3 ? u[0] + '**' : u.slice(0, 3) + '***' + u.slice(-1)) + '@' + p[1]; }
 
-async function sendCredentialMail(to, info){
-  var user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
-  if(!user || !pass) return { sent: false, reason: 'not_configured' };
+async function sendMail(to, subject, text, html){
+  if(!mailConfigured()) return { sent: false, reason: 'not_configured' };
   try{
     var nm = await import('nodemailer');
     var nodemailer = nm.default || nm;
-    var transporter = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: user, pass: String(pass).replace(/\s+/g, '') } });
-    var text = [
-      'Chào ' + info.name + ',',
-      '',
-      'Tài khoản học thử miễn phí ' + FREE_TRIAL_DAYS + ' ngày trên FaradayAI của em đã sẵn sàng:',
-      '  Tên đăng nhập: ' + info.username,
-      '  Mật khẩu: ' + info.password,
-      '',
-      'Cách vào học: mở ' + SITE_URL + ' → bấm "Đăng nhập" → nhập tên đăng nhập và mật khẩu ở trên.',
-      'Học thử đến hết ngày ' + vnDateText(info.trialEnd) + '. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.',
-      '',
-      'Em nên làm ngay bài "Thử sức 5 phút" hoặc nhiệm vụ 10 phút mỗi ngày để hệ thống nắm được chỗ em cần củng cố.',
-      '',
-      'Thầy FaradayAI'
-    ].join('\n');
-    var html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1b2430">' +
-      '<p>Chào <b>' + escHtml(info.name) + '</b>,</p>' +
-      '<p>Tài khoản <b>học thử miễn phí ' + FREE_TRIAL_DAYS + ' ngày</b> trên FaradayAI của em đã sẵn sàng:</p>' +
-      '<table style="border-collapse:collapse;margin:8px 0 14px"><tr><td style="padding:6px 12px;background:#f3f4ee">Tên đăng nhập</td><td style="padding:6px 12px;font-family:monospace;font-size:16px"><b>' + escHtml(info.username) + '</b></td></tr>' +
-      '<tr><td style="padding:6px 12px;background:#f3f4ee">Mật khẩu</td><td style="padding:6px 12px;font-family:monospace;font-size:16px"><b>' + escHtml(info.password) + '</b></td></tr></table>' +
-      '<p><a href="' + SITE_URL + '/#luyen-thi-prepscholar" style="display:inline-block;background:#b07a3c;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Vào học ngay</a></p>' +
-      '<p>Học thử đến hết ngày <b>' + escHtml(vnDateText(info.trialEnd)) + '</b>. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.</p>' +
-      '<p>Em nên làm ngay bài <b>Thử sức 5 phút</b> hoặc nhiệm vụ 10 phút mỗi ngày để hệ thống nắm được chỗ em cần củng cố.</p>' +
-      '<p>Thầy FaradayAI</p></div>';
-    await transporter.sendMail({ from: '"FaradayAI Luyện Thi Vật Lí" <' + user + '>', to: to, subject: 'Tài khoản học thử FaradayAI của ' + info.name, text: text, html: html });
+    var transporter = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true,
+      auth: { user: process.env.GMAIL_USER, pass: String(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, '') } });
+    await transporter.sendMail({ from: '"FaradayAI Luyện Thi Vật Lí" <' + process.env.GMAIL_USER + '>', to: to, subject: subject, text: text, html: html });
     return { sent: true };
   }catch(e){
-    console.error('Lỗi gửi Gmail tài khoản học thử:', e && e.message);
+    console.error('Lỗi gửi Gmail:', e && e.message);
     return { sent: false, reason: 'send_failed' };
   }
 }
+function sendOtpMail(to, name, otp){
+  var text = 'Chào ' + name + ',\n\nMã xác nhận đăng ký học thử FaradayAI của em là: ' + otp + '\n\nMã có hiệu lực ' + CODE_TTL_MIN +
+    ' phút. Nếu em không đăng ký, hãy bỏ qua thư này.\n\nThầy FaradayAI';
+  var html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1b2430">' +
+    '<p>Chào <b>' + escHtml(name) + '</b>,</p><p>Mã xác nhận đăng ký học thử FaradayAI của em là:</p>' +
+    '<p style="font-size:30px;font-weight:bold;letter-spacing:6px;font-family:monospace;margin:8px 0 14px">' + otp + '</p>' +
+    '<p>Mã có hiệu lực ' + CODE_TTL_MIN + ' phút. Nếu em không đăng ký, hãy bỏ qua thư này.</p><p>Thầy FaradayAI</p></div>';
+  return sendMail(to, otp + ' là mã xác nhận học thử FaradayAI', text, html);
+}
+function sendCredentialMail(to, info){
+  var text = [
+    'Chào ' + info.name + ',', '',
+    'Tài khoản học thử miễn phí ' + FREE_TRIAL_DAYS + ' ngày trên FaradayAI của em đã sẵn sàng:',
+    '  Tên đăng nhập: ' + info.username, '  Mật khẩu: ' + info.password, '',
+    'Cách vào học: mở ' + SITE_URL + ' → bấm "Đăng nhập" → nhập tên đăng nhập và mật khẩu ở trên.',
+    'Học thử đến hết ngày ' + vnDateText(info.trialEnd) + '. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.', '',
+    'Thầy FaradayAI'
+  ].join('\n');
+  var html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1b2430">' +
+    '<p>Chào <b>' + escHtml(info.name) + '</b>,</p>' +
+    '<p>Tài khoản <b>học thử miễn phí ' + FREE_TRIAL_DAYS + ' ngày</b> trên FaradayAI của em đã sẵn sàng:</p>' +
+    '<table style="border-collapse:collapse;margin:8px 0 14px"><tr><td style="padding:6px 12px;background:#f3f4ee">Tên đăng nhập</td><td style="padding:6px 12px;font-family:monospace;font-size:16px"><b>' + escHtml(info.username) + '</b></td></tr>' +
+    '<tr><td style="padding:6px 12px;background:#f3f4ee">Mật khẩu</td><td style="padding:6px 12px;font-family:monospace;font-size:16px"><b>' + escHtml(info.password) + '</b></td></tr></table>' +
+    '<p><a href="' + SITE_URL + '/#luyen-thi-prepscholar" style="display:inline-block;background:#b07a3c;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Vào học ngay</a></p>' +
+    '<p>Học thử đến hết ngày <b>' + escHtml(vnDateText(info.trialEnd)) + '</b>. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.</p>' +
+    '<p>Thầy FaradayAI</p></div>';
+  return sendMail(to, 'Tài khoản học thử FaradayAI của ' + info.name, text, html);
+}
 
-async function handleFreeSignup(req, res, body){
+var MSG_USED_GMAIL = 'Gmail này đã được dùng để học thử hoặc đã có tài khoản FaradayAI — mỗi Gmail chỉ học thử 1 lần. Em bấm "Đăng nhập" nếu đã có tài khoản; quên mật khẩu thì nhắn thầy qua Zalo.';
+var MSG_USED_PHONE = 'Số điện thoại của em đã được dùng để học thử — mỗi số điện thoại chỉ học thử 1 lần. Cần hỗ trợ, em nhắn thầy qua Zalo nhé.';
+var MSG_USED_PARENT = 'Số Zalo phụ huynh này đã được dùng để học thử — mỗi số chỉ học thử 1 lần. Anh em trong nhà muốn học thử, phụ huynh nhắn thầy qua Zalo nhé.';
+
+// Kiểm tra Gmail / SĐT đã từng học thử hoặc đã có tài khoản chưa. Trả '' nếu được phép.
+async function usedReason(db, d){
+  var claims = await Promise.all([
+    db.collection('trial_claims').doc('g_' + sha(d.gkey)).get(),
+    db.collection('trial_claims').doc('p_' + d.phone).get(),
+    db.collection('trial_claims').doc('p_' + d.parentZalo).get()
+  ]);
+  if(claims[0].exists) return MSG_USED_GMAIL;
+  if(claims[1].exists) return MSG_USED_PHONE;
+  if(claims[2].exists) return MSG_USED_PARENT;
+  var q1 = await db.collection('students').where('email', '==', d.gmail).limit(1).get();
+  if(!q1.empty) return MSG_USED_GMAIL;
+  if(d.rawGmail && d.rawGmail !== d.gmail){
+    var q1b = await db.collection('students').where('email', '==', d.rawGmail).limit(1).get();
+    if(!q1b.empty) return MSG_USED_GMAIL;
+  }
+  var q2 = await db.collection('students').where('phone', '==', d.phone).limit(1).get();
+  if(!q2.empty) return 'Số điện thoại này đã có tài khoản FaradayAI — em bấm "Đăng nhập"; quên mật khẩu thì nhắn thầy qua Zalo.';
+  return '';
+}
+
+async function takeQuota(db, req){
+  var ymd = vnYmd(), ipKey = sha(clientIp(req)).slice(0, 16), ref = db.collection('signup_limits').doc(ymd);
+  return db.runTransaction(async function(tx){
+    var snap = await tx.get(ref);
+    var d = snap.exists ? (snap.data() || {}) : {};
+    var total = Number(d.total) || 0, ips = d.ips || {}, mine = Number(ips[ipKey]) || 0;
+    if(total >= START_TOTAL_PER_DAY) return 'Hôm nay số lượt đăng ký học thử đã đủ — em quay lại vào ngày mai, hoặc nhắn thầy qua Zalo nhé.';
+    if(mine >= START_PER_IP_PER_DAY) return 'Máy này đã xin mã nhiều lần hôm nay — em thử lại vào ngày mai hoặc nhắn thầy qua Zalo nhé.';
+    ips[ipKey] = mine + 1;
+    tx.set(ref, { total: total + 1, ips: ips, updatedAt: new Date().toISOString() }, { merge: true });
+    return '';
+  });
+}
+
+async function handleFreeSignup(req, res, body, act){
+  if(!mailConfigured()){ res.status(503).json({ error: 'not_configured' }); return; }   // trang chủ tự quay về đăng ký chờ duyệt
   var app;
   try{ app = getAdminApp(); }
   catch(e){
     console.error('Lỗi khởi tạo Firebase Admin SDK (đăng ký học thử):', e && e.message);
-    res.status(503).json({ error: 'not_configured' });   // trang chủ tự chuyển sang gửi đăng ký chờ thầy duyệt
+    res.status(503).json({ error: 'not_configured' });
     return;
   }
   var db = admin.firestore(app);
+  try{
+    if(act === 'signup_start') return await signupStart(db, req, res, body);
+    if(act === 'signup_resend') return await signupResend(db, res, body);
+    return await signupVerify(db, res, body);
+  }catch(err){
+    console.error('Lỗi đăng ký học thử (' + act + '):', err);
+    res.status(500).json({ error: 'server_error' });
+  }
+}
 
-  // ô bẫy chống bot: người thật không thấy/không điền
-  if(body.website){ res.status(200).json({ ok: true, bot: true }); return; }
+async function signupStart(db, req, res, body){
+  if(body.website){ res.status(200).json({ ok: true, bot: true }); return; }   // ô bẫy chống bot
+  var rawGmail = String(body.gmail || '').trim().slice(0, 119);
+  var d = {
+    name: String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 99),
+    rawGmail: rawGmail, gmail: rawGmail.toLowerCase(),
+    phone: normPhone(body.phone), parentZalo: normPhone(body.parentZalo),
+    khoi: [10, 11, 12].indexOf(Number(body.khoi)) > -1 ? Number(body.khoi) : 12,
+    plan: String(body.plan || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24),
+    planName: String(body.planName || '').slice(0, 60),
+    referralCode: normCode(body.referralCode).slice(0, 29)
+  };
+  if(d.name.length < 4 || d.name.indexOf(' ') < 0){ res.status(400).json({ error: 'Em nhập đầy đủ họ và tên (ví dụ: Nguyễn Văn An).', field: 'name' }); return; }
+  // Gmail thật luôn có ít nhất 6 ký tự trước @ (không tính dấu chấm) — chặn bớt địa chỉ gõ bừa
+  if(!/^[a-z0-9.+_-]+@gmail\.com$/.test(d.gmail) || gmailKey(d.gmail).split('@')[0].length < 6){ res.status(400).json({ error: 'Gmail chưa đúng — chỉ nhận địa chỉ @gmail.com (ít nhất 6 ký tự trước @).', field: 'gmail' }); return; }
+  if(!d.phone){ res.status(400).json({ error: 'Số điện thoại của em chưa đúng (10 số, đầu 03/05/07/08/09).', field: 'phone' }); return; }
+  if(!d.parentZalo){ res.status(400).json({ error: 'Số Zalo phụ huynh chưa đúng (10 số, đầu 03/05/07/08/09).', field: 'parentZalo' }); return; }
+  if(d.phone === d.parentZalo){ res.status(400).json({ error: 'Số của em và số phụ huynh đang trùng nhau — em nhập số Zalo của bố hoặc mẹ để thầy trao đổi kết quả học thử nhé.', field: 'parentZalo' }); return; }
+  d.gkey = gmailKey(d.gmail);
 
-  var name = String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 99);
-  var gmail = String(body.gmail || '').trim().toLowerCase().slice(0, 119);
-  var phone = String(body.phone || '').trim().slice(0, 19);
-  var parentZalo = String(body.parentZalo || '').trim().slice(0, 19);
-  var khoi = [10, 11, 12].indexOf(Number(body.khoi)) > -1 ? Number(body.khoi) : 12;
-  var refTyped = normCode(body.referralCode).slice(0, 29);
-  if(!name || !/^[a-z0-9.+_-]+@gmail\.com$/.test(gmail) || !isVNPhone(phone) || !isVNPhone(parentZalo)){
-    res.status(400).json({ error: 'Thông tin chưa hợp lệ — kiểm tra lại họ tên, Gmail (@gmail.com) và số điện thoại.' });
+  var used = await usedReason(db, d);
+  if(used){ res.status(409).json({ error: used }); return; }
+  var limitMsg = await takeQuota(db, req);
+  if(limitMsg){ res.status(429).json({ error: limitMsg }); return; }
+
+  var otp = genOtp(), ref = db.collection('signup_pending').doc(), nowMs = Date.now();
+  await ref.set({ data: d, codeHash: sha(ref.id + ':' + otp), expiresAt: nowMs + CODE_TTL_MIN * 60000, sends: 1, lastSentAt: nowMs,
+    tries: 0, status: 'pending', createdAt: new Date(nowMs).toISOString() });
+  var m = await sendOtpMail(d.gmail, d.name, otp);
+  if(!m.sent){
+    await ref.update({ status: 'mail_failed' }).catch(function(){});
+    res.status(502).json({ error: 'Chưa gửi được mã vào Gmail ' + d.gmail + '. Em kiểm tra lại địa chỉ Gmail hoặc thử lại sau ít phút.' });
+    return;
+  }
+  res.status(200).json({ ok: true, pendingId: ref.id, sentTo: maskGmail(d.gmail), ttlMin: CODE_TTL_MIN, resendAfterSec: RESEND_GAP_SEC });
+}
+
+async function signupResend(db, res, body){
+  var ref = db.collection('signup_pending').doc(String(body.pendingId || '').slice(0, 40) || 'x');
+  var snap = await ref.get();
+  var p = snap.exists ? (snap.data() || {}) : null, nowMs = Date.now();
+  if(!p || p.status !== 'pending'){ res.status(410).json({ error: 'Phiên đăng ký đã hết hạn — em điền lại form nhé.', restart: true }); return; }
+  if((p.sends || 0) >= MAX_CODE_SENDS){ res.status(429).json({ error: 'Đã gửi mã ' + MAX_CODE_SENDS + ' lần. Em kiểm tra cả mục Quảng cáo/Spam trong Gmail, hoặc điền lại form với Gmail khác.' }); return; }
+  var wait = Math.ceil(((p.lastSentAt || 0) + RESEND_GAP_SEC * 1000 - nowMs) / 1000);
+  if(wait > 0){ res.status(429).json({ error: 'Em chờ ' + wait + ' giây nữa rồi bấm gửi lại nhé.', waitSec: wait }); return; }
+  var otp = genOtp();
+  await ref.update({ codeHash: sha(ref.id + ':' + otp), expiresAt: nowMs + CODE_TTL_MIN * 60000, sends: (p.sends || 0) + 1, lastSentAt: nowMs, tries: 0 });
+  var m = await sendOtpMail(p.data.gmail, p.data.name, otp);
+  if(!m.sent){ res.status(502).json({ error: 'Chưa gửi lại được mã — em thử lại sau ít phút.' }); return; }
+  res.status(200).json({ ok: true, sentTo: maskGmail(p.data.gmail), resendAfterSec: RESEND_GAP_SEC, sendsLeft: MAX_CODE_SENDS - (p.sends || 0) - 1 });
+}
+
+async function signupVerify(db, res, body){
+  var ref = db.collection('signup_pending').doc(String(body.pendingId || '').slice(0, 40) || 'x');
+  var code = String(body.code || '').replace(/\D/g, '');
+  var snap = await ref.get();
+  var p = snap.exists ? (snap.data() || {}) : null, nowMs = Date.now();
+  if(!p || p.status !== 'pending'){ res.status(410).json({ error: 'Phiên đăng ký đã hết hạn — em điền lại form nhé.', restart: true }); return; }
+  if(nowMs > (p.expiresAt || 0)){ res.status(400).json({ error: 'Mã đã hết hạn — em bấm "Gửi lại mã".', expired: true }); return; }
+  if((p.tries || 0) >= MAX_VERIFY_TRIES){
+    await ref.update({ status: 'locked' }).catch(function(){});
+    res.status(410).json({ error: 'Nhập sai mã quá ' + MAX_VERIFY_TRIES + ' lần — em điền lại form nhé.', restart: true });
+    return;
+  }
+  if(code.length !== 6 || sha(ref.id + ':' + code) !== p.codeHash){
+    var left = MAX_VERIFY_TRIES - (p.tries || 0) - 1;
+    await ref.update({ tries: (p.tries || 0) + 1 });
+    res.status(400).json({ error: left > 0 ? ('Mã chưa đúng — em còn ' + left + ' lần thử.') : 'Mã chưa đúng — em điền lại form nhé.', restart: left <= 0 });
     return;
   }
 
-  try{
-    // 1) Gmail đã có tài khoản? (kiểm tra TRƯỚC khi tính lượt, để gõ lại Gmail cũ không bị trừ lượt)
-    var rawGmail = String(body.gmail || '').trim().slice(0, 119);
-    var dupSnap = await db.collection('students').where('email', '==', gmail).limit(1).get();
-    if(dupSnap.empty && rawGmail !== gmail) dupSnap = await db.collection('students').where('email', '==', rawGmail).limit(1).get();
-    if(!dupSnap.empty){
-      res.status(409).json({ error: 'Gmail này đã có tài khoản FaradayAI. Em bấm "Đăng nhập" để vào học; quên mật khẩu thì nhắn thầy qua Zalo để được cấp lại.', exists: true });
-      return;
-    }
+  var d = p.data;
+  // kiểm tra lại (phòng khi Gmail/SĐT vừa được dùng ở phiên khác trong lúc chờ mã)
+  var used = await usedReason(db, d);
+  if(used){ await ref.update({ status: 'rejected_used' }).catch(function(){}); res.status(409).json({ error: used, restart: true }); return; }
 
-    // 2) giới hạn số lần đăng ký (theo IP + tổng trong ngày), 1 doc/ngày
-    var ymd = vnYmd();
-    var ipKey = crypto.createHash('sha256').update(clientIp(req)).digest('hex').slice(0, 16);
-    var limRef = db.collection('signup_limits').doc(ymd);
-    var limitMsg = await db.runTransaction(async function(tx){
-      var snap = await tx.get(limRef);
-      var d = snap.exists ? (snap.data() || {}) : {};
-      var total = Number(d.total) || 0, ips = d.ips || {}, mine = Number(ips[ipKey]) || 0;
-      if(total >= SIGNUP_TOTAL_PER_DAY) return 'Hôm nay số lượt đăng ký học thử đã đủ — em quay lại vào ngày mai, hoặc nhắn thầy qua Zalo nhé.';
-      if(mine >= SIGNUP_PER_IP_PER_DAY) return 'Máy này đã đăng ký nhiều lần hôm nay — nếu cần thêm tài khoản, em nhắn thầy qua Zalo nhé.';
-      ips[ipKey] = mine + 1;
-      tx.set(limRef, { total: total + 1, ips: ips, updatedAt: new Date().toISOString() }, { merge: true });
-      return '';
-    });
-    if(limitMsg){ res.status(429).json({ error: limitMsg }); return; }
-
-    // 3) tên đăng nhập = phần trước @ của Gmail; trùng với em khác thì thêm số
-    var base = gmail.split('@')[0].replace(/[^a-z0-9._-]/g, '').slice(0, 40) || 'hocsinh';
-    var username = base;
-    for(var k = 0; k < 20; k++){
-      var u = await db.collection('usernames').doc(username).get();
-      if(!u.exists) break;
-      username = base + (k < 8 ? (k + 2) : Math.floor(100 + Math.random() * 900));
-    }
-
-    // 4) gói: gói em chọn (nếu có và đang hiện trên trang chủ), không thì gói hiện đầu tiên — để admin › Học phí theo dõi học thử
-    var planId = String(body.plan || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24), planName = String(body.planName || '').slice(0, 60);
-    try{
-      var pr = await db.collection('settings').doc('pricing').get();
-      var tiers = pr.exists ? ((pr.data() || {}).tiers || []) : [];
-      var vis = tiers.map(function(t, i){ return { id: String((t && t.id) || ('g' + (i + 1))).replace(/[^A-Za-z0-9_-]/g, ''), name: (t && t.name) || '', visible: !t || t.visible !== false }; }).filter(function(t){ return t.visible; });
-      var hit = vis.filter(function(t){ return t.id === planId; })[0];
-      if(!hit && vis.length){ hit = vis[0]; }
-      if(hit){ planId = hit.id; planName = hit.name || planName; }
-    }catch(e){ console.warn('Không đọc được settings/pricing:', e && e.message); }
-    if(!planId) planId = 'g1';
-
-    // 5) mã giới thiệu: ghi nhận người giới thiệu + mức giảm; hoa hồng cho người giới thiệu thầy cộng tay khi em đóng phí
-    var referrer = null, discountVnd = 0, giftNew = '';
-    if(refTyped){
-      var rs = await db.collection('students').where('referralCode', '==', refTyped).limit(1).get();
-      if(!rs.empty) referrer = { id: rs.docs[0].id, data: rs.docs[0].data() || {} };
-      if(referrer){
-        discountVnd = 100000;
-        try{
-          var rc = await db.collection('settings').doc('referral').get();
-          if(rc.exists){
-            var rd = rc.data() || {};
-            if(isFinite(Number(rd.discountVnd)) && Number(rd.discountVnd) >= 0) discountVnd = Number(rd.discountVnd);
-            giftNew = String(rd.giftNew || '').slice(0, 160);
-          }
-        }catch(e){}
-      }
-    }
-
-    var password = genPassword();
-    var nowIso = new Date().toISOString();
-    var trialEnd = vnYmd(Date.now() + FREE_TRIAL_DAYS * 86400000);
-    var stuRef = db.collection('students').doc();
-    var newStu = {
-      name: name, username: username, password: bcrypt.hashSync(password, 10),
-      email: gmail, phone: phone, khoi: khoi,
-      school: 'Chưa cập nhật', completedExamsCount: 0, averageScore: 0, highestScore: 0,
-      targetScore: 9.0, status: 'active',
-      parentName: 'Chưa cập nhật', parentPhone: parentZalo, parentEmail: '',
-      referralCode: makeReferralCode(name), commissionBalance: 0,
-      billing: { plan: planId, cycle: 'trial', startDate: vnYmd(), trialEnd: trialEnd, payments: [] },
-      signupSource: 'free_signup', signupAt: nowIso
-    };
-    if(referrer){
-      newStu.referredByCode = referrer.data.referralCode || refTyped;
-      newStu.referredById = referrer.id;
-      newStu.referralDiscountVnd = discountVnd;
-      if(giftNew){ newStu.referralGift = giftNew; newStu.referralGiftDone = false; }
-    }
-    var batch = db.batch();
-    batch.set(stuRef, newStu);
-    batch.set(db.collection('usernames').doc(username), { studentId: stuRef.id });
-    batch.set(db.collection('registrations').doc(), {
-      name: name, gmail: gmail, phone: phone, parentZalo: parentZalo, referralCode: refTyped,
-      status: 'converted', createdAt: nowIso, convertedStudentId: stuRef.id, convertedAt: nowIso,
-      source: 'free_signup:' + planId + ':' + planName.replace(/[:\n\r]/g, ' ')
-    });
-    await batch.commit();
-
-    var mail = await sendCredentialMail(gmail, { name: name, username: username, password: password, trialEnd: trialEnd });
-    if(mail.sent) await stuRef.update({ signupMailSentAt: new Date().toISOString() }).catch(function(){});
-
-    res.status(200).json({
-      ok: true, studentId: stuRef.id, username: username, password: password, trialEnd: trialEnd, trialDays: FREE_TRIAL_DAYS,
-      emailSent: !!mail.sent, discountVnd: discountVnd, referrerFound: !!referrer, codeNotFound: !!(refTyped && !referrer)
-    });
-  }catch(err){
-    console.error('Lỗi đăng ký học thử:', err);
-    res.status(500).json({ error: 'server_error' });
+  // tên đăng nhập = phần trước @ của Gmail; trùng thì thêm số
+  var base = d.gmail.split('@')[0].split('+')[0].replace(/[^a-z0-9._-]/g, '').slice(0, 40) || 'hocsinh';
+  var username = base;
+  for(var k = 0; k < 20; k++){
+    var u = await db.collection('usernames').doc(username).get();
+    if(!u.exists) break;
+    username = base + (k < 8 ? (k + 2) : Math.floor(100 + Math.random() * 900));
   }
+
+  // gói: gói em chọn (nếu đang hiện trên trang chủ), không thì gói hiện đầu tiên — để admin › Học phí theo dõi học thử
+  var planId = d.plan, planName = d.planName;
+  try{
+    var pr = await db.collection('settings').doc('pricing').get();
+    var tiers = pr.exists ? ((pr.data() || {}).tiers || []) : [];
+    var vis = tiers.map(function(t, i){ return { id: String((t && t.id) || ('g' + (i + 1))).replace(/[^A-Za-z0-9_-]/g, ''), name: (t && t.name) || '', visible: !t || t.visible !== false }; }).filter(function(t){ return t.visible; });
+    var hit = vis.filter(function(t){ return t.id === planId; })[0] || vis[0];
+    if(hit){ planId = hit.id; planName = hit.name || planName; }
+  }catch(e){ console.warn('Không đọc được settings/pricing:', e && e.message); }
+  if(!planId) planId = 'g1';
+
+  // mã giới thiệu: ghi nhận người giới thiệu + mức giảm; hoa hồng cho người giới thiệu thầy cộng tay khi em đóng phí
+  var referrer = null, discountVnd = 0, giftNew = '';
+  if(d.referralCode){
+    var rs = await db.collection('students').where('referralCode', '==', d.referralCode).limit(1).get();
+    if(!rs.empty) referrer = { id: rs.docs[0].id, data: rs.docs[0].data() || {} };
+    if(referrer){
+      discountVnd = 100000;
+      try{
+        var rc = await db.collection('settings').doc('referral').get();
+        if(rc.exists){
+          var rd = rc.data() || {};
+          if(isFinite(Number(rd.discountVnd)) && Number(rd.discountVnd) >= 0) discountVnd = Number(rd.discountVnd);
+          giftNew = String(rd.giftNew || '').slice(0, 160);
+        }
+      }catch(e){}
+    }
+  }
+
+  var password = genPassword(), nowIso = new Date().toISOString(), trialEnd = vnYmd(Date.now() + FREE_TRIAL_DAYS * 86400000);
+  var stuRef = db.collection('students').doc();
+  var newStu = {
+    name: d.name, username: username, password: bcrypt.hashSync(password, 10),
+    email: d.gmail, emailVerified: true, phone: d.phone, khoi: d.khoi,
+    school: 'Chưa cập nhật', completedExamsCount: 0, averageScore: 0, highestScore: 0,
+    targetScore: 9.0, status: 'active',
+    parentName: 'Chưa cập nhật', parentPhone: d.parentZalo, parentEmail: '',
+    referralCode: makeReferralCode(d.name), commissionBalance: 0,
+    billing: { plan: planId, cycle: 'trial', startDate: vnYmd(), trialEnd: trialEnd, payments: [] },
+    signupSource: 'free_signup', signupAt: nowIso
+  };
+  if(referrer){
+    newStu.referredByCode = referrer.data.referralCode || d.referralCode;
+    newStu.referredById = referrer.id;
+    newStu.referralDiscountVnd = discountVnd;
+    if(giftNew){ newStu.referralGift = giftNew; newStu.referralGiftDone = false; }
+  }
+  var claimRefs = [
+    db.collection('trial_claims').doc('g_' + sha(d.gkey)),
+    db.collection('trial_claims').doc('p_' + d.phone),
+    db.collection('trial_claims').doc('p_' + d.parentZalo)
+  ];
+  var claimInfo = { studentId: stuRef.id, name: d.name, at: nowIso };
+  // CÙNG 1 transaction: chưa ai giữ Gmail/SĐT này -> giữ + tạo tài khoản; 2 phiên chạy song song thì chỉ 1 phiên thành công
+  var clash = await db.runTransaction(async function(tx){
+    var pSnap = await tx.get(ref);
+    if(!pSnap.exists || (pSnap.data() || {}).status !== 'pending') return 'Phiên đăng ký đã được dùng — em điền lại form nhé.';
+    var cs = await Promise.all(claimRefs.map(function(r){ return tx.get(r); }));
+    if(cs[0].exists) return MSG_USED_GMAIL;
+    if(cs[1].exists) return MSG_USED_PHONE;
+    if(cs[2].exists) return MSG_USED_PARENT;
+    tx.set(claimRefs[0], Object.assign({ kind: 'gmail', gmail: d.gmail }, claimInfo));
+    tx.set(claimRefs[1], Object.assign({ kind: 'phone' }, claimInfo));
+    tx.set(claimRefs[2], Object.assign({ kind: 'parentZalo' }, claimInfo));
+    tx.set(stuRef, newStu);
+    tx.set(db.collection('usernames').doc(username), { studentId: stuRef.id });
+    tx.set(db.collection('registrations').doc(), {
+      name: d.name, gmail: d.gmail, phone: d.phone, parentZalo: d.parentZalo, referralCode: d.referralCode,
+      status: 'converted', createdAt: nowIso, convertedStudentId: stuRef.id, convertedAt: nowIso,
+      source: 'free_signup:' + planId + ':' + String(planName || '').replace(/[:\n\r]/g, ' ')
+    });
+    tx.update(ref, { status: 'done', studentId: stuRef.id, doneAt: nowIso });
+    return '';
+  });
+  if(clash){ res.status(409).json({ error: clash, restart: true }); return; }
+
+  var mail = await sendCredentialMail(d.gmail, { name: d.name, username: username, password: password, trialEnd: trialEnd });
+  res.status(200).json({
+    ok: true, studentId: stuRef.id, username: username, password: password, trialEnd: trialEnd, trialDays: FREE_TRIAL_DAYS,
+    emailSent: !!mail.sent, discountVnd: discountVnd, referrerFound: !!referrer, codeNotFound: !!(d.referralCode && !referrer)
+  });
 }

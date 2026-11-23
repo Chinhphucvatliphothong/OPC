@@ -636,7 +636,7 @@
     });
     leads.filter(function(l){ return (l.status || 'new') === 'new'; }).forEach(function(l){
       items.push({ id: 'lead-' + l.id, group: 'sales', prio: 0, icon: '🌱', who: { name: l.name, lop: l.grade }, phone: l.phone,
-        why: 'Khách Thử sức 5 phút: ' + l.correct + '/' + l.total + ' câu' + (l.weak ? ' · yếu: ' + l.weak : '') + ' — gọi tư vấn trong 24 giờ',
+        why: 'Khách Mini test 5 phút: ' + l.correct + '/' + l.total + ' câu' + (l.weak ? ' · yếu: ' + l.weak : '') + ' — gọi tư vấn trong 24 giờ',
         actions: [h('a', { key: 't', className: 'btn btn-primary', href: 'tel:' + phoneDigits(l.phone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(l.phone)),
           h('button', { key: 'cp', type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(String(l.phone || '').replace(/\D/g, '')).then(function(){ fire('Đã chép số ' + fmtPhone(l.phone) + '.'); }); } }, '📋 Chép số'),
           h('a', { key: 'z', className: 'btn btn-secondary', href: zalo(l.phone), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo'),
@@ -666,7 +666,12 @@
       items.push({ id: 'fs-' + s.id, group: 'sales', prio: 0, icon: '🎓', who: s, phone: s.parentPhone,
         why: 'Tự đăng ký học thử' + (left != null ? ' (còn ' + left + ' ngày)' : '') + (s.referredByCode ? ' · mã giới thiệu ' + s.referredByCode + ' — cộng hoa hồng khi em đóng phí' : '') + ' — nhắn chào phụ huynh, hẹn trao đổi kết quả sau 2 tuần',
         actions: [s.parentPhone ? h('a', { key: 'z', className: 'btn btn-primary', href: zalo(s.parentPhone), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo phụ huynh') : null,
-          s.parentPhone ? h('a', { key: 't', className: 'btn btn-secondary', href: 'tel:' + phoneDigits(s.parentPhone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(s.parentPhone)) : null] });
+          s.parentPhone ? h('a', { key: 't', className: 'btn btn-secondary', href: 'tel:' + phoneDigits(s.parentPhone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(s.parentPhone)) : null,
+          // THÊM 23/11/2026 (lần 2) — gọi/nhắn thấy số phụ huynh không có thật -> khoá tài khoản học thử (Gmail + SĐT vẫn bị giữ, không đăng ký học thử lại được)
+          h('button', { key: 'lk', type: 'button', className: 'btn btn-secondary', title: 'Số điện thoại / thông tin không có thật — khoá tài khoản học thử này',
+            onClick: function(){ if(!window.confirm('Khoá tài khoản học thử của ' + s.name + '? Em sẽ không đăng nhập được nữa (mở lại được ở tab Học sinh).')) return;
+              window.OPC.students.update(s.id, { status: 'inactive', lockedReason: 'Thông tin học thử không đúng', lockedAt: new Date().toISOString() })
+                .then(function(){ fire('Đã khoá tài khoản học thử của ' + s.name + '.'); }).catch(function(){ fire('Không khoá được — thử lại.', true); }); } }, '🔒 Số sai — khoá')] });
     });
     var GROUPS = [['sales', '🌱 Khách mới & đăng ký'], ['fee', '💳 Học phí'], ['help', '🆘 Cần thầy hỗ trợ'], ['learn', '⏰ Nhắc học'], ['parent', '👪 Gửi tiến độ cho phụ huynh']];
     var total = items.length, doneN = items.filter(function(it){ return done[it.id]; }).length;
