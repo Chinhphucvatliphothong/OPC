@@ -1270,7 +1270,9 @@
             </div>
             <div class="signup-field">
               <label for="dk-phone">Số điện thoại học sinh</label>
+              <!-- SỬA 23/11/2026 (lần 3) — em chưa có số riêng thì nhập số bố/mẹ -->
               <input type="tel" id="dk-phone" name="dk-phone" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
+              <div class="signup-hint">Chưa có số riêng thì nhập số của bố hoặc mẹ.</div>
               <div class="signup-error" id="dk-phone-err"></div>
             </div>
             <div class="signup-field">
@@ -1566,7 +1568,6 @@
 
       if(!zalo){ setError('dk-parent-zalo', 'Vui lòng nhập SĐT Zalo phụ huynh.'); ok = false; }
       else if(!isValidVNPhone(zalo)){ setError('dk-parent-zalo', 'Số điện thoại không hợp lệ.'); ok = false; }
-      else if(isValidVNPhone(phone) && normPhone(zalo).replace(/^\+84/, '0') === normPhone(phone).replace(/^\+84/, '0')){ setError('dk-parent-zalo', 'Nhập số Zalo của bố hoặc mẹ (khác số của em).'); ok = false; }
       else setError('dk-parent-zalo', '');
 
       var psel = document.getElementById('dk-plan'), popt = psel && psel.selectedIndex >= 0 ? psel.options[psel.selectedIndex] : null;

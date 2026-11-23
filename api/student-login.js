@@ -152,7 +152,7 @@ export default async function handler(req, res){
 //   • MỖI Gmail / MỖI số điện thoại (của em hoặc của phụ huynh) chỉ được học thử 1 LẦN DUY NHẤT — kể cả khi tài khoản cũ
 //     đã bị xoá. Ghi nhận ở collection trial_claims/{khoá} (Gmail đã chuẩn hoá: bỏ dấu chấm và phần +… vì Gmail coi
 //     a.b+x@gmail.com và ab@gmail.com là một). Tạo tài khoản + ghi nhận trong CÙNG 1 transaction nên không lách được.
-//   • Số điện thoại: kiểm tra đúng định dạng VN (10 số, đầu số di động) + chưa từng học thử. Muốn chắc số có thật phải
+//   • Số điện thoại: kiểm tra đúng định dạng VN (10 số, đầu số di động) + chưa từng học thử. Số của em ĐƯỢC trùng số phụ huynh. Muốn chắc số có thật phải
 //     gửi SMS (tốn phí, cần đăng ký thương hiệu) — chưa làm; thầy gọi chào phụ huynh trong 3 ngày đầu, số sai thì bấm
 //     "🔒 Khoá" trong admin › Việc hôm nay.
 // Các bước (trang chủ index.html gọi POST /api/student-login):
@@ -258,7 +258,7 @@ async function usedReason(db, d){
   var claims = await Promise.all([
     db.collection('trial_claims').doc('g_' + sha(d.gkey)).get(),
     db.collection('trial_claims').doc('p_' + d.phone).get(),
-    db.collection('trial_claims').doc('p_' + d.parentZalo).get()
+    d.parentZalo === d.phone ? Promise.resolve({ exists: false }) : db.collection('trial_claims').doc('p_' + d.parentZalo).get()
   ]);
   if(claims[0].exists) return MSG_USED_GMAIL;
   if(claims[1].exists) return MSG_USED_PHONE;
@@ -325,7 +325,7 @@ async function signupStart(db, req, res, body){
   if(!/^[a-z0-9.+_-]+@gmail\.com$/.test(d.gmail) || gmailKey(d.gmail).split('@')[0].length < 6){ res.status(400).json({ error: 'Gmail chưa đúng — chỉ nhận địa chỉ @gmail.com (ít nhất 6 ký tự trước @).', field: 'gmail' }); return; }
   if(!d.phone){ res.status(400).json({ error: 'Số điện thoại của em chưa đúng (10 số, đầu 03/05/07/08/09).', field: 'phone' }); return; }
   if(!d.parentZalo){ res.status(400).json({ error: 'Số Zalo phụ huynh chưa đúng (10 số, đầu 03/05/07/08/09).', field: 'parentZalo' }); return; }
-  if(d.phone === d.parentZalo){ res.status(400).json({ error: 'Số của em và số phụ huynh đang trùng nhau — em nhập số Zalo của bố hoặc mẹ để thầy trao đổi kết quả học thử nhé.', field: 'parentZalo' }); return; }
+  // SỬA 23/11/2026 (lần 3) — CHO PHÉP số của em trùng số phụ huynh (nhiều em chưa có điện thoại riêng, dùng luôn số bố mẹ)
   d.gkey = gmailKey(d.gmail);
 
   var used = await usedReason(db, d);
@@ -440,11 +440,12 @@ async function signupVerify(db, res, body){
     newStu.referralDiscountVnd = discountVnd;
     if(giftNew){ newStu.referralGift = giftNew; newStu.referralGiftDone = false; }
   }
+  var sameNum = d.phone === d.parentZalo;   // em dùng luôn số phụ huynh -> chỉ giữ 1 số
   var claimRefs = [
     db.collection('trial_claims').doc('g_' + sha(d.gkey)),
-    db.collection('trial_claims').doc('p_' + d.phone),
-    db.collection('trial_claims').doc('p_' + d.parentZalo)
+    db.collection('trial_claims').doc('p_' + d.phone)
   ];
+  if(!sameNum) claimRefs.push(db.collection('trial_claims').doc('p_' + d.parentZalo));
   var claimInfo = { studentId: stuRef.id, name: d.name, at: nowIso };
   // CÙNG 1 transaction: chưa ai giữ Gmail/SĐT này -> giữ + tạo tài khoản; 2 phiên chạy song song thì chỉ 1 phiên thành công
   var clash = await db.runTransaction(async function(tx){
@@ -453,10 +454,10 @@ async function signupVerify(db, res, body){
     var cs = await Promise.all(claimRefs.map(function(r){ return tx.get(r); }));
     if(cs[0].exists) return MSG_USED_GMAIL;
     if(cs[1].exists) return MSG_USED_PHONE;
-    if(cs[2].exists) return MSG_USED_PARENT;
+    if(cs[2] && cs[2].exists) return MSG_USED_PARENT;
     tx.set(claimRefs[0], Object.assign({ kind: 'gmail', gmail: d.gmail }, claimInfo));
-    tx.set(claimRefs[1], Object.assign({ kind: 'phone' }, claimInfo));
-    tx.set(claimRefs[2], Object.assign({ kind: 'parentZalo' }, claimInfo));
+    tx.set(claimRefs[1], Object.assign({ kind: sameNum ? 'phone+parentZalo' : 'phone' }, claimInfo));
+    if(!sameNum) tx.set(claimRefs[2], Object.assign({ kind: 'parentZalo' }, claimInfo));
     tx.set(stuRef, newStu);
     tx.set(db.collection('usernames').doc(username), { studentId: stuRef.id });
     tx.set(db.collection('registrations').doc(), {
