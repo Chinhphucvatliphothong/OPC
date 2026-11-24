@@ -99,7 +99,7 @@
     function render(){
       var day = days.filter(function(x){ return x.date === st.day; })[0];
       ov.innerHTML = '<div class="bk-box" role="dialog" aria-label="Đặt lịch tư vấn"><button class="bk-x" data-a="x" aria-label="Đóng">×</button>' +
-        '<h3>📅 Đặt lịch tư vấn 15 phút với thầy</h3>' +
+        '<h3>📅 Đặt lịch tư vấn với thầy</h3>' +
         '<p class="s">' + esc((c && c.intro) || 'Thầy gọi điện cho phụ huynh/học sinh, cùng xem kết quả mini test và gợi ý lộ trình ôn thi phù hợp. Hoàn toàn miễn phí, không bắt buộc đăng ký học.') + '</p>' +
         '<div class="bk-f"><label>Người đặt lịch</label><div class="bk-roles"><button data-a="role" data-v="ph" class="' + (st.role === 'ph' ? 'on' : '') + '">👪 Phụ huynh</button><button data-a="role" data-v="hs" class="' + (st.role === 'hs' ? 'on' : '') + '">🎒 Học sinh</button></div></div>' +
         '<div class="bk-f"><label for="bk-name">Họ tên ' + (st.role === 'ph' ? 'phụ huynh' : 'học sinh') + ' *</label><input id="bk-name" value="' + esc(st.name != null ? st.name : (prefill.name && st.role === 'hs' ? prefill.name : '')) + '" maxlength="80" autocomplete="name"></div>' +
@@ -181,8 +181,8 @@
       return '<div class="kq-story"><div class="kq-jump"><span class="a">' + fmt2(x.before) + '</span><span>→</span><span class="b">' + fmt2(x.after) + '</span>' + (d > 0 ? '<span class="d">+' + fmt2(d) + '</span>' : '') + '</div>' +
         '<div class="who">' + esc(x.name) + '</div><div class="wh">' + esc([x.lop, x.period].filter(Boolean).join(' · ')) + '</div>' + (x.quote ? '<q>' + esc(x.quote) + '</q>' : '') + '</div>'; }).join('') + '</div>';
     if(g.enabled) html += '<div class="kq-guar"><div class="ic">🛡️</div><div style="flex:1;min-width:240px"><h3>' + esc(g.title || 'Cam kết tiến bộ') + '</h3><p>' + esc(g.text || '') + '</p>' + (g.terms ? '<small>' + esc(g.terms) + '</small>' : '') + '</div></div>';
-    html += '<div class="kq-ctas"><a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Mini test đầu vào 5 phút</a>' +
-      '<button type="button" class="btn kq-bk" data-book="home">📅 Đặt lịch tư vấn 15 phút</button>' +
+    html += '<div class="kq-ctas"><a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Mini test đầu vào</a>' +
+      '<button type="button" class="btn kq-bk" data-book="home">📅 Tư vấn miễn phí</button>' +
       (offerOn ? '<span class="kq-offer">🔥 ' + esc(offer.text || 'Ưu đãi đăng ký sớm') + (offer.seats ? ' · còn ' + esc(offer.seats) + ' suất' : '') + (offer.until ? ' · đến ' + esc(offer.until.split('-').reverse().slice(0, 2).join('/')) : '') + '</span>' : '') + '</div></div>';
     sec.innerHTML = html; sec.hidden = false;
     sec.querySelectorAll('figure').forEach(function(f){ f.addEventListener('click', function(){ var p = pics[Number(f.getAttribute('data-i'))]; var lb = doc.createElement('div'); lb.className = 'kq-lb'; lb.innerHTML = '<img src="' + esc(p.img) + '" alt="">'; lb.addEventListener('click', function(){ lb.remove(); }); doc.body.appendChild(lb); }); });
@@ -190,7 +190,7 @@
   function sticky(){
     if(doc.querySelector('.kq-sticky')) return;
     var b = doc.createElement('div'); b.className = 'kq-sticky on';
-    b.innerHTML = '<a class="p" href="#chan-doan" data-diag-open>⚡ Mini test miễn phí</a><button type="button" class="g" data-book="sticky">📅 Tư vấn 15 phút</button>';
+    b.innerHTML = '<a class="p" href="#chan-doan" data-diag-open>⚡ Mini test miễn phí</a><button type="button" class="g" data-book="sticky">📅 Tư vấn miễn phí</button>';
     doc.body.appendChild(b); doc.body.classList.add('kq-has-sticky');
   }
   doc.addEventListener('click', function(e){

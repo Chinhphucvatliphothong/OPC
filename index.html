@@ -548,11 +548,12 @@
   .dk-verify-links button:disabled{ color: var(--on-navy-2); cursor:default; text-decoration:none; }
   .dk-verify-tip{ font-size:0.82rem; margin-top:12px; line-height:1.55; }
   /* THÊM 24/11/2026 — chọn hình thức + khối học phí */
+  #dkForm > .signup-actions{ margin-top:22px; }   /* 24/11/2026 — bỏ dòng ghi chú nên thêm khoảng cách trước nút gửi */
   .dk-mode{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
   @media (max-width:640px){ .dk-mode{ grid-template-columns:1fr; } }
-  .dk-mode-opt{ display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--navy-line); border-radius:12px; cursor:pointer; }
+  .dk-mode-opt{ display:flex; gap:10px; align-items:center; padding:12px 14px; border:1px solid var(--navy-line); border-radius:12px; cursor:pointer; }
   .dk-mode-opt:has(input:checked){ border-color: var(--accent); background: rgba(176,122,60,0.10); }
-  .dk-mode-opt input{ margin-top:4px; accent-color: var(--accent); }
+  .dk-mode-opt input{ margin:0; accent-color: var(--accent); }
   .dk-mode-opt b{ display:block; font-size:0.95rem; }
   .dk-mode-opt small{ display:block; font-size:0.8rem; line-height:1.5; color: var(--on-navy-2); margin-top:2px; }
   .dk-pay{ margin:10px 0 12px; padding:12px; border-radius:10px; background: rgba(255,255,255,0.04); border:1px solid var(--navy-line); font-size:0.9rem; line-height:1.6; }
@@ -904,10 +905,11 @@
     <p class="lede">FaradayAI chấm bài kiểm tra đầu vào theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — phương pháp học tập cá nhân hoá dành cho mọi học sinh, trí tuệ nhân tạo (AI) tự điều chỉnh theo thời gian thực dựa trên điểm mạnh và điểm yếu của từng em.</p>
     <div class="hero-ctas">
       <!-- THÊM 15/10/2026 — Kiểm tra đầu vào – Mini test 5 phút (diagnostic5.js; SỬA 23/11/2026: đổi tên từ "Chẩn đoán" cho bớt giống đi khám bệnh); tự ẩn nếu thầy chưa bật bộ câu hỏi ở admin -->
-      <a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Mini test đầu vào 5 phút</a>
-      <a class="btn btn-ghost" href="#tu-van" data-book="hero">📅 Tư vấn miễn phí 15 phút</a>
+      <!-- SỬA 24/11/2026 — nhãn nút ngắn gọn: bỏ "5 phút", "15 phút", "14 ngày" -->
+      <a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Mini test đầu vào</a>
+      <a class="btn btn-ghost" href="#tu-van" data-book="hero">📅 Tư vấn miễn phí</a>
       <a class="btn btn-ghost" href="#gioi-thieu">Tìm hiểu phương pháp ↓</a>
-      <a class="btn btn-ghost" href="#lien-he">Học thử miễn phí 14 ngày</a>
+      <a class="btn btn-ghost" href="#lien-he">Học thử miễn phí</a>
     </div>
     <figure class="wave-figure">
       <svg id="heroWave" viewBox="0 0 1032 140" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -1262,21 +1264,17 @@
 
 <section class="closing" id="lien-he">
   <div class="wrap">
-    <div class="kicker" style="color:var(--accent-strong);">Học thử miễn phí 14 ngày · hoặc đăng ký khoá học</div>
     <h2 class="section-title">Đăng ký học cùng FaradayAI</h2>
-    <p class="section-sub">Mô hình luyện thi theo chuyên đề, dựng trên ngân hàng đề Vật Lí 12 đầy đủ — bản đồ năng lực và lộ trình tự động cập nhật hằng tuần theo đúng kết quả học tập của từng em.</p>
+    <!-- SỬA 24/11/2026 — bỏ dòng nhãn và câu diễn giải theo yêu cầu thầy -->
     <div class="card">
       <div id="dkFormWrap">
-        <h3 id="dkFormTitle" style="font-family:'Be Vietnam Pro',sans-serif; font-size:1.05rem; margin-bottom:8px;">Đăng ký học thử miễn phí 14 ngày</h3>
-        <!-- SỬA 23/11/2026 — tự tạo tài khoản ngay (api/student-login.js › action "signup"), gửi tên đăng nhập + mật khẩu vào Gmail -->
-        <p id="dkFormIntro" style="font-size:0.92rem; line-height:1.6; margin-bottom:18px;">Điền thông tin bên dưới, hệ thống gửi <b>mã xác nhận 6 số</b> vào Gmail của em. Nhập đúng mã là có tài khoản ngay. Học thử đầy đủ 14 ngày, không cần thanh toán; <b>mỗi Gmail và mỗi số điện thoại chỉ học thử 1 lần</b>. Gần hết 14 ngày, thầy sẽ gọi điện cho phụ huynh để trao đổi kết quả của em.</p>
         <form class="signup-form" id="dkForm" novalidate>
           <!-- THÊM 24/11/2026 — 2 lựa chọn: học thử 14 ngày | đăng ký khoá học ngay (thanh toán QR, tự kích hoạt) -->
           <div class="dk-mode" role="radiogroup" aria-label="Hình thức đăng ký">
             <label class="dk-mode-opt"><input type="radio" name="dk-mode" value="trial" checked>
-              <span><b>🎁 Học thử miễn phí 14 ngày</b><small>Chưa cần thanh toán. Gần hết hạn thầy gọi phụ huynh trao đổi kết quả.</small></span></label>
+              <span><b>🎁 Học thử miễn phí</b></span></label>
             <label class="dk-mode-opt"><input type="radio" name="dk-mode" value="pay">
-              <span><b>💳 Đăng ký khoá học ngay</b><small>Chọn gói, quét mã QR chuyển khoản — hệ thống tự kích hoạt khoá học.</small></span></label>
+              <span><b>💳 Đăng ký khoá học ngay</b></span></label>
           </div>
           <div class="signup-grid">
             <div class="signup-field full">
@@ -1287,20 +1285,17 @@
             <div class="signup-field full">
               <label for="dk-gmail">Địa chỉ Gmail</label>
               <input type="email" id="dk-gmail" name="dk-gmail" placeholder="tenban@gmail.com" autocomplete="email" inputmode="email">
-              <div class="signup-hint">Dùng Gmail em đang mở được trên máy — hệ thống gửi mã xác nhận vào đây.</div>
               <div class="signup-error" id="dk-gmail-err"></div>
             </div>
             <div class="signup-field">
               <label for="dk-phone">Số điện thoại học sinh</label>
-              <!-- SỬA 23/11/2026 (lần 3) — em chưa có số riêng thì nhập số bố/mẹ -->
-              <input type="tel" id="dk-phone" name="dk-phone" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
-              <div class="signup-hint">Chưa có số riêng thì nhập số của bố hoặc mẹ.</div>
+              <!-- SỬA 23/11/2026 (lần 3) — em chưa có số riêng thì nhập số bố/mẹ (24/11/2026: bỏ dòng gợi ý, ghi thẳng vào chữ mờ trong ô) -->
+              <input type="tel" id="dk-phone" name="dk-phone" placeholder="Số của em hoặc của bố mẹ" autocomplete="tel" inputmode="tel">
               <div class="signup-error" id="dk-phone-err"></div>
             </div>
             <div class="signup-field">
               <label for="dk-parent-zalo">SĐT Zalo phụ huynh</label>
               <input type="tel" id="dk-parent-zalo" name="dk-parent-zalo" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
-              <div class="signup-hint">Để thầy gửi báo cáo tiến độ và trao đổi kết quả học thử với phụ huynh.</div>
               <div class="signup-error" id="dk-parent-zalo-err"></div>
             </div>
             <div class="signup-field full">
@@ -1316,14 +1311,12 @@
             <div class="signup-field full">
               <label for="dk-referral">Mã giới thiệu (nếu có)</label>
               <input type="text" id="dk-referral" name="dk-referral" placeholder="Vd. CHAU815VLY — bỏ trống nếu không có" autocomplete="off" style="text-transform:uppercase;">
-              <div class="signup-hint" id="dk-referral-hint">Có mã giới thiệu của bạn bè? Nhập vào để nhận ưu đãi khi đăng ký được xác nhận.</div>
             </div>
           </div>
           <div style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
             <label for="dk-website">Website (để trống)</label>
             <input type="text" id="dk-website" name="dk-website" tabindex="-1" autocomplete="off">
           </div>
-          <div class="signup-privacy">Thông tin chỉ dùng để tạo tài khoản và để thầy liên hệ phụ huynh — không chia sẻ cho bên khác.</div>
           <div class="signup-actions">
             <button type="submit" class="btn btn-primary" id="dkSubmitBtn">Gửi mã xác nhận vào Gmail</button>
             <span class="signup-form-error" id="dkFormErr" role="alert"></span>
@@ -1628,7 +1621,7 @@
 
     // THÊM 24/11/2026 — chọn hình thức đăng ký: đổi tiêu đề, giới thiệu, ô chọn gói (bắt buộc khi đăng ký khoá học)
     var INTRO_TRIAL = (document.getElementById('dkFormIntro') || {}).innerHTML || '';
-    var INTRO_PAY = 'Điền thông tin và chọn gói, hệ thống gửi <b>mã xác nhận 6 số</b> vào Gmail của em. Nhập đúng mã là có tài khoản và <b>mã QR học phí</b> (đã điền sẵn số tiền). Phụ huynh chuyển khoản xong, hệ thống <b>tự kích hoạt khoá học</b> trong vài phút — không cần chờ thầy. Trong lúc chờ, em vẫn vào học được.';
+    var INTRO_PAY = '';   // SỬA 24/11/2026 — bỏ tiêu đề + đoạn diễn giải trong form (thầy yêu cầu), các dòng dưới tự bỏ qua vì không còn phần tử
     function currentMode(){ var r = document.querySelector('input[name="dk-mode"]:checked'); return r && r.value === 'pay' ? 'pay' : 'trial'; }
     function applyMode(){
       var pay = currentMode() === 'pay';
