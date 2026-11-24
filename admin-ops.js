@@ -591,7 +591,12 @@
           why: (bs.k === 'trial' || bs.k === 'trialEnd') ? (bs.t + ' — mời phụ huynh buổi chốt / đăng ký gói') : ('Học phí: ' + bs.t),
           actions: [
             s.parentPhone ? h('button', { key: 'z', type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(billingMsg(cfg, s)).then(function(){ fire('Đã chép tin nhắn — dán vào Zalo.'); window.open(zalo(s.parentPhone), '_blank'); }); } }, '💬 Nhắc phụ huynh') : null,
-            h('button', { key: 'p', type: 'button', className: 'btn btn-success', onClick: function(){ setPay(s); } }, '💵 Đã nhận tiền')] });
+            h('button', { key: 'p', type: 'button', className: 'btn btn-success', onClick: function(){ setPay(s); } }, '💵 Đã nhận tiền'),
+            // THÊM 23/11/2026 — hết học thử: hệ thống KHÔNG tự khoá, thầy gọi phụ huynh xong tự quyết định khoá
+            bs.k === 'trialEnd' ? h('button', { key: 'lk', type: 'button', className: 'btn btn-secondary', title: 'Khoá đăng nhập (mở lại được ở tab Học sinh)',
+              onClick: function(){ if(!window.confirm('Khoá tài khoản của ' + s.name + '? Em sẽ không đăng nhập được cho đến khi thầy mở lại ở tab Học sinh.')) return;
+                window.OPC.students.update(s.id, { status: 'inactive', lockedReason: 'Hết học thử', lockedAt: new Date().toISOString() })
+                  .then(function(){ fire('Đã khoá tài khoản của ' + s.name + '.'); }).catch(function(){ fire('Không khoá được — thử lại.', true); }); } }, '🔒 Khoá') : null] });
       }
       // nhắc học: không hoạt động ≥ 3 ngày
       var last = [st.lastActivityAt, st.updatedAt].filter(Boolean).map(function(x){ return new Date(x).getTime(); }).filter(isFinite);
@@ -636,7 +641,7 @@
     });
     leads.filter(function(l){ return (l.status || 'new') === 'new'; }).forEach(function(l){
       items.push({ id: 'lead-' + l.id, group: 'sales', prio: 0, icon: '🌱', who: { name: l.name, lop: l.grade }, phone: l.phone,
-        why: 'Khách Chẩn đoán 5 phút: ' + l.correct + '/' + l.total + ' câu' + (l.weak ? ' · yếu: ' + l.weak : '') + ' — gọi tư vấn trong 24 giờ',
+        why: 'Khách Mini test 5 phút: ' + l.correct + '/' + l.total + ' câu' + (l.weak ? ' · yếu: ' + l.weak : '') + ' — gọi tư vấn trong 24 giờ',
         actions: [h('a', { key: 't', className: 'btn btn-primary', href: 'tel:' + phoneDigits(l.phone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(l.phone)),
           h('button', { key: 'cp', type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(String(l.phone || '').replace(/\D/g, '')).then(function(){ fire('Đã chép số ' + fmtPhone(l.phone) + '.'); }); } }, '📋 Chép số'),
           h('a', { key: 'z', className: 'btn btn-secondary', href: zalo(l.phone), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo'),
@@ -658,6 +663,27 @@
         why: 'Đăng ký học trên trang chủ — duyệt ở tab "Học sinh"',
         actions: [rp ? h('a', { key: 't', className: 'btn btn-primary', href: 'tel:' + phoneDigits(rp), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(rp)) : null,
           r.parentZalo ? h('a', { key: 'z', className: 'btn btn-secondary', href: zalo(r.parentZalo), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo phụ huynh') : null] });
+    });
+    // THÊM 23/11/2026 — học sinh TỰ ĐĂNG KÝ HỌC THỬ trên trang chủ (api/student-login.js › signup): nhắc thầy nhắn chào phụ huynh
+    // trong 3 ngày đầu (tạo thiện cảm sớm). Khi còn ≤ 2 ngày học thử, mục "💳 Học phí" ở trên tự nhắc gọi tư vấn chuyển gói.
+    // SỬA 24/11/2026 — thêm em chọn "Đăng ký khoá học ngay" (signupSource 'pay_signup'): đã/chưa thấy chuyển khoản
+    S.list.filter(function(s){ return (s.signupSource === 'free_signup' || s.signupSource === 'pay_signup') && s.status !== 'inactive' && s.signupAt && (nowMs - new Date(s.signupAt).getTime()) < 3 * 86400000; }).forEach(function(s){
+      var b = s.billing || {}, left = b.trialEnd ? Math.ceil((new Date(b.trialEnd + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000) : null;
+      var ref = s.referredByCode ? ' · mã giới thiệu ' + s.referredByCode + ' — cộng hoa hồng khi em đóng phí' : '';
+      var isPaySignup = s.signupSource === 'pay_signup', paidFull = b.cycle === 'full' && !!b.paidUntil;
+      var why = isPaySignup
+        ? (paidFull ? 'Tự đăng ký khoá học và ĐÃ chuyển khoản (hệ thống đã kích hoạt tới ' + vnDate(b.paidUntil) + ')' + ref + ' — nhắn cảm ơn phụ huynh'
+                    : 'Chọn "Đăng ký khoá học ngay" nhưng CHƯA thấy chuyển khoản' + (left != null ? ' (còn ' + left + ' ngày chờ)' : '') + (s.phoneReused ? ' · SĐT từng học thử' : '') + ref + ' — nhắn phụ huynh hỗ trợ thanh toán')
+        : ('Tự đăng ký học thử' + (left != null ? ' (còn ' + left + ' ngày)' : '') + ref + ' — nhắn chào phụ huynh, hẹn trao đổi kết quả sau 2 tuần');
+      items.push({ id: 'fs-' + s.id + (paidFull ? '-paid' : ''), group: 'sales', prio: 0, icon: isPaySignup ? (paidFull ? '💰' : '💳') : '🎓', who: s, phone: s.parentPhone,
+        why: why,
+        actions: [s.parentPhone ? h('a', { key: 'z', className: 'btn btn-primary', href: zalo(s.parentPhone), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo phụ huynh') : null,
+          s.parentPhone ? h('a', { key: 't', className: 'btn btn-secondary', href: 'tel:' + phoneDigits(s.parentPhone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(s.parentPhone)) : null,
+          // THÊM 23/11/2026 (lần 2) — gọi/nhắn thấy số phụ huynh không có thật -> khoá tài khoản học thử (Gmail + SĐT vẫn bị giữ, không đăng ký học thử lại được)
+          h('button', { key: 'lk', type: 'button', className: 'btn btn-secondary', title: 'Số điện thoại / thông tin không có thật — khoá tài khoản học thử này',
+            onClick: function(){ if(!window.confirm('Khoá tài khoản học thử của ' + s.name + '? Em sẽ không đăng nhập được nữa (mở lại được ở tab Học sinh).')) return;
+              window.OPC.students.update(s.id, { status: 'inactive', lockedReason: 'Thông tin học thử không đúng', lockedAt: new Date().toISOString() })
+                .then(function(){ fire('Đã khoá tài khoản học thử của ' + s.name + '.'); }).catch(function(){ fire('Không khoá được — thử lại.', true); }); } }, '🔒 Số sai — khoá')] });
     });
     var GROUPS = [['sales', '🌱 Khách mới & đăng ký'], ['fee', '💳 Học phí'], ['help', '🆘 Cần thầy hỗ trợ'], ['learn', '⏰ Nhắc học'], ['parent', '👪 Gửi tiến độ cho phụ huynh']];
     var total = items.length, doneN = items.filter(function(it){ return done[it.id]; }).length;

@@ -100,7 +100,7 @@
       var day = days.filter(function(x){ return x.date === st.day; })[0];
       ov.innerHTML = '<div class="bk-box" role="dialog" aria-label="Đặt lịch tư vấn"><button class="bk-x" data-a="x" aria-label="Đóng">×</button>' +
         '<h3>📅 Đặt lịch tư vấn 15 phút với thầy</h3>' +
-        '<p class="s">' + esc((c && c.intro) || 'Thầy gọi điện cho phụ huynh/học sinh, cùng xem kết quả chẩn đoán và gợi ý lộ trình ôn thi phù hợp. Hoàn toàn miễn phí, không bắt buộc đăng ký học.') + '</p>' +
+        '<p class="s">' + esc((c && c.intro) || 'Thầy gọi điện cho phụ huynh/học sinh, cùng xem kết quả mini test và gợi ý lộ trình ôn thi phù hợp. Hoàn toàn miễn phí, không bắt buộc đăng ký học.') + '</p>' +
         '<div class="bk-f"><label>Người đặt lịch</label><div class="bk-roles"><button data-a="role" data-v="ph" class="' + (st.role === 'ph' ? 'on' : '') + '">👪 Phụ huynh</button><button data-a="role" data-v="hs" class="' + (st.role === 'hs' ? 'on' : '') + '">🎒 Học sinh</button></div></div>' +
         '<div class="bk-f"><label for="bk-name">Họ tên ' + (st.role === 'ph' ? 'phụ huynh' : 'học sinh') + ' *</label><input id="bk-name" value="' + esc(st.name != null ? st.name : (prefill.name && st.role === 'hs' ? prefill.name : '')) + '" maxlength="80" autocomplete="name"></div>' +
         (st.role === 'ph' ? '<div class="bk-f"><label for="bk-stu">Họ tên học sinh</label><input id="bk-stu" value="' + esc(st.stu != null ? st.stu : (prefill.name || '')) + '" maxlength="80"></div>' : '') +
@@ -141,7 +141,7 @@
           (sl ? 'Thầy sẽ gọi số <b>' + esc(phone) + '</b> lúc <b>' + sl[1] + ', ' + dd[2] + '/' + dd[1] + '</b>.' : 'Thầy sẽ gọi số <b>' + esc(phone) + '</b> trong thời gian sớm nhất.') +
           ' Nếu cần đổi giờ, phụ huynh nhắn Zalo cho thầy nhé.</p>' +
           ((cfg && cfg.zaloLink) ? '<a class="bk-go" style="display:block;text-align:center;text-decoration:none" href="' + esc(cfg.zaloLink) + '" target="_blank" rel="noopener">💬 Nhắn Zalo thầy</a>' : '') +
-          '<p class="s" style="margin-top:10px">Trong lúc chờ, em có thể làm <a href="#chan-doan" data-diag-open>bài chẩn đoán 5 phút</a> để buổi tư vấn đi thẳng vào điểm yếu.</p>';
+          '<p class="s" style="margin-top:10px">Trong lúc chờ, em có thể làm <a href="#chan-doan" data-diag-open>bài mini test 5 phút</a> để buổi tư vấn đi thẳng vào điểm yếu.</p>';
         ov.querySelector('[data-a="x"]').addEventListener('click', close);
         try{ if(L.logDiagEvent) L.logDiagEvent('book'); }catch(e2){}
       });
@@ -181,7 +181,7 @@
       return '<div class="kq-story"><div class="kq-jump"><span class="a">' + fmt2(x.before) + '</span><span>→</span><span class="b">' + fmt2(x.after) + '</span>' + (d > 0 ? '<span class="d">+' + fmt2(d) + '</span>' : '') + '</div>' +
         '<div class="who">' + esc(x.name) + '</div><div class="wh">' + esc([x.lop, x.period].filter(Boolean).join(' · ')) + '</div>' + (x.quote ? '<q>' + esc(x.quote) + '</q>' : '') + '</div>'; }).join('') + '</div>';
     if(g.enabled) html += '<div class="kq-guar"><div class="ic">🛡️</div><div style="flex:1;min-width:240px"><h3>' + esc(g.title || 'Cam kết tiến bộ') + '</h3><p>' + esc(g.text || '') + '</p>' + (g.terms ? '<small>' + esc(g.terms) + '</small>' : '') + '</div></div>';
-    html += '<div class="kq-ctas"><a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Chẩn đoán miễn phí 5 phút</a>' +
+    html += '<div class="kq-ctas"><a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Mini test đầu vào 5 phút</a>' +
       '<button type="button" class="btn kq-bk" data-book="home">📅 Đặt lịch tư vấn 15 phút</button>' +
       (offerOn ? '<span class="kq-offer">🔥 ' + esc(offer.text || 'Ưu đãi đăng ký sớm') + (offer.seats ? ' · còn ' + esc(offer.seats) + ' suất' : '') + (offer.until ? ' · đến ' + esc(offer.until.split('-').reverse().slice(0, 2).join('/')) : '') + '</span>' : '') + '</div></div>';
     sec.innerHTML = html; sec.hidden = false;
@@ -190,7 +190,7 @@
   function sticky(){
     if(doc.querySelector('.kq-sticky')) return;
     var b = doc.createElement('div'); b.className = 'kq-sticky on';
-    b.innerHTML = '<a class="p" href="#chan-doan" data-diag-open>⚡ Chẩn đoán miễn phí</a><button type="button" class="g" data-book="sticky">📅 Tư vấn 15 phút</button>';
+    b.innerHTML = '<a class="p" href="#chan-doan" data-diag-open>⚡ Mini test miễn phí</a><button type="button" class="g" data-book="sticky">📅 Tư vấn 15 phút</button>';
     doc.body.appendChild(b); doc.body.classList.add('kq-has-sticky');
   }
   doc.addEventListener('click', function(e){

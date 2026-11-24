@@ -20,7 +20,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="FaradayAI">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="description" content="FaradayAI.vn – luyện thi Vật lí 12 và ôn thi tốt nghiệp THPT theo lộ trình riêng cho từng học sinh: AI chẩn đoán lỗ hổng kiến thức, giao đề đúng chỗ yếu, giáo viên đồng hành, báo cáo phụ huynh mỗi tuần.">
+<meta name="description" content="FaradayAI.vn – luyện thi Vật lí 12 và ôn thi tốt nghiệp THPT theo lộ trình riêng cho từng học sinh: AI tìm đúng lỗ hổng kiến thức, giao đề đúng chỗ yếu, giáo viên đồng hành, báo cáo phụ huynh mỗi tuần.">
 <link rel="canonical" href="https://faradayai.vn/">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta property="og:type" content="website">
@@ -32,7 +32,7 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta property="og:description" content="Luyện thi Vật lí 12, ôn thi tốt nghiệp THPT theo lộ trình riêng: AI chẩn đoán lỗ hổng kiến thức, giáo viên đồng hành, báo cáo phụ huynh hằng tuần.">
+<meta property="og:description" content="Luyện thi Vật lí 12, ôn thi tốt nghiệp THPT theo lộ trình riêng: AI tìm đúng lỗ hổng kiến thức, giáo viên đồng hành, báo cáo phụ huynh hằng tuần.">
 <!-- THÊM 13/10/2026 — dữ liệu có cấu trúc (schema.org) giúp Google hiểu đây là tổ chức giáo dục + trang web có tên FaradayAI -->
 <script type="application/ld+json">
 {
@@ -532,6 +532,36 @@
   @media (max-width: 860px){ .pricing-grid.n1, .pricing-grid.n2, .pricing-grid.nm{ grid-template-columns: 1fr; max-width:none; } }
   .price-cta{ display:block; margin-top:22px; text-align:center; text-decoration:none; }
   .dk-plan-note{ font-size:0.8rem; color: var(--accent); font-weight:600; }
+  /* THÊM 23/11/2026 — khung tài khoản học thử sau khi đăng ký */
+  .dk-cred{ margin-top:12px; padding:12px 14px; border:1px dashed var(--accent); border-radius:10px; }
+  .dk-cred > div:not(.dk-cred-note):not(.dk-cred-actions):not(.dk-pay){ display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-size:0.95rem; }
+  .dk-cred b{ font-family: 'JetBrains Mono', ui-monospace, monospace; font-size:1.05rem; letter-spacing:0.5px; }
+  .dk-cred-note{ font-size:0.85rem; line-height:1.55; margin:8px 0 10px; }
+  .dk-cred-actions{ display:flex; flex-wrap:wrap; gap:8px; }
+  .dk-cred-actions .btn-ghost{ background:transparent; color:var(--on-navy); border:1px solid var(--navy-line); }
+  .dk-cred-actions .btn-ghost:hover{ border-color: var(--accent); }
+  /* THÊM 23/11/2026 (lần 2) — bước nhập mã xác nhận */
+  #dk-code{ width:100%; max-width:240px; font-size:1.6rem; letter-spacing:10px; text-align:center; padding:10px 12px; border-radius:10px;
+    border:1px solid var(--navy-line); background: rgba(255,255,255,0.04); color: var(--on-navy); font-family:'JetBrains Mono', ui-monospace, monospace; }
+  .dk-verify-links{ display:flex; flex-wrap:wrap; gap:16px; margin-top:14px; }
+  .dk-verify-links button{ background:none; border:0; padding:0; color: var(--accent); font: inherit; font-size:0.9rem; cursor:pointer; text-decoration:underline; }
+  .dk-verify-links button:disabled{ color: var(--on-navy-2); cursor:default; text-decoration:none; }
+  .dk-verify-tip{ font-size:0.82rem; margin-top:12px; line-height:1.55; }
+  /* THÊM 24/11/2026 — chọn hình thức + khối học phí */
+  .dk-mode{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+  @media (max-width:640px){ .dk-mode{ grid-template-columns:1fr; } }
+  .dk-mode-opt{ display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--navy-line); border-radius:12px; cursor:pointer; }
+  .dk-mode-opt:has(input:checked){ border-color: var(--accent); background: rgba(176,122,60,0.10); }
+  .dk-mode-opt input{ margin-top:4px; accent-color: var(--accent); }
+  .dk-mode-opt b{ display:block; font-size:0.95rem; }
+  .dk-mode-opt small{ display:block; font-size:0.8rem; line-height:1.5; color: var(--on-navy-2); margin-top:2px; }
+  .dk-pay{ margin:10px 0 12px; padding:12px; border-radius:10px; background: rgba(255,255,255,0.04); border:1px solid var(--navy-line); font-size:0.9rem; line-height:1.6; }
+  .dk-pay img{ display:block; width:100%; max-width:260px; margin:8px auto; border-radius:8px; background:#fff; }
+  .dk-pay b{ font-family: inherit; font-size: inherit; letter-spacing: 0; }
+  .dk-pay .amt{ font-size:1.15rem; font-weight:700; color: var(--accent); }
+  .dk-pay code{ font-family:'JetBrains Mono', ui-monospace, monospace; font-weight:700; font-size:1rem; }
+  .dk-pay .st{ margin-top:8px; font-weight:600; }
+  .dk-pay .st.ok{ color:#4caf7a; }
   .signup-field select{
     font-family:"Be Vietnam Pro",sans-serif; font-size:0.92rem; background: var(--navy); color: var(--on-navy);
     border:1px solid var(--navy-line); border-radius:8px; padding:9px 11px;
@@ -861,7 +891,7 @@
       <a href="#lo-trinh">Lộ trình tuần</a>
       <a href="/admin.html" class="cta" style="background:var(--navy-2); color:var(--on-navy); border:1px solid var(--navy-line);">Trang Giáo Viên / Admin ➔</a>
       <a class="btn-login" href="#luyen-thi-prepscholar">Đăng nhập</a>
-      <a class="cta" href="#lien-he">Đăng ký học</a>
+      <a class="cta" href="#lien-he">Học thử miễn phí</a>
     </div>
     <button type="button" class="theme-btn" data-theme-toggle aria-label="Đổi giao diện sáng/tối">🌙</button>
   </div>
@@ -871,13 +901,13 @@
   <div class="wrap">
     <div class="eyebrow">Mô hình luyện thi theo chuyên đề · Vật Lí 12</div>
     <h1>Luyện đúng chuyên đề đang yếu, được thiết kế giúp em đạt thành tích Xuất Sắc.</h1>
-    <p class="lede">FaradayAI chấm điểm đề chẩn đoán theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — phương pháp học tập cá nhân hoá dành cho mọi học sinh, trí tuệ nhân tạo (AI) tự điều chỉnh theo thời gian thực dựa trên điểm mạnh và điểm yếu của từng em.</p>
+    <p class="lede">FaradayAI chấm bài kiểm tra đầu vào theo từng chuyên đề, dựng lộ trình luyện tập riêng cho từng học sinh, và tự cập nhật mỗi tuần theo đúng kết quả mới — phương pháp học tập cá nhân hoá dành cho mọi học sinh, trí tuệ nhân tạo (AI) tự điều chỉnh theo thời gian thực dựa trên điểm mạnh và điểm yếu của từng em.</p>
     <div class="hero-ctas">
-      <!-- THÊM 15/10/2026 — Chẩn đoán 5 phút (diagnostic5.js); tự ẩn nếu thầy chưa bật bộ câu hỏi ở admin -->
-      <a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Chẩn đoán miễn phí 5 phút</a>
+      <!-- THÊM 15/10/2026 — Kiểm tra đầu vào – Mini test 5 phút (diagnostic5.js; SỬA 23/11/2026: đổi tên từ "Chẩn đoán" cho bớt giống đi khám bệnh); tự ẩn nếu thầy chưa bật bộ câu hỏi ở admin -->
+      <a class="btn btn-primary" href="#chan-doan" data-diag-open>⚡ Mini test đầu vào 5 phút</a>
       <a class="btn btn-ghost" href="#tu-van" data-book="hero">📅 Tư vấn miễn phí 15 phút</a>
       <a class="btn btn-ghost" href="#gioi-thieu">Tìm hiểu phương pháp ↓</a>
-      <a class="btn btn-ghost" href="#lien-he">Đăng ký học</a>
+      <a class="btn btn-ghost" href="#lien-he">Học thử miễn phí 14 ngày</a>
     </div>
     <figure class="wave-figure">
       <svg id="heroWave" viewBox="0 0 1032 140" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -933,7 +963,7 @@
         <ul>
           <li><b>Truy vết tận gốc bằng nano-point.</b> Bản đồ kiến thức được chia nhỏ đến từng nano-point — đơn vị kiến thức nhỏ nhất có thể kiểm tra độc lập — liên kết với nhau bằng quan hệ tiên quyết và “gốc lỗi”.</li>
           <li><b>Lấp lỗ hổng thông minh.</b> Khi học sinh làm sai, hệ thống không bắt làm lại một cách máy móc mà lần ngược về đúng phần kiến thức gốc bị hổng để củng cố.</li>
-          <li><b>Tối ưu chu trình luyện tập.</b> Tự động chấm bài chẩn đoán, chọn câu hỏi đánh trúng điểm yếu và nhắc ôn lại câu sai theo nhịp giãn cách khoa học.</li>
+          <li><b>Tối ưu chu trình luyện tập.</b> Tự động chấm bài kiểm tra đầu vào, chọn câu hỏi đánh trúng điểm yếu và nhắc ôn lại câu sai theo nhịp giãn cách khoa học.</li>
           <li><b>Đo lường chuẩn xác.</b> Mỗi câu hỏi trong ngân hàng đề được gắn nano-point và phân loại theo 4 mức độ nhận thức M1–M4 theo chuẩn của Bộ GD&amp;ĐT.</li>
           <li><b>Minh bạch tiến độ.</b> Lộ trình được cập nhật tự động; phụ huynh nhận báo cáo chi tiết mỗi tuần.</li>
         </ul>
@@ -955,7 +985,7 @@
         <p>Michael Faraday là người học việc đóng sách, tự học khoa học từ chính những cuốn sách đi qua tay mình và trở thành một trong những nhà vật lí vĩ đại nhất. Tinh thần tự học bền bỉ ấy là điều FaradayAI muốn nuôi dưỡng ở mỗi học sinh. Biểu tượng lồng Faraday trong logo là một không gian được che chắn khỏi nhiễu, giúp các em tập trung học đúng thứ mình cần.</p>
       </div>
       <div class="about-values">
-        <div><b>Chính xác</b><span>Chẩn đoán đến từng nano-point, luyện đúng chỗ hổng, không ôn lại phần đã vững.</span></div>
+        <div><b>Chính xác</b><span>Tìm đúng chỗ hổng đến từng nano-point, luyện đúng chỗ cần củng cố, không ôn lại phần đã vững.</span></div>
         <div><b>Bền bỉ</b><span>Ôn giãn cách và nhiệm vụ mỗi ngày để hình thành thói quen tự học đều đặn.</span></div>
         <div><b>Đồng hành</b><span>Thầy theo sát từng em, phụ huynh nắm được tiến bộ của con qua báo cáo mỗi tuần.</span></div>
       </div>
@@ -967,11 +997,11 @@
   <div class="wrap">
     <div class="kicker">Cách hoạt động</div>
     <h2 class="section-title">Bốn bước, lặp lại đều đặn mỗi tuần</h2>
-    <p class="section-sub">Vòng lặp này chạy tự động sau khi có đề chẩn đoán đầu vào — thầy cô chỉ cần duyệt lại trước khi gửi.</p>
+    <p class="section-sub">Vòng lặp này chạy tự động sau khi có bài kiểm tra đầu vào — thầy cô chỉ cần duyệt lại trước khi gửi.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">01</div>
-        <h3>Kiểm tra chẩn đoán</h3>
+        <h3>Kiểm tra đầu vào</h3>
         <p>Đề 30–40 câu phủ đủ 4 chủ đề, chấm riêng từng chuyên đề thay vì chỉ ra một điểm số chung.</p>
       </div>
       <div class="step">
@@ -998,7 +1028,7 @@
     <div class="demo-label"><span class="dot"></span>Phương pháp thích ứng chuẩn PrepScholar · Trải nghiệm học &amp; thi trực tuyến</div>
     <div class="kicker">Phòng Luyện Thi &amp; Kiểm Tra Thích Ứng</div>
     <h2 class="section-title">Hệ thống học thích ứng chuẩn PrepScholar</h2>
-    <p class="section-sub">Tập trung tối đa thời gian vào điểm yếu nhất. Học sinh làm bài trực tiếp trên hệ thống với 3 chế độ: <b>Luyện tập trọng tâm (Focused Drill)</b>, <b>Kiểm tra chẩn đoán / Thi thử chuẩn Bộ GD</b>, và <b>Sổ tay câu sai (Lặp lại giãn cách)</b>. Điểm số, độ thành thạo và lộ trình học tự động cập nhật ngay sau khi nộp bài.</p>
+    <p class="section-sub">Tập trung tối đa thời gian vào điểm yếu nhất. Học sinh làm bài trực tiếp trên hệ thống với 3 chế độ: <b>Luyện tập trọng tâm (Focused Drill)</b>, <b>Kiểm tra đầu vào / Thi thử chuẩn Bộ GD</b>, và <b>Sổ tay câu sai (Lặp lại giãn cách)</b>. Điểm số, độ thành thạo và lộ trình học tự động cập nhật ngay sau khi nộp bài.</p>
     <div id="prepscholar-app-root"></div>
   </div>
 </section>
@@ -1027,7 +1057,7 @@
 <section id="ban-do-nang-luc">
   <div class="wrap">
     <div class="demo-label"><span class="dot"></span>Minh hoạ trên một học sinh mẫu — số liệu giả định</div>
-    <div class="kicker">Sau bài kiểm tra chẩn đoán</div>
+    <div class="kicker">Sau bài kiểm tra đầu vào</div>
     <h2 class="section-title">Bản đồ năng lực theo chuyên đề</h2>
     <p class="section-sub">Xếp theo mức độ vững tăng dần, để chuyên đề cần ưu tiên luôn nằm trên cùng.</p>
     <div class="card viz-root">
@@ -1178,7 +1208,7 @@
         </div>
         <div class="bubble">
           <div class="b-title">Báo cáo tuần 6 — em Học Sinh A</div>
-          <p>Điểm dự đoán hiện tại: <span class="b-score">7.6/10</span> (tăng 1.8 điểm so với lần chẩn đoán đầu tiên).</p>
+          <p>Điểm dự đoán hiện tại: <span class="b-score">7.6/10</span> (tăng 1.8 điểm so với lần kiểm tra đầu tiên).</p>
           <ul>
             <li>Chuyên đề cần chú ý: <strong>Vật lí hạt nhân</strong> (45% — ưu tiên gấp)</li>
             <li>Chuyên đề tiến bộ tốt: <strong>Khí lí tưởng</strong> (61%, tăng 20 điểm %)</li>
@@ -1201,7 +1231,7 @@
         <h3>Luyện đề</h3>
         <div class="price-value">300.000đ<span class="price-unit">/tháng</span></div>
         <ul class="price-list">
-          <li>Đề chẩn đoán đầu vào theo 4 chuyên đề</li>
+          <li>Bài kiểm tra đầu vào theo 4 chuyên đề</li>
           <li>Bản đồ năng lực cập nhật hàng tuần</li>
           <li>Lộ trình luyện tập tự động theo kết quả</li>
           <li>Báo cáo phụ huynh qua Zalo mỗi tuần</li>
@@ -1232,14 +1262,22 @@
 
 <section class="closing" id="lien-he">
   <div class="wrap">
-    <div class="kicker" style="color:var(--accent-strong);">Tuyển sinh</div>
-    <h2 class="section-title">Đăng ký học cùng FaradayAI Luyện Thi Vật Lí</h2>
+    <div class="kicker" style="color:var(--accent-strong);">Học thử miễn phí 14 ngày · hoặc đăng ký khoá học</div>
+    <h2 class="section-title">Đăng ký học cùng FaradayAI</h2>
     <p class="section-sub">Mô hình luyện thi theo chuyên đề, dựng trên ngân hàng đề Vật Lí 12 đầy đủ — bản đồ năng lực và lộ trình tự động cập nhật hằng tuần theo đúng kết quả học tập của từng em.</p>
     <div class="card">
       <div id="dkFormWrap">
-        <h3 style="font-family:'Be Vietnam Pro',sans-serif; font-size:1.05rem; margin-bottom:8px;">Đăng ký học</h3>
-        <p style="font-size:0.92rem; line-height:1.6; margin-bottom:18px;">Điền thông tin bên dưới để đăng ký — chưa cần tự đặt mật khẩu. Thầy sẽ tạo tài khoản và gửi tên đăng nhập/mật khẩu qua Zalo phụ huynh.</p>
+        <h3 id="dkFormTitle" style="font-family:'Be Vietnam Pro',sans-serif; font-size:1.05rem; margin-bottom:8px;">Đăng ký học thử miễn phí 14 ngày</h3>
+        <!-- SỬA 23/11/2026 — tự tạo tài khoản ngay (api/student-login.js › action "signup"), gửi tên đăng nhập + mật khẩu vào Gmail -->
+        <p id="dkFormIntro" style="font-size:0.92rem; line-height:1.6; margin-bottom:18px;">Điền thông tin bên dưới, hệ thống gửi <b>mã xác nhận 6 số</b> vào Gmail của em. Nhập đúng mã là có tài khoản ngay. Học thử đầy đủ 14 ngày, không cần thanh toán; <b>mỗi Gmail và mỗi số điện thoại chỉ học thử 1 lần</b>. Gần hết 14 ngày, thầy sẽ gọi điện cho phụ huynh để trao đổi kết quả của em.</p>
         <form class="signup-form" id="dkForm" novalidate>
+          <!-- THÊM 24/11/2026 — 2 lựa chọn: học thử 14 ngày | đăng ký khoá học ngay (thanh toán QR, tự kích hoạt) -->
+          <div class="dk-mode" role="radiogroup" aria-label="Hình thức đăng ký">
+            <label class="dk-mode-opt"><input type="radio" name="dk-mode" value="trial" checked>
+              <span><b>🎁 Học thử miễn phí 14 ngày</b><small>Chưa cần thanh toán. Gần hết hạn thầy gọi phụ huynh trao đổi kết quả.</small></span></label>
+            <label class="dk-mode-opt"><input type="radio" name="dk-mode" value="pay">
+              <span><b>💳 Đăng ký khoá học ngay</b><small>Chọn gói, quét mã QR chuyển khoản — hệ thống tự kích hoạt khoá học.</small></span></label>
+          </div>
           <div class="signup-grid">
             <div class="signup-field full">
               <label for="dk-name">Họ tên học sinh</label>
@@ -1249,24 +1287,31 @@
             <div class="signup-field full">
               <label for="dk-gmail">Địa chỉ Gmail</label>
               <input type="email" id="dk-gmail" name="dk-gmail" placeholder="tenban@gmail.com" autocomplete="email" inputmode="email">
-              <div class="signup-hint">Dùng làm tên đăng nhập sau này — bắt buộc là địa chỉ @gmail.com.</div>
+              <div class="signup-hint">Dùng Gmail em đang mở được trên máy — hệ thống gửi mã xác nhận vào đây.</div>
               <div class="signup-error" id="dk-gmail-err"></div>
             </div>
             <div class="signup-field">
               <label for="dk-phone">Số điện thoại học sinh</label>
+              <!-- SỬA 23/11/2026 (lần 3) — em chưa có số riêng thì nhập số bố/mẹ -->
               <input type="tel" id="dk-phone" name="dk-phone" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
+              <div class="signup-hint">Chưa có số riêng thì nhập số của bố hoặc mẹ.</div>
               <div class="signup-error" id="dk-phone-err"></div>
             </div>
             <div class="signup-field">
               <label for="dk-parent-zalo">SĐT Zalo phụ huynh</label>
               <input type="tel" id="dk-parent-zalo" name="dk-parent-zalo" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
-              <div class="signup-hint">Để gửi báo cáo tiến độ hằng tuần và thông tin đăng nhập.</div>
+              <div class="signup-hint">Để thầy gửi báo cáo tiến độ và trao đổi kết quả học thử với phụ huynh.</div>
               <div class="signup-error" id="dk-parent-zalo-err"></div>
             </div>
+            <div class="signup-field full">
+              <label for="dk-khoi">Học sinh lớp</label>
+              <select id="dk-khoi" name="dk-khoi"><option value="12">Lớp 12</option><option value="11">Lớp 11</option><option value="10">Lớp 10</option></select>
+            </div>
             <div class="signup-field full" id="dk-plan-wrap" style="display:none;">
-              <label for="dk-plan">Gói đăng ký</label>
+              <label for="dk-plan" id="dk-plan-label">Gói quan tâm sau học thử (không bắt buộc)</label>
               <select id="dk-plan" name="dk-plan"><option value="">Chưa chọn — nhờ thầy tư vấn</option></select>
               <div class="dk-plan-note" id="dk-plan-note"></div>
+              <div class="signup-error" id="dk-plan-err"></div>
             </div>
             <div class="signup-field full">
               <label for="dk-referral">Mã giới thiệu (nếu có)</label>
@@ -1278,18 +1323,45 @@
             <label for="dk-website">Website (để trống)</label>
             <input type="text" id="dk-website" name="dk-website" tabindex="-1" autocomplete="off">
           </div>
-          <div class="signup-privacy">Thông tin đăng ký được gửi thẳng vào hệ thống của giáo viên để xét duyệt — chưa tạo tài khoản ngay.</div>
+          <div class="signup-privacy">Thông tin chỉ dùng để tạo tài khoản và để thầy liên hệ phụ huynh — không chia sẻ cho bên khác.</div>
           <div class="signup-actions">
-            <button type="submit" class="btn btn-primary" id="dkSubmitBtn">Gửi đăng ký</button>
+            <button type="submit" class="btn btn-primary" id="dkSubmitBtn">Gửi mã xác nhận vào Gmail</button>
             <span class="signup-form-error" id="dkFormErr" role="alert"></span>
           </div>
         </form>
       </div>
+      <!-- THÊM 23/11/2026 (lần 2) — bước 2: nhập mã 6 số gửi vào Gmail -->
+      <div id="dkVerify" class="dk-verify" style="display:none;">
+        <h3 style="font-family:'Be Vietnam Pro',sans-serif; font-size:1.05rem; margin-bottom:8px;">Nhập mã xác nhận</h3>
+        <p style="font-size:0.92rem; line-height:1.6; margin-bottom:12px;" id="dkVerifyMsg"></p>
+        <input type="text" id="dk-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" aria-label="Mã xác nhận 6 số">
+        <div class="signup-actions" style="margin-top:12px;">
+          <button type="button" class="btn btn-primary" id="dkVerifyBtn">Xác nhận và nhận tài khoản</button>
+          <span class="signup-form-error" id="dkVerifyErr" role="alert"></span>
+        </div>
+        <div class="dk-verify-links">
+          <button type="button" id="dkResend" disabled>Gửi lại mã</button>
+          <button type="button" id="dkEditInfo">← Sửa Gmail / thông tin</button>
+        </div>
+        <p class="dk-verify-tip">Không thấy thư? Xem cả mục <b>Quảng cáo</b> hoặc <b>Spam</b> trong Gmail. Thư gửi từ FaradayAI Luyện Thi Vật Lí.</p>
+      </div>
       <div class="signup-success" id="dkSuccess" style="display:none;" role="status">
         <div class="ss-icon">✓</div>
         <div>
-          <h3>Đã gửi đăng ký thành công</h3>
-          <p>Thầy sẽ liên hệ lại qua Zalo phụ huynh trong ít ngày để xác nhận và cấp tài khoản.</p>
+          <h3 id="dkSuccessTitle">Đã gửi đăng ký thành công</h3>
+          <p id="dkSuccessMsg">Thầy sẽ liên hệ lại qua Zalo phụ huynh trong ít ngày để xác nhận và cấp tài khoản.</p>
+          <!-- THÊM 23/11/2026 — tài khoản học thử hiện ngay trên màn hình (kèm gửi Gmail) -->
+          <div id="dkCred" class="dk-cred" style="display:none;">
+            <div><span>Tên đăng nhập</span><b id="dkCredUser"></b></div>
+            <div><span>Mật khẩu</span><b id="dkCredPass"></b></div>
+            <div class="dk-cred-note" id="dkCredNote"></div>
+            <!-- THÊM 24/11/2026 — học phí: mã QR + tự báo khi hệ thống nhận tiền -->
+            <div id="dkPay" class="dk-pay" style="display:none;"></div>
+            <div class="dk-cred-actions">
+              <button type="button" class="btn btn-primary" id="dkGoLearn">🚀 Vào học ngay</button>
+              <button type="button" class="btn btn-ghost" id="dkShareCred">📤 Gửi cho bố mẹ</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1487,7 +1559,7 @@
     }
     function isValidVNPhone(v){
       var n = normPhone(v);
-      return /^0\d{9}$/.test(n) || /^\+84\d{9}$/.test(n);
+      return /^0[35789]\d{8}$/.test(n) || /^\+84[35789]\d{8}$/.test(n);   // SỬA 23/11/2026 — chỉ nhận đầu số di động VN
     }
     function setError(id, msg){
       var el = document.getElementById(id + '-err');
@@ -1507,10 +1579,12 @@
         .replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
 
       if(!name){ setError('dk-name', 'Vui lòng nhập họ tên.'); ok = false; }
+      else if(name.length < 4 || name.indexOf(' ') < 0){ setError('dk-name', 'Nhập đầy đủ họ và tên, ví dụ: Nguyễn Văn An.'); ok = false; }
       else setError('dk-name', '');
 
       if(!gmail){ setError('dk-gmail', 'Vui lòng nhập địa chỉ Gmail.'); ok = false; }
       else if(!gmailRe.test(gmail)){ setError('dk-gmail', 'Chỉ nhận địa chỉ @gmail.com.'); ok = false; }
+      else if(gmail.split('@')[0].split('+')[0].replace(/\./g, '').length < 6){ setError('dk-gmail', 'Gmail chưa đúng — phần trước @ có ít nhất 6 ký tự.'); ok = false; }
       else setError('dk-gmail', '');
 
       if(!phone){ setError('dk-phone', 'Vui lòng nhập số điện thoại.'); ok = false; }
@@ -1523,7 +1597,11 @@
 
       var psel = document.getElementById('dk-plan'), popt = psel && psel.selectedIndex >= 0 ? psel.options[psel.selectedIndex] : null;
       var plan = (psel && psel.value) || '', planName = (plan && popt) ? (popt.getAttribute('data-name') || '') : '';
-      return ok ? { name: name, gmail: gmail, phone: phone, zalo: zalo, referral: referral, plan: plan, planName: planName } : null;
+      var ksel = document.getElementById('dk-khoi'), khoi = ksel ? Number(ksel.value) || 12 : 12;   // THÊM 23/11/2026
+      var mode = currentMode();   // THÊM 24/11/2026
+      setError('dk-plan', '');
+      if(mode === 'pay' && !plan){ setError('dk-plan', 'Chọn gói khoá học muốn đăng ký.'); ok = false; }
+      return ok ? { name: name, gmail: gmail, phone: phone, zalo: zalo, referral: referral, plan: plan, planName: planName, khoi: khoi, mode: mode } : null;
     }
 
     // Gửi mail dự phòng — CHỈ dùng khi không ghi được thẳng vào Firestore
@@ -1548,11 +1626,175 @@
       document.body.removeChild(mailLink);
     }
 
+    // THÊM 24/11/2026 — chọn hình thức đăng ký: đổi tiêu đề, giới thiệu, ô chọn gói (bắt buộc khi đăng ký khoá học)
+    var INTRO_TRIAL = (document.getElementById('dkFormIntro') || {}).innerHTML || '';
+    var INTRO_PAY = 'Điền thông tin và chọn gói, hệ thống gửi <b>mã xác nhận 6 số</b> vào Gmail của em. Nhập đúng mã là có tài khoản và <b>mã QR học phí</b> (đã điền sẵn số tiền). Phụ huynh chuyển khoản xong, hệ thống <b>tự kích hoạt khoá học</b> trong vài phút — không cần chờ thầy. Trong lúc chờ, em vẫn vào học được.';
+    function currentMode(){ var r = document.querySelector('input[name="dk-mode"]:checked'); return r && r.value === 'pay' ? 'pay' : 'trial'; }
+    function applyMode(){
+      var pay = currentMode() === 'pay';
+      var t = document.getElementById('dkFormTitle'), it = document.getElementById('dkFormIntro'), lb = document.getElementById('dk-plan-label'), wrap = document.getElementById('dk-plan-wrap');
+      var sel = document.getElementById('dk-plan'), btn = document.getElementById('dkSubmitBtn');
+      if(t) t.textContent = pay ? 'Đăng ký khoá học FaradayAI' : 'Đăng ký học thử miễn phí 14 ngày';
+      if(it) it.innerHTML = pay ? INTRO_PAY : INTRO_TRIAL;
+      if(lb) lb.textContent = pay ? 'Chọn gói khoá học (bắt buộc)' : 'Gói quan tâm sau học thử (không bắt buộc)';
+      if(wrap && pay && sel && sel.options.length > 1) wrap.style.display = '';
+      if(sel && sel.options[0]) sel.options[0].textContent = pay ? '— Chọn gói —' : 'Chưa chọn — nhờ thầy tư vấn';
+      if(btn && !btn.disabled) btn.textContent = 'Gửi mã xác nhận vào Gmail';
+      setError('dk-plan', '');
+    }
+    function setMode(m){ var r = document.querySelector('input[name="dk-mode"][value="' + (m === 'pay' ? 'pay' : 'trial') + '"]'); if(r){ r.checked = true; applyMode(); } }
+    window.OPC_setSignupMode = setMode;
+    window.OPC_signupMode = currentMode; window.OPC_refreshSignupMode = applyMode;   // bảng giá: bấm "Đăng ký gói này" -> chọn sẵn "Đăng ký khoá học ngay"
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="dk-mode"]'), function(r){ r.addEventListener('change', applyMode); });
+    try{ var qm = new URLSearchParams(location.search); if(qm.get('dangky') === 'khoahoc' || qm.get('goi')) setMode('pay'); }catch(e){}
+
+    // THÊM 24/11/2026 — khối học phí sau khi tạo tài khoản + hỏi server 10 giây/lần đến khi nhận được tiền (tối đa 20 phút)
+    function vndText(n){ return Math.round(Number(n) || 0).toLocaleString('vi-VN') + 'đ'; }
+    function escT(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function renderPayment(r){
+      var box = document.getElementById('dkPay'), p = r.payment;
+      if(!box || !p) return;
+      box.style.display = '';
+      if(!p.auto){
+        box.innerHTML = '<div><b>Học phí ' + escT(p.planName) + ':</b> <span class="amt">' + vndText(p.amount) + '</span></div>' +
+          '<div>Thầy sẽ liên hệ phụ huynh qua Zalo để hướng dẫn thanh toán.' + (p.bankInfo ? '<br>Thông tin chuyển khoản: ' + escT(p.bankInfo) : '') + '</div>';
+        return;
+      }
+      box.innerHTML = '<div><b>Học phí ' + escT(p.planName) + '</b> (trọn khoá đến kỳ thi ' + escT(vnDate(p.until)) + ')</div>' +
+        '<div class="amt">' + vndText(p.amount) + '</div>' +
+        '<img src="' + escT(p.qrUrl) + '" alt="Mã QR chuyển khoản học phí" loading="lazy">' +
+        '<div>' + escT(p.bank) + ' · ' + escT(p.acc) + (p.accName ? ' · ' + escT(p.accName) : '') + '</div>' +
+        '<div>Nội dung chuyển khoản: <code>' + escT(p.content) + '</code> (giữ nguyên)</div>' +
+        '<div class="st" id="dkPayStatus">⏳ Đang chờ chuyển khoản — chuyển xong, hệ thống tự kích hoạt khoá học trong vài phút.</div>';
+      var tries = 0;
+      var timer = setInterval(function(){
+        tries++;
+        if(tries > 120){ clearInterval(timer); return; }
+        signupApi({ action: 'signup_paystatus', studentId: r.studentId, payCode: p.content }).then(function(sr){
+          var b = sr.body || {};
+          if(sr.status === 200 && b.paid){
+            clearInterval(timer);
+            var st = document.getElementById('dkPayStatus');
+            if(st){ st.className = 'st ok'; st.textContent = '✅ Đã nhận học phí — khoá học đã kích hoạt đến ' + vnDate(b.paidUntil) + '. Cảm ơn phụ huynh!'; }
+            var img = box.querySelector('img'); if(img) img.style.display = 'none';
+          }
+        });
+      }, 10000);
+    }
+
     function showSuccess(){
       var wrap = document.getElementById('dkFormWrap');
       var success = document.getElementById('dkSuccess');
       if(wrap) wrap.style.display = 'none';
       if(success) success.style.display = 'flex';
+    }
+
+    // THÊM 23/11/2026 — HỌC THỬ MIỄN PHÍ: server tự tạo tài khoản (api/student-login.js › action "signup") + gửi Gmail.
+    // Server chưa cấu hình / lỗi mạng -> quay về cách cũ (ghi registrations chờ thầy duyệt) để không bao giờ mất khách.
+    function signupApi(payload){
+      return fetch('/api/student-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { status: r.status, body: j || {} }; }); })
+        .catch(function(){ return { status: 0, body: {} }; });
+    }
+    // SỬA 23/11/2026 (lần 2) — 2 bước: gửi mã vào Gmail -> nhập đúng mã mới tạo tài khoản. Mỗi Gmail / SĐT chỉ học thử 1 lần (server kiểm tra).
+    function freeSignupStart(data){
+      return signupApi({ action: 'signup_start', name: data.name, gmail: data.gmail, phone: data.phone, parentZalo: data.zalo,
+        referralCode: data.referral, plan: data.plan, planName: data.planName, khoi: data.khoi, mode: data.mode,
+        website: (document.getElementById('dk-website') || {}).value || '' });
+    }
+    var verifyState = { pendingId: '', data: null, timer: null };
+    function showStep(step){
+      var form = document.getElementById('dkForm'), intro = document.querySelectorAll('#dkFormWrap > h3, #dkFormWrap > p'), v = document.getElementById('dkVerify');
+      if(form) form.style.display = step === 'form' ? '' : 'none';
+      Array.prototype.forEach.call(intro, function(el){ el.style.display = step === 'form' ? '' : 'none'; });
+      if(v) v.style.display = step === 'verify' ? '' : 'none';
+    }
+    function startResendCountdown(sec){
+      var b = document.getElementById('dkResend'); if(!b) return;
+      clearInterval(verifyState.timer);
+      var left = sec || 60;
+      b.disabled = true; b.textContent = 'Gửi lại mã (' + left + 's)';
+      verifyState.timer = setInterval(function(){
+        left--;
+        if(left <= 0){ clearInterval(verifyState.timer); b.disabled = false; b.textContent = 'Gửi lại mã'; }
+        else b.textContent = 'Gửi lại mã (' + left + 's)';
+      }, 1000);
+    }
+    function openVerify(r, data){
+      verifyState.pendingId = r.pendingId; verifyState.data = data;
+      var m = document.getElementById('dkVerifyMsg');
+      if(m) m.innerHTML = 'Thầy vừa gửi mã 6 số vào <b>' + data.gmail.replace(/[<>&"]/g, '') + '</b>. Em mở Gmail, chép mã vào ô dưới đây (mã có hiệu lực ' + (r.ttlMin || 15) + ' phút).';
+      var c = document.getElementById('dk-code'); if(c){ c.value = ''; }
+      var e = document.getElementById('dkVerifyErr'); if(e) e.textContent = '';
+      showStep('verify');
+      startResendCountdown(r.resendAfterSec || 60);
+      if(c) setTimeout(function(){ try{ c.focus(); }catch(x){} }, 50);
+    }
+    (function wireVerify(){
+      var vb = document.getElementById('dkVerifyBtn'), rb = document.getElementById('dkResend'), eb = document.getElementById('dkEditInfo'), c = document.getElementById('dk-code');
+      var err = function(t){ var e = document.getElementById('dkVerifyErr'); if(e) e.textContent = t || ''; };
+      var back = function(msg){ clearInterval(verifyState.timer); showStep('form'); var fe = document.getElementById('dkFormErr'); if(fe) fe.textContent = msg || ''; };
+      if(c) c.addEventListener('input', function(){ c.value = c.value.replace(/\D/g, '').slice(0, 6); if(c.value.length === 6 && vb) vb.click(); });
+      if(eb) eb.onclick = function(){ back(''); };
+      if(rb) rb.onclick = function(){
+        rb.disabled = true; err('');
+        signupApi({ action: 'signup_resend', pendingId: verifyState.pendingId }).then(function(sr){
+          var b = sr.body || {};
+          if(sr.status === 200 && b.ok){ err(''); startResendCountdown(b.resendAfterSec || 60); var m = document.getElementById('dkVerifyMsg'); if(m) m.innerHTML += ' <b>Đã gửi lại mã mới.</b>'; return; }
+          if(b.restart){ back(b.error); return; }
+          err(b.error || 'Chưa gửi lại được — thử lại sau ít phút.');
+          if(b.waitSec) startResendCountdown(b.waitSec); else rb.disabled = false;
+        });
+      };
+      if(vb) vb.onclick = function(){
+        var code = (c && c.value || '').replace(/\D/g, '');
+        if(code.length !== 6){ err('Mã gồm đúng 6 chữ số.'); return; }
+        vb.disabled = true; vb.textContent = 'Đang kiểm tra…'; err('');
+        signupApi({ action: 'signup_verify', pendingId: verifyState.pendingId, code: code }).then(function(sr){
+          var b = sr.body || {};
+          if(sr.status === 200 && b.ok && b.username){ clearInterval(verifyState.timer); showStep('none'); showTrialAccount(b, verifyState.data); return; }
+          if(b.restart){ back(b.error); return; }
+          err(b.error || 'Lỗi kết nối — em bấm Xác nhận lần nữa.');
+        }).finally(function(){ vb.disabled = false; vb.textContent = 'Xác nhận và nhận tài khoản'; });
+      };
+    })();
+    function vnDate(ymd){ var p = String(ymd || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ymd; }
+    function credText(r){
+      var p = r.mode === 'pay' && r.payment;   // THÊM 24/11/2026 — kèm thông tin học phí để gửi bố mẹ
+      return (p ? 'Tài khoản FaradayAI' : 'Tài khoản học thử FaradayAI (miễn phí ' + (r.trialDays || 14) + ' ngày)') + '\nTên đăng nhập: ' + r.username + '\nMật khẩu: ' + r.password +
+        (p ? '' : '\nHọc thử đến hết ngày ' + vnDate(r.trialEnd)) + '\nVào học: https://faradayai.vn → bấm "Đăng nhập"' +
+        (p && p.auto ? '\n\nHọc phí ' + p.planName + ': ' + vndText(p.amount) + '\nChuyển khoản ' + p.bank + ' ' + p.acc + (p.accName ? ' — ' + p.accName : '') + '\nNội dung: ' + p.content + ' (giữ nguyên để hệ thống tự kích hoạt)\nMã QR: ' + p.qrUrl : '');
+    }
+    function showTrialAccount(r, data){
+      var set = function(id, t){ var el = document.getElementById(id); if(el) el.textContent = t; };
+      var isPay = r.mode === 'pay' && r.payment;   // THÊM 24/11/2026
+      set('dkSuccessTitle', isPay ? ('Tài khoản của ' + data.name + ' đã sẵn sàng') : ('Tài khoản học thử của ' + data.name + ' đã sẵn sàng'));
+      set('dkSuccessMsg', isPay ? ('Em vào học được ngay. Phụ huynh quét mã QR bên dưới để đóng học phí ' + r.payment.planName + ' — hệ thống tự kích hoạt khoá học, thông tin này cũng đã gửi vào Gmail của em.')
+        : ('Em được học thử đầy đủ ' + (r.trialDays || 14) + ' ngày, đến hết ngày ' + vnDate(r.trialEnd) + '. Gần hết hạn, thầy sẽ gọi điện cho phụ huynh để trao đổi kết quả của em.'));
+      if(isPay) renderPayment(r);
+      set('dkCredUser', r.username); set('dkCredPass', r.password);
+      set('dkCredNote', (r.emailSent ? '📧 Thầy đã gửi thông tin này vào ' + data.gmail + ' (xem cả mục Quảng cáo/Spam). ' : '📌 Em chụp màn hình hoặc bấm "Gửi cho bố mẹ" để lưu lại thông tin đăng nhập. ') +
+        (r.referrerFound && r.discountVnd > 0 ? 'Mã giới thiệu hợp lệ: được giảm ' + Number(r.discountVnd).toLocaleString('vi-VN') + 'đ khi đăng ký gói. ' : '') +
+        (r.codeNotFound ? 'Mã giới thiệu chưa khớp bạn nào — thầy sẽ kiểm tra lại giúp em. ' : ''));
+      var box = document.getElementById('dkCred'); if(box) box.style.display = '';
+      var go = document.getElementById('dkGoLearn');
+      if(go) go.onclick = function(){
+        go.disabled = true; go.textContent = 'Đang vào…';
+        var live = window.OPC_LIVE;
+        var p = (live && live.loginStudent) ? live.loginStudent(r.username, r.password) : Promise.resolve({ ok: false });
+        p.then(function(res){
+          if(res && res.ok){ location.hash = '#luyen-thi-prepscholar'; location.reload(); return; }
+          location.hash = '#luyen-thi-prepscholar';
+          go.disabled = false; go.textContent = '🚀 Vào học ngay';
+        }).catch(function(){ go.disabled = false; go.textContent = '🚀 Vào học ngay'; location.hash = '#luyen-thi-prepscholar'; });
+      };
+      var sh = document.getElementById('dkShareCred');
+      if(sh) sh.onclick = function(){
+        var t = credText(r);
+        if(navigator.share){ navigator.share({ title: 'Tài khoản học thử FaradayAI', text: t }).catch(function(){}); return; }
+        if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ sh.textContent = '✓ Đã chép — dán vào Zalo cho bố mẹ'; }); }
+      };
+      showSuccess();
     }
 
     // Chờ tối đa ~4s cho module opc-live-data.js nạp xong (đang defer) rồi
@@ -1597,25 +1839,41 @@
       var btn = document.getElementById('dkSubmitBtn');
       if(btn){ btn.disabled = true; btn.textContent = 'Đang gửi…'; }
 
-      waitForLive().then(function(live){
-        if(live && live.submitRegistration){
-          return live.submitRegistration({ name: data.name, gmail: data.gmail, phone: data.phone, parentZalo: data.zalo, referralCode: data.referral, plan: data.plan, planName: data.planName });
+      // SỬA 23/11/2026 — ưu tiên tạo tài khoản học thử ngay; chỉ khi server chưa sẵn sàng mới gửi đăng ký chờ duyệt như cũ.
+      var legacy = function(){
+        return waitForLive().then(function(live){
+          if(live && live.submitRegistration){
+            return live.submitRegistration({ name: data.name, gmail: data.gmail, phone: data.phone, parentZalo: data.zalo, referralCode: data.referral, plan: data.plan, planName: data.planName });
+          }
+          return { ok: false, error: 'opc-live-unavailable' };
+        });
+      };
+      freeSignupStart(data).then(function(sr){
+        var b = sr.body || {};
+        if(sr.status === 200 && b.ok && b.pendingId){ openVerify(b, data); return { done: true }; }
+        if(sr.status === 200 && b.ok && b.bot){ showSuccess(); return { done: true }; }
+        if(sr.status === 400 && b.field){
+          var fid = { name: 'dk-name', gmail: 'dk-gmail', phone: 'dk-phone', parentZalo: 'dk-parent-zalo', plan: 'dk-plan' }[b.field];
+          if(fid) setError(fid, b.error);
+          return { done: true, msg: 'Vui lòng kiểm tra lại mục báo đỏ ở trên.' };
         }
-        return { ok: false, error: 'opc-live-unavailable' };
+        if(sr.status === 400 || sr.status === 409 || sr.status === 429 || sr.status === 502){ return { done: true, msg: b.error || 'Chưa đăng ký được — kiểm tra lại thông tin.' }; }
+        return legacy();   // server chưa cấu hình Gmail / lỗi -> đăng ký chờ thầy duyệt như cũ
       }).then(function(res){
+        if(res && res.done){ if(res.msg && errBox) errBox.textContent = res.msg; return; }
         if(res && res.ok){
           showSuccess();
         } else {
           // SỬA 2/10/2026 — trước đây lỗi vẫn báo "thành công" dù chưa gửi được gì (mailto có thể không mở).
           // Nay báo rõ chưa gửi được, mở thư dự phòng và để học sinh bấm gửi lại.
           fallbackMailto(data);
-          if(errBox) errBox.textContent = 'Chưa gửi được lên hệ thống. Bạn bấm "Gửi đăng ký" lần nữa, hoặc gửi email vừa mở ra để thầy nhận được thông tin.';
+          if(errBox) errBox.textContent = 'Chưa gửi được lên hệ thống. Bạn bấm "Gửi mã xác nhận vào Gmail" lần nữa, hoặc gửi email vừa mở ra để thầy nhận được thông tin.';
         }
       }).catch(function(){
         fallbackMailto(data);
-        if(errBox) errBox.textContent = 'Chưa gửi được lên hệ thống. Bạn bấm "Gửi đăng ký" lần nữa, hoặc gửi email vừa mở ra để thầy nhận được thông tin.';
+        if(errBox) errBox.textContent = 'Chưa gửi được lên hệ thống. Bạn bấm "Gửi mã xác nhận vào Gmail" lần nữa, hoặc gửi email vừa mở ra để thầy nhận được thông tin.';
       }).finally(function(){
-        if(btn){ btn.disabled = false; btn.textContent = 'Gửi đăng ký'; }
+        if(btn){ btn.disabled = false; btn.textContent = 'Gửi mã xác nhận vào Gmail'; }
       });
     });
   })();
@@ -1683,8 +1941,9 @@
         sel.innerHTML = '<option value="">Chưa chọn — nhờ thầy tư vấn</option>' + visible.map(function(t, i){
           return '<option value="' + escHtml(tierId(t, i)) + '" data-name="' + escHtml(t.name) + '" data-price="' + escHtml(priceText(t)) + '">' + escHtml(t.name) + ' — ' + escHtml(priceText(t)) + '</option>';
         }).join('');
-        if(wrap) wrap.style.display = ctaOn ? '' : 'none';
+        if(wrap) wrap.style.display = (ctaOn || (window.OPC_signupMode && window.OPC_signupMode() === 'pay')) ? '' : 'none';
         sel.onchange = function(){ choosePlan(sel.value); };
+        if(window.OPC_refreshSignupMode) window.OPC_refreshSignupMode();   // THÊM 24/11/2026
         try{ var qp = new URLSearchParams(location.search).get('goi'); if(qp) choosePlan(qp); }catch(e){}
       }
       grid.innerHTML = visible.map(function(t, i){
@@ -1708,6 +1967,7 @@
         if(!a) return;
         e.preventDefault();
         choosePlan(a.getAttribute('data-plan'));
+        if(window.OPC_setSignupMode) window.OPC_setSignupMode('pay');   // THÊM 24/11/2026 — bấm "Đăng ký gói này" = đăng ký khoá học ngay
         var target = document.getElementById('lien-he');
         if(target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setTimeout(function(){ var n = document.getElementById('dk-name'); if(n && n.focus) n.focus({ preventScroll: true }); }, 700);
@@ -3162,7 +3422,7 @@
      chờ sự kiện "opc-live-ready" (hoặc dò window.OPC_LIVE) thay vì giả định
      nó có sẵn ngay khi mount. -->
 <script type="module" src="/opc-live-data.js"></script>
-<!-- THÊM 15/10/2026 — phễu "Chẩn đoán 5 phút" cho khách mới (link chia sẻ: faradayai.vn/#chan-doan) -->
+<!-- THÊM 15/10/2026 — phễu "Kiểm tra đầu vào – Mini test 5 phút" (trước là "Chẩn đoán 5 phút") cho khách mới (link chia sẻ: faradayai.vn/#chan-doan) -->
 <script src="/sales-home.js" defer></script> <!-- THÊM 24/10/2026 — Kết quả thật · Cam kết · Đặt lịch tư vấn -->
 <script src="/diagnostic5.js" defer></script>
 </body>
