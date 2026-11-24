@@ -548,6 +548,7 @@
   .dk-verify-links button:disabled{ color: var(--on-navy-2); cursor:default; text-decoration:none; }
   .dk-verify-tip{ font-size:0.82rem; margin-top:12px; line-height:1.55; }
   /* THÊM 24/11/2026 — chọn hình thức + khối học phí */
+  #dkForm > .signup-actions{ margin-top:22px; }   /* 24/11/2026 — bỏ dòng ghi chú nên thêm khoảng cách trước nút gửi */
   .dk-mode{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
   @media (max-width:640px){ .dk-mode{ grid-template-columns:1fr; } }
   .dk-mode-opt{ display:flex; gap:10px; align-items:center; padding:12px 14px; border:1px solid var(--navy-line); border-radius:12px; cursor:pointer; }
@@ -1284,20 +1285,17 @@
             <div class="signup-field full">
               <label for="dk-gmail">Địa chỉ Gmail</label>
               <input type="email" id="dk-gmail" name="dk-gmail" placeholder="tenban@gmail.com" autocomplete="email" inputmode="email">
-              <div class="signup-hint">Dùng Gmail em đang mở được trên máy — hệ thống gửi mã xác nhận vào đây.</div>
               <div class="signup-error" id="dk-gmail-err"></div>
             </div>
             <div class="signup-field">
               <label for="dk-phone">Số điện thoại học sinh</label>
-              <!-- SỬA 23/11/2026 (lần 3) — em chưa có số riêng thì nhập số bố/mẹ -->
-              <input type="tel" id="dk-phone" name="dk-phone" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
-              <div class="signup-hint">Chưa có số riêng thì nhập số của bố hoặc mẹ.</div>
+              <!-- SỬA 23/11/2026 (lần 3) — em chưa có số riêng thì nhập số bố/mẹ (24/11/2026: bỏ dòng gợi ý, ghi thẳng vào chữ mờ trong ô) -->
+              <input type="tel" id="dk-phone" name="dk-phone" placeholder="Số của em hoặc của bố mẹ" autocomplete="tel" inputmode="tel">
               <div class="signup-error" id="dk-phone-err"></div>
             </div>
             <div class="signup-field">
               <label for="dk-parent-zalo">SĐT Zalo phụ huynh</label>
               <input type="tel" id="dk-parent-zalo" name="dk-parent-zalo" placeholder="09xxxxxxxx" autocomplete="tel" inputmode="tel">
-              <div class="signup-hint">Để thầy gửi báo cáo tiến độ và trao đổi kết quả học thử với phụ huynh.</div>
               <div class="signup-error" id="dk-parent-zalo-err"></div>
             </div>
             <div class="signup-field full">
@@ -1313,14 +1311,12 @@
             <div class="signup-field full">
               <label for="dk-referral">Mã giới thiệu (nếu có)</label>
               <input type="text" id="dk-referral" name="dk-referral" placeholder="Vd. CHAU815VLY — bỏ trống nếu không có" autocomplete="off" style="text-transform:uppercase;">
-              <div class="signup-hint" id="dk-referral-hint">Có mã giới thiệu của bạn bè? Nhập vào để nhận ưu đãi khi đăng ký được xác nhận.</div>
             </div>
           </div>
           <div style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
             <label for="dk-website">Website (để trống)</label>
             <input type="text" id="dk-website" name="dk-website" tabindex="-1" autocomplete="off">
           </div>
-          <div class="signup-privacy">Thông tin chỉ dùng để tạo tài khoản và để thầy liên hệ phụ huynh — không chia sẻ cho bên khác.</div>
           <div class="signup-actions">
             <button type="submit" class="btn btn-primary" id="dkSubmitBtn">Gửi mã xác nhận vào Gmail</button>
             <span class="signup-form-error" id="dkFormErr" role="alert"></span>
