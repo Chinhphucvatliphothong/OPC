@@ -534,7 +534,7 @@
   .dk-plan-note{ font-size:0.8rem; color: var(--accent); font-weight:600; }
   /* THÊM 23/11/2026 — khung tài khoản học thử sau khi đăng ký */
   .dk-cred{ margin-top:12px; padding:12px 14px; border:1px dashed var(--accent); border-radius:10px; }
-  .dk-cred > div:not(.dk-cred-note):not(.dk-cred-actions){ display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-size:0.95rem; }
+  .dk-cred > div:not(.dk-cred-note):not(.dk-cred-actions):not(.dk-pay){ display:flex; justify-content:space-between; gap:12px; padding:4px 0; font-size:0.95rem; }
   .dk-cred b{ font-family: 'JetBrains Mono', ui-monospace, monospace; font-size:1.05rem; letter-spacing:0.5px; }
   .dk-cred-note{ font-size:0.85rem; line-height:1.55; margin:8px 0 10px; }
   .dk-cred-actions{ display:flex; flex-wrap:wrap; gap:8px; }
@@ -547,6 +547,21 @@
   .dk-verify-links button{ background:none; border:0; padding:0; color: var(--accent); font: inherit; font-size:0.9rem; cursor:pointer; text-decoration:underline; }
   .dk-verify-links button:disabled{ color: var(--on-navy-2); cursor:default; text-decoration:none; }
   .dk-verify-tip{ font-size:0.82rem; margin-top:12px; line-height:1.55; }
+  /* THÊM 24/11/2026 — chọn hình thức + khối học phí */
+  .dk-mode{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+  @media (max-width:640px){ .dk-mode{ grid-template-columns:1fr; } }
+  .dk-mode-opt{ display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--navy-line); border-radius:12px; cursor:pointer; }
+  .dk-mode-opt:has(input:checked){ border-color: var(--accent); background: rgba(176,122,60,0.10); }
+  .dk-mode-opt input{ margin-top:4px; accent-color: var(--accent); }
+  .dk-mode-opt b{ display:block; font-size:0.95rem; }
+  .dk-mode-opt small{ display:block; font-size:0.8rem; line-height:1.5; color: var(--on-navy-2); margin-top:2px; }
+  .dk-pay{ margin:10px 0 12px; padding:12px; border-radius:10px; background: rgba(255,255,255,0.04); border:1px solid var(--navy-line); font-size:0.9rem; line-height:1.6; }
+  .dk-pay img{ display:block; width:100%; max-width:260px; margin:8px auto; border-radius:8px; background:#fff; }
+  .dk-pay b{ font-family: inherit; font-size: inherit; letter-spacing: 0; }
+  .dk-pay .amt{ font-size:1.15rem; font-weight:700; color: var(--accent); }
+  .dk-pay code{ font-family:'JetBrains Mono', ui-monospace, monospace; font-weight:700; font-size:1rem; }
+  .dk-pay .st{ margin-top:8px; font-weight:600; }
+  .dk-pay .st.ok{ color:#4caf7a; }
   .signup-field select{
     font-family:"Be Vietnam Pro",sans-serif; font-size:0.92rem; background: var(--navy); color: var(--on-navy);
     border:1px solid var(--navy-line); border-radius:8px; padding:9px 11px;
@@ -1247,15 +1262,22 @@
 
 <section class="closing" id="lien-he">
   <div class="wrap">
-    <div class="kicker" style="color:var(--accent-strong);">Học thử miễn phí 14 ngày</div>
-    <h2 class="section-title">Đăng ký học thử miễn phí cùng FaradayAI</h2>
+    <div class="kicker" style="color:var(--accent-strong);">Học thử miễn phí 14 ngày · hoặc đăng ký khoá học</div>
+    <h2 class="section-title">Đăng ký học cùng FaradayAI</h2>
     <p class="section-sub">Mô hình luyện thi theo chuyên đề, dựng trên ngân hàng đề Vật Lí 12 đầy đủ — bản đồ năng lực và lộ trình tự động cập nhật hằng tuần theo đúng kết quả học tập của từng em.</p>
     <div class="card">
       <div id="dkFormWrap">
-        <h3 style="font-family:'Be Vietnam Pro',sans-serif; font-size:1.05rem; margin-bottom:8px;">Đăng ký học thử miễn phí 14 ngày</h3>
+        <h3 id="dkFormTitle" style="font-family:'Be Vietnam Pro',sans-serif; font-size:1.05rem; margin-bottom:8px;">Đăng ký học thử miễn phí 14 ngày</h3>
         <!-- SỬA 23/11/2026 — tự tạo tài khoản ngay (api/student-login.js › action "signup"), gửi tên đăng nhập + mật khẩu vào Gmail -->
-        <p style="font-size:0.92rem; line-height:1.6; margin-bottom:18px;">Điền thông tin bên dưới, hệ thống gửi <b>mã xác nhận 6 số</b> vào Gmail của em. Nhập đúng mã là có tài khoản ngay. Học thử đầy đủ 14 ngày, không cần thanh toán; <b>mỗi Gmail và mỗi số điện thoại chỉ học thử 1 lần</b>. Gần hết 14 ngày, thầy sẽ gọi điện cho phụ huynh để trao đổi kết quả của em.</p>
+        <p id="dkFormIntro" style="font-size:0.92rem; line-height:1.6; margin-bottom:18px;">Điền thông tin bên dưới, hệ thống gửi <b>mã xác nhận 6 số</b> vào Gmail của em. Nhập đúng mã là có tài khoản ngay. Học thử đầy đủ 14 ngày, không cần thanh toán; <b>mỗi Gmail và mỗi số điện thoại chỉ học thử 1 lần</b>. Gần hết 14 ngày, thầy sẽ gọi điện cho phụ huynh để trao đổi kết quả của em.</p>
         <form class="signup-form" id="dkForm" novalidate>
+          <!-- THÊM 24/11/2026 — 2 lựa chọn: học thử 14 ngày | đăng ký khoá học ngay (thanh toán QR, tự kích hoạt) -->
+          <div class="dk-mode" role="radiogroup" aria-label="Hình thức đăng ký">
+            <label class="dk-mode-opt"><input type="radio" name="dk-mode" value="trial" checked>
+              <span><b>🎁 Học thử miễn phí 14 ngày</b><small>Chưa cần thanh toán. Gần hết hạn thầy gọi phụ huynh trao đổi kết quả.</small></span></label>
+            <label class="dk-mode-opt"><input type="radio" name="dk-mode" value="pay">
+              <span><b>💳 Đăng ký khoá học ngay</b><small>Chọn gói, quét mã QR chuyển khoản — hệ thống tự kích hoạt khoá học.</small></span></label>
+          </div>
           <div class="signup-grid">
             <div class="signup-field full">
               <label for="dk-name">Họ tên học sinh</label>
@@ -1286,9 +1308,10 @@
               <select id="dk-khoi" name="dk-khoi"><option value="12">Lớp 12</option><option value="11">Lớp 11</option><option value="10">Lớp 10</option></select>
             </div>
             <div class="signup-field full" id="dk-plan-wrap" style="display:none;">
-              <label for="dk-plan">Gói quan tâm sau học thử (không bắt buộc)</label>
+              <label for="dk-plan" id="dk-plan-label">Gói quan tâm sau học thử (không bắt buộc)</label>
               <select id="dk-plan" name="dk-plan"><option value="">Chưa chọn — nhờ thầy tư vấn</option></select>
               <div class="dk-plan-note" id="dk-plan-note"></div>
+              <div class="signup-error" id="dk-plan-err"></div>
             </div>
             <div class="signup-field full">
               <label for="dk-referral">Mã giới thiệu (nếu có)</label>
@@ -1300,7 +1323,7 @@
             <label for="dk-website">Website (để trống)</label>
             <input type="text" id="dk-website" name="dk-website" tabindex="-1" autocomplete="off">
           </div>
-          <div class="signup-privacy">Thông tin chỉ dùng để tạo tài khoản học thử và để thầy liên hệ phụ huynh — không chia sẻ cho bên khác.</div>
+          <div class="signup-privacy">Thông tin chỉ dùng để tạo tài khoản và để thầy liên hệ phụ huynh — không chia sẻ cho bên khác.</div>
           <div class="signup-actions">
             <button type="submit" class="btn btn-primary" id="dkSubmitBtn">Gửi mã xác nhận vào Gmail</button>
             <span class="signup-form-error" id="dkFormErr" role="alert"></span>
@@ -1332,6 +1355,8 @@
             <div><span>Tên đăng nhập</span><b id="dkCredUser"></b></div>
             <div><span>Mật khẩu</span><b id="dkCredPass"></b></div>
             <div class="dk-cred-note" id="dkCredNote"></div>
+            <!-- THÊM 24/11/2026 — học phí: mã QR + tự báo khi hệ thống nhận tiền -->
+            <div id="dkPay" class="dk-pay" style="display:none;"></div>
             <div class="dk-cred-actions">
               <button type="button" class="btn btn-primary" id="dkGoLearn">🚀 Vào học ngay</button>
               <button type="button" class="btn btn-ghost" id="dkShareCred">📤 Gửi cho bố mẹ</button>
@@ -1573,7 +1598,10 @@
       var psel = document.getElementById('dk-plan'), popt = psel && psel.selectedIndex >= 0 ? psel.options[psel.selectedIndex] : null;
       var plan = (psel && psel.value) || '', planName = (plan && popt) ? (popt.getAttribute('data-name') || '') : '';
       var ksel = document.getElementById('dk-khoi'), khoi = ksel ? Number(ksel.value) || 12 : 12;   // THÊM 23/11/2026
-      return ok ? { name: name, gmail: gmail, phone: phone, zalo: zalo, referral: referral, plan: plan, planName: planName, khoi: khoi } : null;
+      var mode = currentMode();   // THÊM 24/11/2026
+      setError('dk-plan', '');
+      if(mode === 'pay' && !plan){ setError('dk-plan', 'Chọn gói khoá học muốn đăng ký.'); ok = false; }
+      return ok ? { name: name, gmail: gmail, phone: phone, zalo: zalo, referral: referral, plan: plan, planName: planName, khoi: khoi, mode: mode } : null;
     }
 
     // Gửi mail dự phòng — CHỈ dùng khi không ghi được thẳng vào Firestore
@@ -1598,6 +1626,62 @@
       document.body.removeChild(mailLink);
     }
 
+    // THÊM 24/11/2026 — chọn hình thức đăng ký: đổi tiêu đề, giới thiệu, ô chọn gói (bắt buộc khi đăng ký khoá học)
+    var INTRO_TRIAL = (document.getElementById('dkFormIntro') || {}).innerHTML || '';
+    var INTRO_PAY = 'Điền thông tin và chọn gói, hệ thống gửi <b>mã xác nhận 6 số</b> vào Gmail của em. Nhập đúng mã là có tài khoản và <b>mã QR học phí</b> (đã điền sẵn số tiền). Phụ huynh chuyển khoản xong, hệ thống <b>tự kích hoạt khoá học</b> trong vài phút — không cần chờ thầy. Trong lúc chờ, em vẫn vào học được.';
+    function currentMode(){ var r = document.querySelector('input[name="dk-mode"]:checked'); return r && r.value === 'pay' ? 'pay' : 'trial'; }
+    function applyMode(){
+      var pay = currentMode() === 'pay';
+      var t = document.getElementById('dkFormTitle'), it = document.getElementById('dkFormIntro'), lb = document.getElementById('dk-plan-label'), wrap = document.getElementById('dk-plan-wrap');
+      var sel = document.getElementById('dk-plan'), btn = document.getElementById('dkSubmitBtn');
+      if(t) t.textContent = pay ? 'Đăng ký khoá học FaradayAI' : 'Đăng ký học thử miễn phí 14 ngày';
+      if(it) it.innerHTML = pay ? INTRO_PAY : INTRO_TRIAL;
+      if(lb) lb.textContent = pay ? 'Chọn gói khoá học (bắt buộc)' : 'Gói quan tâm sau học thử (không bắt buộc)';
+      if(wrap && pay && sel && sel.options.length > 1) wrap.style.display = '';
+      if(sel && sel.options[0]) sel.options[0].textContent = pay ? '— Chọn gói —' : 'Chưa chọn — nhờ thầy tư vấn';
+      if(btn && !btn.disabled) btn.textContent = 'Gửi mã xác nhận vào Gmail';
+      setError('dk-plan', '');
+    }
+    function setMode(m){ var r = document.querySelector('input[name="dk-mode"][value="' + (m === 'pay' ? 'pay' : 'trial') + '"]'); if(r){ r.checked = true; applyMode(); } }
+    window.OPC_setSignupMode = setMode;
+    window.OPC_signupMode = currentMode; window.OPC_refreshSignupMode = applyMode;   // bảng giá: bấm "Đăng ký gói này" -> chọn sẵn "Đăng ký khoá học ngay"
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="dk-mode"]'), function(r){ r.addEventListener('change', applyMode); });
+    try{ var qm = new URLSearchParams(location.search); if(qm.get('dangky') === 'khoahoc' || qm.get('goi')) setMode('pay'); }catch(e){}
+
+    // THÊM 24/11/2026 — khối học phí sau khi tạo tài khoản + hỏi server 10 giây/lần đến khi nhận được tiền (tối đa 20 phút)
+    function vndText(n){ return Math.round(Number(n) || 0).toLocaleString('vi-VN') + 'đ'; }
+    function escT(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function renderPayment(r){
+      var box = document.getElementById('dkPay'), p = r.payment;
+      if(!box || !p) return;
+      box.style.display = '';
+      if(!p.auto){
+        box.innerHTML = '<div><b>Học phí ' + escT(p.planName) + ':</b> <span class="amt">' + vndText(p.amount) + '</span></div>' +
+          '<div>Thầy sẽ liên hệ phụ huynh qua Zalo để hướng dẫn thanh toán.' + (p.bankInfo ? '<br>Thông tin chuyển khoản: ' + escT(p.bankInfo) : '') + '</div>';
+        return;
+      }
+      box.innerHTML = '<div><b>Học phí ' + escT(p.planName) + '</b> (trọn khoá đến kỳ thi ' + escT(vnDate(p.until)) + ')</div>' +
+        '<div class="amt">' + vndText(p.amount) + '</div>' +
+        '<img src="' + escT(p.qrUrl) + '" alt="Mã QR chuyển khoản học phí" loading="lazy">' +
+        '<div>' + escT(p.bank) + ' · ' + escT(p.acc) + (p.accName ? ' · ' + escT(p.accName) : '') + '</div>' +
+        '<div>Nội dung chuyển khoản: <code>' + escT(p.content) + '</code> (giữ nguyên)</div>' +
+        '<div class="st" id="dkPayStatus">⏳ Đang chờ chuyển khoản — chuyển xong, hệ thống tự kích hoạt khoá học trong vài phút.</div>';
+      var tries = 0;
+      var timer = setInterval(function(){
+        tries++;
+        if(tries > 120){ clearInterval(timer); return; }
+        signupApi({ action: 'signup_paystatus', studentId: r.studentId, payCode: p.content }).then(function(sr){
+          var b = sr.body || {};
+          if(sr.status === 200 && b.paid){
+            clearInterval(timer);
+            var st = document.getElementById('dkPayStatus');
+            if(st){ st.className = 'st ok'; st.textContent = '✅ Đã nhận học phí — khoá học đã kích hoạt đến ' + vnDate(b.paidUntil) + '. Cảm ơn phụ huynh!'; }
+            var img = box.querySelector('img'); if(img) img.style.display = 'none';
+          }
+        });
+      }, 10000);
+    }
+
     function showSuccess(){
       var wrap = document.getElementById('dkFormWrap');
       var success = document.getElementById('dkSuccess');
@@ -1615,7 +1699,7 @@
     // SỬA 23/11/2026 (lần 2) — 2 bước: gửi mã vào Gmail -> nhập đúng mã mới tạo tài khoản. Mỗi Gmail / SĐT chỉ học thử 1 lần (server kiểm tra).
     function freeSignupStart(data){
       return signupApi({ action: 'signup_start', name: data.name, gmail: data.gmail, phone: data.phone, parentZalo: data.zalo,
-        referralCode: data.referral, plan: data.plan, planName: data.planName, khoi: data.khoi,
+        referralCode: data.referral, plan: data.plan, planName: data.planName, khoi: data.khoi, mode: data.mode,
         website: (document.getElementById('dk-website') || {}).value || '' });
     }
     var verifyState = { pendingId: '', data: null, timer: null };
@@ -1676,13 +1760,18 @@
     })();
     function vnDate(ymd){ var p = String(ymd || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ymd; }
     function credText(r){
-      return 'Tài khoản học thử FaradayAI (miễn phí ' + (r.trialDays || 14) + ' ngày)\nTên đăng nhập: ' + r.username + '\nMật khẩu: ' + r.password +
-        '\nHọc thử đến hết ngày ' + vnDate(r.trialEnd) + '\nVào học: https://faradayai.vn → bấm "Đăng nhập"';
+      var p = r.mode === 'pay' && r.payment;   // THÊM 24/11/2026 — kèm thông tin học phí để gửi bố mẹ
+      return (p ? 'Tài khoản FaradayAI' : 'Tài khoản học thử FaradayAI (miễn phí ' + (r.trialDays || 14) + ' ngày)') + '\nTên đăng nhập: ' + r.username + '\nMật khẩu: ' + r.password +
+        (p ? '' : '\nHọc thử đến hết ngày ' + vnDate(r.trialEnd)) + '\nVào học: https://faradayai.vn → bấm "Đăng nhập"' +
+        (p && p.auto ? '\n\nHọc phí ' + p.planName + ': ' + vndText(p.amount) + '\nChuyển khoản ' + p.bank + ' ' + p.acc + (p.accName ? ' — ' + p.accName : '') + '\nNội dung: ' + p.content + ' (giữ nguyên để hệ thống tự kích hoạt)\nMã QR: ' + p.qrUrl : '');
     }
     function showTrialAccount(r, data){
       var set = function(id, t){ var el = document.getElementById(id); if(el) el.textContent = t; };
-      set('dkSuccessTitle', 'Tài khoản học thử của ' + data.name + ' đã sẵn sàng');
-      set('dkSuccessMsg', 'Em được học thử đầy đủ ' + (r.trialDays || 14) + ' ngày, đến hết ngày ' + vnDate(r.trialEnd) + '. Gần hết hạn, thầy sẽ gọi điện cho phụ huynh để trao đổi kết quả của em.');
+      var isPay = r.mode === 'pay' && r.payment;   // THÊM 24/11/2026
+      set('dkSuccessTitle', isPay ? ('Tài khoản của ' + data.name + ' đã sẵn sàng') : ('Tài khoản học thử của ' + data.name + ' đã sẵn sàng'));
+      set('dkSuccessMsg', isPay ? ('Em vào học được ngay. Phụ huynh quét mã QR bên dưới để đóng học phí ' + r.payment.planName + ' — hệ thống tự kích hoạt khoá học, thông tin này cũng đã gửi vào Gmail của em.')
+        : ('Em được học thử đầy đủ ' + (r.trialDays || 14) + ' ngày, đến hết ngày ' + vnDate(r.trialEnd) + '. Gần hết hạn, thầy sẽ gọi điện cho phụ huynh để trao đổi kết quả của em.'));
+      if(isPay) renderPayment(r);
       set('dkCredUser', r.username); set('dkCredPass', r.password);
       set('dkCredNote', (r.emailSent ? '📧 Thầy đã gửi thông tin này vào ' + data.gmail + ' (xem cả mục Quảng cáo/Spam). ' : '📌 Em chụp màn hình hoặc bấm "Gửi cho bố mẹ" để lưu lại thông tin đăng nhập. ') +
         (r.referrerFound && r.discountVnd > 0 ? 'Mã giới thiệu hợp lệ: được giảm ' + Number(r.discountVnd).toLocaleString('vi-VN') + 'đ khi đăng ký gói. ' : '') +
@@ -1764,7 +1853,7 @@
         if(sr.status === 200 && b.ok && b.pendingId){ openVerify(b, data); return { done: true }; }
         if(sr.status === 200 && b.ok && b.bot){ showSuccess(); return { done: true }; }
         if(sr.status === 400 && b.field){
-          var fid = { name: 'dk-name', gmail: 'dk-gmail', phone: 'dk-phone', parentZalo: 'dk-parent-zalo' }[b.field];
+          var fid = { name: 'dk-name', gmail: 'dk-gmail', phone: 'dk-phone', parentZalo: 'dk-parent-zalo', plan: 'dk-plan' }[b.field];
           if(fid) setError(fid, b.error);
           return { done: true, msg: 'Vui lòng kiểm tra lại mục báo đỏ ở trên.' };
         }
@@ -1852,8 +1941,9 @@
         sel.innerHTML = '<option value="">Chưa chọn — nhờ thầy tư vấn</option>' + visible.map(function(t, i){
           return '<option value="' + escHtml(tierId(t, i)) + '" data-name="' + escHtml(t.name) + '" data-price="' + escHtml(priceText(t)) + '">' + escHtml(t.name) + ' — ' + escHtml(priceText(t)) + '</option>';
         }).join('');
-        if(wrap) wrap.style.display = ctaOn ? '' : 'none';
+        if(wrap) wrap.style.display = (ctaOn || (window.OPC_signupMode && window.OPC_signupMode() === 'pay')) ? '' : 'none';
         sel.onchange = function(){ choosePlan(sel.value); };
+        if(window.OPC_refreshSignupMode) window.OPC_refreshSignupMode();   // THÊM 24/11/2026
         try{ var qp = new URLSearchParams(location.search).get('goi'); if(qp) choosePlan(qp); }catch(e){}
       }
       grid.innerHTML = visible.map(function(t, i){
@@ -1877,6 +1967,7 @@
         if(!a) return;
         e.preventDefault();
         choosePlan(a.getAttribute('data-plan'));
+        if(window.OPC_setSignupMode) window.OPC_setSignupMode('pay');   // THÊM 24/11/2026 — bấm "Đăng ký gói này" = đăng ký khoá học ngay
         var target = document.getElementById('lien-he');
         if(target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setTimeout(function(){ var n = document.getElementById('dk-name'); if(n && n.focus) n.focus({ preventScroll: true }); }, 700);

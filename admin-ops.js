@@ -666,10 +666,17 @@
     });
     // THÊM 23/11/2026 — học sinh TỰ ĐĂNG KÝ HỌC THỬ trên trang chủ (api/student-login.js › signup): nhắc thầy nhắn chào phụ huynh
     // trong 3 ngày đầu (tạo thiện cảm sớm). Khi còn ≤ 2 ngày học thử, mục "💳 Học phí" ở trên tự nhắc gọi tư vấn chuyển gói.
-    S.list.filter(function(s){ return s.signupSource === 'free_signup' && s.status !== 'inactive' && s.signupAt && (nowMs - new Date(s.signupAt).getTime()) < 3 * 86400000; }).forEach(function(s){
+    // SỬA 24/11/2026 — thêm em chọn "Đăng ký khoá học ngay" (signupSource 'pay_signup'): đã/chưa thấy chuyển khoản
+    S.list.filter(function(s){ return (s.signupSource === 'free_signup' || s.signupSource === 'pay_signup') && s.status !== 'inactive' && s.signupAt && (nowMs - new Date(s.signupAt).getTime()) < 3 * 86400000; }).forEach(function(s){
       var b = s.billing || {}, left = b.trialEnd ? Math.ceil((new Date(b.trialEnd + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000) : null;
-      items.push({ id: 'fs-' + s.id, group: 'sales', prio: 0, icon: '🎓', who: s, phone: s.parentPhone,
-        why: 'Tự đăng ký học thử' + (left != null ? ' (còn ' + left + ' ngày)' : '') + (s.referredByCode ? ' · mã giới thiệu ' + s.referredByCode + ' — cộng hoa hồng khi em đóng phí' : '') + ' — nhắn chào phụ huynh, hẹn trao đổi kết quả sau 2 tuần',
+      var ref = s.referredByCode ? ' · mã giới thiệu ' + s.referredByCode + ' — cộng hoa hồng khi em đóng phí' : '';
+      var isPaySignup = s.signupSource === 'pay_signup', paidFull = b.cycle === 'full' && !!b.paidUntil;
+      var why = isPaySignup
+        ? (paidFull ? 'Tự đăng ký khoá học và ĐÃ chuyển khoản (hệ thống đã kích hoạt tới ' + vnDate(b.paidUntil) + ')' + ref + ' — nhắn cảm ơn phụ huynh'
+                    : 'Chọn "Đăng ký khoá học ngay" nhưng CHƯA thấy chuyển khoản' + (left != null ? ' (còn ' + left + ' ngày chờ)' : '') + (s.phoneReused ? ' · SĐT từng học thử' : '') + ref + ' — nhắn phụ huynh hỗ trợ thanh toán')
+        : ('Tự đăng ký học thử' + (left != null ? ' (còn ' + left + ' ngày)' : '') + ref + ' — nhắn chào phụ huynh, hẹn trao đổi kết quả sau 2 tuần');
+      items.push({ id: 'fs-' + s.id + (paidFull ? '-paid' : ''), group: 'sales', prio: 0, icon: isPaySignup ? (paidFull ? '💰' : '💳') : '🎓', who: s, phone: s.parentPhone,
+        why: why,
         actions: [s.parentPhone ? h('a', { key: 'z', className: 'btn btn-primary', href: zalo(s.parentPhone), target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, '💬 Zalo phụ huynh') : null,
           s.parentPhone ? h('a', { key: 't', className: 'btn btn-secondary', href: 'tel:' + phoneDigits(s.parentPhone), style: { textDecoration: 'none' } }, '📞 Gọi ' + fmtPhone(s.parentPhone)) : null,
           // THÊM 23/11/2026 (lần 2) — gọi/nhắn thấy số phụ huynh không có thật -> khoá tài khoản học thử (Gmail + SĐT vẫn bị giữ, không đăng ký học thử lại được)
