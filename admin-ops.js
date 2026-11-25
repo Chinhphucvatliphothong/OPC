@@ -275,23 +275,29 @@
   function offersRich(cfg, offers){
     return offers.map(function(o){ var p = planOf(cfg, o.plan) || {}; return Object.assign({}, o, { features: p.features || [], badge: p.badge || '', featured: !!p.featured }); });
   }
+  // THÊM 25/11/2026 — VietinBank (mã ICB) qua SePay: nội dung chuyển khoản BẮT BUỘC bắt đầu bằng "SEVQR", nếu không SePay không nhận được giao dịch.
+  // Mọi nơi hiển thị / điền sẵn nội dung đều đi qua hàm này. Webhook vẫn tìm mã FDY… ở bất kỳ vị trí nào trong nội dung.
+  function payContent(cfg, code){
+    var g = (cfg && cfg.gateway) || {};
+    return (String(g.bank || '').toUpperCase() === 'ICB' ? 'SEVQR ' : '') + code;
+  }
   function qrUrl(cfg, code, amount){
     var g = cfg.gateway || {};
     return 'https://img.vietqr.io/image/' + encodeURIComponent(g.bank) + '-' + encodeURIComponent(g.acc) + '-compact2.png?amount=' + Math.round(Number(amount) || 0) +
-      '&addInfo=' + encodeURIComponent(code) + (g.name ? '&accountName=' + encodeURIComponent(g.name) : '');
+      '&addInfo=' + encodeURIComponent(payContent(cfg, code)) + (g.name ? '&accountName=' + encodeURIComponent(g.name) : '');   // SỬA 25/11/2026: payContent
   }
   function payBlock(cfg, s, pay, code){
     var g = cfg.gateway || {}, b = s.billing || {}, st = billingStatus(cfg, b);
     var offers = offersRich(cfg, offersFor(cfg, s));
     var showBase = pay && !(pay.cycle === 'full' && st.k === 'ok');   // đã đóng trọn khóa thì không mời "đóng kỳ tiếp theo"
-    return { bank: g.bank, acc: g.acc, name: g.name || '', amount: showBase ? pay.amount : 0, content: code, cycle: showBase ? (CYCLES[pay.cycle] || '') : '', status: st.k, paidUntil: b.paidUntil || '', trialEnd: b.trialEnd || '', offers: offers };
+    return { bank: g.bank, acc: g.acc, name: g.name || '', amount: showBase ? pay.amount : 0, content: payContent(cfg, code), cycle: showBase ? (CYCLES[pay.cycle] || '') : '', status: st.k, paidUntil: b.paidUntil || '', trialEnd: b.trialEnd || '', offers: offers };
   }
   function payLines(cfg, stu, fee){
     var b = stu.billing || {}, pay = payInfoFor(cfg, stu);
     if(gwOn(cfg) && stu.payCode && pay){
       var g = cfg.gateway;
       return '\nCách đóng nhanh: phụ huynh mở mã QR (đã điền sẵn số tiền & nội dung) tại: ' + qrUrl(cfg, stu.payCode, pay.amount) +
-        '\nHoặc chuyển khoản: ' + g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ', số tiền ' + vnd(pay.amount) + ', NỘI DUNG: ' + stu.payCode +
+        '\nHoặc chuyển khoản: ' + g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ', số tiền ' + vnd(pay.amount) + ', NỘI DUNG: ' + payContent(cfg, stu.payCode) +
         ' (giữ nguyên nội dung để hệ thống tự ghi nhận, không cần báo thầy).';
     }
     return cfg.bankInfo ? '\nThông tin chuyển khoản: ' + cfg.bankInfo + '\nNội dung CK: ' + (stu.name || '') + ' - FaradayAI' : '';
@@ -375,7 +381,7 @@
       !url ? h('p', null, 'Em này chưa có gói/số tiền kỳ tới — bấm "Gói" để thiết lập trước.') : h('div', { style: { textAlign: 'center' } },
         h('img', { src: url, alt: 'Mã QR chuyển khoản học phí', style: { maxWidth: '100%', width: '300px', borderRadius: '10px', background: '#fff' } }),
         h('p', { style: { margin: '6px 0 2px', fontWeight: 800, fontSize: '1.1rem' } }, vnd(pay.amount) + ' · ' + (CYCLES[pay.cycle] || '')),
-        h('p', { style: { margin: '0 0 8px', fontSize: '0.86rem', color: 'var(--ink-2)' } }, g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ' · Nội dung: ', h('b', null, s.payCode)),
+        h('p', { style: { margin: '0 0 8px', fontSize: '0.86rem', color: 'var(--ink-2)' } }, g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ' · Nội dung: ', h('b', null, payContent(cfg, s.payCode))),
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' } },
           h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(url).then(function(){ props.fireToast('Đã chép link mã QR.'); }); } }, '📋 Chép link QR'),
           s.parentPhone ? h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ copy(billingMsg(cfg, s)).then(function(){ props.fireToast('Đã chép tin nhắn kèm QR — dán vào Zalo.'); window.open(zalo(s.parentPhone), '_blank'); }); } }, '💬 Gửi Zalo phụ huynh') : null),

@@ -1663,7 +1663,7 @@
       var timer = setInterval(function(){
         tries++;
         if(tries > 120){ clearInterval(timer); return; }
-        signupApi({ action: 'signup_paystatus', studentId: r.studentId, payCode: p.content }).then(function(sr){
+        signupApi({ action: 'signup_paystatus', studentId: r.studentId, payCode: p.payCode || p.content }).then(function(sr){   /* SỬA 25/11/2026: content có thể là "SEVQR FDY…" */
           var b = sr.body || {};
           if(sr.status === 200 && b.paid){
             clearInterval(timer);
