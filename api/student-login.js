@@ -501,7 +501,7 @@ async function signupVerify(db, res, body){
   if(isPay && payPlan){
     var amt = fullFee(bc, payPlan);
     payment = payCode
-      ? { auto: true, plan: payPlan.key, planName: payPlan.name, amount: amt, until: bc.examDate, content: payCode,
+      ? { auto: true, plan: payPlan.key, planName: payPlan.name, amount: amt, until: bc.examDate, content: payContent(bc, payCode), payCode: payCode,   // SỬA 25/11/2026: content có thể là "SEVQR FDY…"
           bank: bc.gateway.bank, acc: bc.gateway.acc, accName: bc.gateway.name || '', qrUrl: qrUrl(bc, payCode, amt) }
       : { auto: false, plan: payPlan.key, planName: payPlan.name, amount: amt, until: bc.examDate, bankInfo: bc.bankInfo || '' };
   }
@@ -579,10 +579,15 @@ function offersFor(bc){   // = admin-ops.js › offersFor khi chưa đóng (mỗ
   });
   return out;
 }
+// THÊM 25/11/2026 — = admin-ops.js › payContent: VietinBank (ICB) qua SePay bắt buộc nội dung bắt đầu bằng "SEVQR"
+function payContent(bc, code){
+  var g = (bc && bc.gateway) || {};
+  return (String(g.bank || '').toUpperCase() === 'ICB' ? 'SEVQR ' : '') + code;
+}
 function qrUrl(bc, code, amount){   // = admin-ops.js › qrUrl
   var g = bc.gateway || {};
   return 'https://img.vietqr.io/image/' + encodeURIComponent(g.bank) + '-' + encodeURIComponent(g.acc) + '-compact2.png?amount=' + Math.round(Number(amount) || 0) +
-    '&addInfo=' + encodeURIComponent(code) + (g.name ? '&accountName=' + encodeURIComponent(g.name) : '');
+    '&addInfo=' + encodeURIComponent(payContent(bc, code)) + (g.name ? '&accountName=' + encodeURIComponent(g.name) : '');   // SỬA 25/11/2026: payContent
 }
 async function genUniquePayCode(db){
   var A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -611,7 +616,8 @@ function payHtml(p){
 }
 // trang chủ hỏi: em đã được ghi nhận học phí chưa? (cần đúng cả studentId + payCode — không lộ thông tin gì khác)
 async function signupPayStatus(db, res, body){
-  var id = String(body.studentId || '').slice(0, 40), code = String(body.payCode || '').toUpperCase().slice(0, 12);
+  var id = String(body.studentId || '').slice(0, 40);
+  var code = ((String(body.payCode || '').toUpperCase().match(/FDY[A-Z0-9]{5}/) || [''])[0]);   // SỬA 25/11/2026: chấp nhận cả "SEVQR FDY…"
   if(!id || !/^FDY[A-Z0-9]{5}$/.test(code)){ res.status(400).json({ error: 'bad_request' }); return; }
   var snap = await db.collection('students').doc(id).get();
   var st = snap.exists ? (snap.data() || {}) : null;
