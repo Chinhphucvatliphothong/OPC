@@ -305,7 +305,7 @@
       else if(ps === 'trialEnd'){ pcTitle = 'Đã hết học thử'; pcSub = 'Chọn gói để học tiếp — chuyển khoản xong tài khoản tự kích hoạt, không cần chờ thầy.'; }
       else if(ps === 'unpaid'){ pcTitle = 'Chưa đóng học phí'; pcSub = 'Chọn gói và thanh toán — app ngân hàng tự điền sẵn.'; }
       else if(ps === 'due' || ps === 'overdue'){ pcTitle = ps === 'due' ? 'Sắp đến hạn học phí' : 'Học phí đã quá hạn'; pcSub = 'Đóng học phí để gia hạn — chuyển khoản xong hệ thống tự ghi nhận.'; }
-      else if(ps === 'ok' && payInfo.upgradeable){ pcTitle = 'Gói ' + (payInfo.planName || 'hiện tại'); pcSub = 'Đang học đến ' + vnDate(payInfo.paidUntil) + ' · có thể nâng cấp, chỉ đóng phần chênh lệch.'; strong = false; }
+      // SỬA 26/11/2026 (lần 2) — đã đóng tiền: không hiện thẻ nữa (tên em có nhãn 👑 PRO, nút "Gói Pro" cạnh Đăng xuất)
       if(pcTitle){
         var shareLink = function(){
           var url = payInfo.url, txt = 'Link đóng học phí FaradayAI: bấm link, chọn gói, app ngân hàng tự điền sẵn — chuyển khoản xong tài khoản tự kích hoạt:';

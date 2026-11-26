@@ -1269,12 +1269,17 @@
     // THÊM 26/11/2026 — nút "Gói học / Đóng học phí" cạnh Đăng xuất: MỌI tài khoản (kể cả thầy tạo, Miễn phí, chưa có gói)
     // đều tự mở được trang /thanhtoan của mình để chọn gói và thanh toán (hoặc chia sẻ link cho phụ huynh)
     var myPayState = React.useState(null); var myPay = myPayState[0], setMyPay = myPayState[1];
+    var payModalState = React.useState(false); var payModal = payModalState[0], setPayModal = payModalState[1];   // THÊM 26/11/2026 (lần 2) — hộp "Nâng cấp gói học"
     React.useEffect(function(){
       setMyPay(null);
       if(!liveStudentId || !window.OPC_LIVE || !window.OPC_LIVE.getMyPayLink) return;
-      var alive = true;
-      var t = setTimeout(function(){ window.OPC_LIVE.getMyPayLink().then(function(r){ if(alive) setMyPay(r); }); }, 1200);
-      return function(){ alive = false; clearTimeout(t); };
+      var alive = true, lastAt = 0;
+      function load(){ lastAt = Date.now(); window.OPC_LIVE.getMyPayLink().then(function(r){ if(alive && r) setMyPay(r); }); }
+      var t = setTimeout(load, 1200);
+      // quay lại tab (vd vừa thanh toán xong ở trang /thanhtoan) → cập nhật nhãn Pro / gói (tối đa 1 lần mỗi 20 giây)
+      function onVis(){ if(document.visibilityState === 'visible' && Date.now() - lastAt > 20000) load(); }
+      document.addEventListener('visibilitychange', onVis);
+      return function(){ alive = false; clearTimeout(t); document.removeEventListener('visibilitychange', onVis); };
     }, [liveStudentId]);
     React.useEffect(function(){
       setVideoViews({});
@@ -2815,7 +2820,60 @@
     // (adaptiveNanoMastery) để thanh nhích lên/xuống ngay sau mỗi câu chấm; ngoài phiên dùng student.nanoMastery.
     var energySrc = (examSession && examSession.type === 'adaptive' && !examSession.isSubmitted) ? adaptiveNanoMastery : (student.nanoMastery || {});
     var energy = window.PrepScholarEngine.overallMastery(energySrc);
-    var energyTier = energy.pct >= window.PrepScholarEngine.MASTERY_GREEN_MIN ? 'green' : (energy.pct >= window.PrepScholarEngine.MASTERY_YELLOW_MIN ? 'yellow' : 'red');
+    // SỬA 26/11/2026 — thanh năng lượng chuyển XANH khi em đạt TRÊN 50% (trước: từ 80%); dưới 50% giữ như cũ
+    var energyTier = energy.pct > 50 ? 'green' : (energy.pct >= window.PrepScholarEngine.MASTERY_YELLOW_MIN ? 'yellow' : 'red');
+    // THÊM 26/11/2026 (lần 2) — nhãn gói cạnh tên: Pro (đã đóng tiền, tên đổi màu vàng kim) / Miễn phí / Học thử
+    var payStateNow = myPay && myPay.gatewayOn ? myPay.state : '';
+    var isPro = (payStateNow === 'ok' || payStateNow === 'due') && ['trial', 'free'].indexOf(myPay.cycle) < 0;
+    var planBadge = !myPay ? null
+      : isPro ? h('span', { title: 'Bản Pro · ' + (myPay.planName || '') + (myPay.paidUntil ? ' · đến ' + myPay.paidUntil.split('-').reverse().join('/') : ''),
+          style: { display: 'inline-flex', alignItems: 'center', gap: '3px', marginLeft: '8px', padding: '2px 9px', borderRadius: '99px', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.08em',
+            color: '#2a1a02', background: 'linear-gradient(135deg,#f6d77d,#d49a2a 55%,#f3c95b)', boxShadow: '0 1px 4px rgba(168,106,28,.35)', verticalAlign: 'middle' } }, '👑 PRO')
+      : (payStateNow === 'free' || payStateNow === 'none') ? h('span', { style: { marginLeft: '8px', padding: '2px 9px', borderRadius: '99px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--ink-2)', background: 'var(--surface-2, #eceee5)', border: '1px solid var(--line, #dde1d5)', verticalAlign: 'middle' } }, 'Gói Miễn phí')
+      : payStateNow === 'trial' ? h('span', { style: { marginLeft: '8px', padding: '2px 9px', borderRadius: '99px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--accent)', border: '1px solid var(--accent)', verticalAlign: 'middle' } }, 'Học thử')
+      : payStateNow === 'trialEnd' ? h('span', { style: { marginLeft: '8px', padding: '2px 9px', borderRadius: '99px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--critical, #d03b3b)', border: '1px solid currentColor', verticalAlign: 'middle' } }, 'Hết học thử')
+      : null;
+    // THÊM 26/11/2026 (lần 2) — hộp hỏi "Bạn có muốn nâng cấp gói học?" + các gói (bấm "Chọn gói này" → trang thanh toán đã chọn sẵn gói)
+    function renderPayModal(){
+      var close = function(){ setPayModal(false); };
+      var groups = [], by = {};
+      (myPay.options || []).forEach(function(o){ if(!by[o.plan]){ by[o.plan] = { plan: o.plan, items: [] }; groups.push(by[o.plan]); } by[o.plan].items.push(o); });
+      var money = function(n){ return Math.round(Number(n) || 0).toLocaleString('vi-VN') + 'đ'; };
+      var share = function(){
+        var url = myPay.url, txt = 'Link đóng học phí FaradayAI: bấm link, chọn gói, app ngân hàng tự điền sẵn — chuyển khoản xong tài khoản tự kích hoạt:';
+        if(navigator.share){ navigator.share({ title: 'Học phí FaradayAI', text: txt, url: url }).catch(function(){}); return; }
+        (navigator.clipboard ? navigator.clipboard.writeText(txt + ' ' + url) : Promise.reject()).then(function(){ alert('Đã chép link thanh toán — dán vào Zalo để gửi.'); }, function(){ window.prompt('Chép link thanh toán:', url); });
+      };
+      var pu = myPay.paidUntil ? myPay.paidUntil.split('-').reverse().join('/') : '';
+      var title = isPro ? (groups.length ? '👑 Bạn đang dùng bản Pro — muốn nâng cấp hoặc gia hạn?' : '👑 Bạn đang dùng bản Pro')
+        : (payStateNow === 'trialEnd' ? 'Đã hết học thử — chọn gói để học tiếp' : 'Bạn có muốn nâng cấp gói học?');
+      var sub = isPro ? ((myPay.planName || 'Gói hiện tại') + (pu ? ' · học đến ' + pu : ''))
+        : (payStateNow === 'free' || payStateNow === 'none') ? 'Em đang dùng Gói Miễn phí. Nâng cấp để mở toàn bộ tính năng — em tự đóng hoặc chia sẻ link cho phụ huynh.'
+        : 'Chọn gói rồi thanh toán — chuyển khoản xong tài khoản tự kích hoạt, không cần chờ thầy.';
+      return h('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': title, onClick: function(e){ if(e.target === e.currentTarget) close(); },
+          style: { position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,12,16,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' } },
+        h('div', { style: { background: 'var(--surface, #fff)', color: 'var(--ink, #12161c)', borderRadius: '18px', width: 'min(560px, 100%)', maxHeight: '90vh', overflow: 'auto', padding: '20px', boxShadow: '0 20px 60px rgba(0,0,0,.35)' } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' } },
+            h('div', null, h('h3', { style: { margin: '0 0 4px', fontSize: '1.15rem' } }, title), h('p', { style: { margin: 0, color: 'var(--ink-2, #4a5262)', fontSize: '0.88rem' } }, sub)),
+            h('button', { type: 'button', 'aria-label': 'Đóng', onClick: close, style: { border: 0, background: 'none', fontSize: '1.4rem', cursor: 'pointer', color: 'var(--ink-2, #4a5262)', lineHeight: 1 } }, '×')),
+          h('div', { style: { display: 'grid', gap: '10px', margin: '14px 0' } },
+            groups.map(function(g){
+              var o0 = g.items[0], full = g.items.filter(function(x){ return x.cycle === 'full'; })[0], month = g.items.filter(function(x){ return x.cycle === 'month'; })[0];
+              var priceLine = month ? ('Từ ' + money(month.amount) + '/tháng' + (full ? ' · hoặc trọn khoá ' + money(full.amount) : '') + ' · có đóng theo quý')
+                : (o0.upgrade ? 'Chỉ đóng phần chênh lệch ' + money(o0.amount) : money(o0.amount) + ' trọn khoá');
+              return h('div', { key: g.plan, style: { border: '1.5px solid ' + (o0.featured ? 'var(--accent, #a86a1c)' : 'var(--line, #dde1d5)'), borderRadius: '14px', padding: '12px 14px', position: 'relative' } },
+                o0.badge ? h('span', { style: { position: 'absolute', top: '-9px', right: '12px', background: 'var(--accent, #a86a1c)', color: '#fff', fontSize: '0.66rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px' } }, o0.badge) : null,
+                h('div', { style: { fontWeight: 800 } }, (o0.upgrade ? 'Nâng cấp lên ' : '') + o0.name),
+                h('div', { style: { fontWeight: 700, color: 'var(--accent, #a86a1c)', margin: '2px 0 6px' } }, priceLine),
+                (o0.features || []).length ? h('ul', { style: { margin: '0 0 8px', paddingLeft: '18px', fontSize: '0.84rem', color: 'var(--ink-2, #4a5262)' } }, o0.features.slice(0, 4).map(function(f, i){ return h('li', { key: i }, f); })) : null,
+                h('a', { className: 'btn btn-primary', href: myPay.url + '&goi=' + encodeURIComponent(g.plan), target: '_blank', rel: 'noopener', style: { textDecoration: 'none', fontSize: '0.86rem' }, onClick: function(){ setTimeout(close, 300); } }, 'Chọn gói này →'));
+            })),
+          !groups.length ? h('p', { style: { color: 'var(--ink-2, #4a5262)' } }, 'Hiện không có gói nào cần đóng thêm.') : null,
+          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' } },
+            groups.length ? h('button', { type: 'button', className: 'btn btn-secondary', onClick: share, title: 'Gửi link để phụ huynh/người thân thanh toán' }, '📤 Chia sẻ link cho phụ huynh') : null,
+            h('button', { type: 'button', className: 'btn btn-secondary', onClick: close }, isPro ? 'Đóng' : 'Để sau'))));
+    }
+    var proNameStyle = isPro ? { background: 'linear-gradient(90deg,#9a5f12,#d49a2a 45%,#b8862b)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', WebkitTextFillColor: 'transparent' } : null;
 
     return h('div', { className: 'ps-wrapper', key: 'bank-' + bankVersion },
       // THÊM 16/11/2026 — báo rõ cho em biết bài luyện đang chờ tải dữ liệu, sẽ tự bắt đầu
@@ -2849,7 +2907,7 @@
         h('div', { className: 'ps-student-picker' },
           h('div', { className: 'ps-avatar-badge' }, student.name.charAt(0)),
           h('div', { className: 'ps-student-meta' },
-            h('h4', null, student.name),
+            h('h4', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap' } }, h('span', { style: proNameStyle }, student.name), planBadge),
             h('div', {
               className: 'ps-energy ' + energyTier,
               title: energy.total ? ('Đã vững (Xanh) ' + energy.green + '/' + energy.total + ' nano-point') : 'Chưa có dữ liệu thành thạo',
@@ -2863,13 +2921,14 @@
           )
         ),
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
-          (myPay && myPay.gatewayOn && myPay.url) ? h('a', {
+          (myPay && myPay.gatewayOn && myPay.url) ? h('button', {
+            type: 'button',
             className: 'btn ' + (['trial', 'trialEnd', 'unpaid', 'due', 'overdue'].indexOf(myPay.state) > -1 ? 'btn-primary' : 'btn-secondary'),
-            href: myPay.url, target: '_blank', rel: 'noopener', style: { textDecoration: 'none' },
-            title: 'Chọn gói và thanh toán — em tự đóng hoặc chia sẻ link cho phụ huynh'
-          }, ['trial', 'trialEnd', 'unpaid', 'due', 'overdue'].indexOf(myPay.state) > -1 ? '💳 Đóng học phí' : '💳 Gói học') : null,
+            title: 'Xem gói học, nâng cấp và thanh toán', onClick: function(){ setPayModal(true); }
+          }, ['trial', 'trialEnd', 'unpaid', 'due', 'overdue'].indexOf(myPay.state) > -1 ? '💳 Đóng học phí' : (isPro ? '👑 Gói Pro' : '💳 Gói học')) : null,
           h('button', { type: 'button', className: 'btn btn-secondary', onClick: handleLogout }, '🚪 Đăng xuất'))
       ),
+      payModal && myPay ? renderPayModal() : null,
 
       // 2. PrepScholar Core Metrics Grid
       h('div', { className: 'ps-metrics-grid' },

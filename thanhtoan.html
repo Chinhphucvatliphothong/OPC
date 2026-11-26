@@ -62,6 +62,11 @@
   .opt.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface));}
   .opt .nm{font-weight:800;} .opt .pr{font-size:1.3rem;font-weight:800;margin:1px 0;} .opt .pr small{font-size:.78rem;color:var(--muted);font-weight:600;}
   .opt ul{margin:6px 0 0;padding-left:18px;font-size:.84rem;color:var(--ink-2);line-height:1.5;}
+  .cyc{display:grid;gap:6px;margin-top:10px;}
+  .cyc button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 11px;font:600 .86rem "Be Vietnam Pro",sans-serif;cursor:pointer;}
+  .cyc button b{font-size:.95rem;white-space:nowrap;} .cyc button small{display:block;color:var(--muted);font-weight:600;font-size:.74rem;}
+  .cyc button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--surface));box-shadow:0 0 0 1px var(--accent) inset;}
+  .save{color:var(--good);font-weight:800;}
   .badge{position:absolute;top:-10px;right:12px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:99px;}
   .amount{font-size:1.9rem;font-weight:800;letter-spacing:-.5px;}
   .apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin:8px 0 4px;}
@@ -108,7 +113,7 @@
   'use strict';
   var $app = document.getElementById('app');
   var qs = new URLSearchParams(location.search);
-  var SID = qs.get('id') || '', CODE = (qs.get('c') || '').toUpperCase(), WANT = qs.get('goi') || '';
+  var SID = qs.get('id') || '', CODE = (qs.get('c') || '').toUpperCase(), WANT = qs.get('goi') || '', WANT_KY = qs.get('ky') || '';
   var BANK_NAMES = { MB: 'MB Bank', VCB: 'Vietcombank', TCB: 'Techcombank', ACB: 'ACB', VPB: 'VPBank', TPB: 'TPBank', BIDV: 'BIDV', ICB: 'VietinBank', STB: 'Sacombank',
     VBA: 'Agribank', OCB: 'OCB', MSB: 'MSB', HDB: 'HDBank', SHB: 'SHB', VIB: 'VIB', SEAB: 'SeABank', LPB: 'LPBank', EIB: 'Eximbank' };
   // app hỗ trợ TỰ ĐIỀN (VietQR deeplink) — danh sách đầy đủ tải từ api.vietqr.io, đây là bản dự phòng khi không tải được
@@ -185,14 +190,42 @@
       default: return '';
     }
   }
-  function optCard(o){
-    var on = S.sel && S.sel.id === o.id;
-    var unit = o.kind === 'base' ? '' : (o.upgrade ? 'phần chênh lệch để nâng cấp' : 'trọn khoá' + (o.until ? ' · học đến ' + vnDate(o.until) : ''));
-    return '<label class="opt' + (on ? ' on' : '') + '">' + (o.badge ? '<span class="badge">' + esc(o.badge) + '</span>' : '') +
-      '<input type="radio" name="opt" value="' + esc(o.id) + '"' + (on ? ' checked' : '') + '>' +
-      '<div class="nm">' + esc(o.upgrade ? 'Nâng cấp lên ' + o.name : o.name) + '</div>' +
-      '<div class="pr">' + money(o.amount) + (unit ? ' <small>' + esc(unit) + '</small>' : '') + '</div>' +
-      ((o.features || []).length ? '<ul>' + o.features.map(function(f){ return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>' : '') + '</label>';
+  // SỬA 26/11/2026 (lần 2) — gộp lựa chọn theo GÓI; gói giá theo tháng có thêm "Theo tháng / Theo quý / Trọn khoá"
+  var CYC_ORDER = { month: 1, quarter: 2, full: 3 };
+  function cycLabel(o){ return o.cycle === 'month' ? 'Theo tháng' : o.cycle === 'quarter' ? 'Theo quý (3 tháng)' : (o.upgrade ? 'Nâng cấp trọn khoá' : 'Trọn khoá đến ngày thi'); }
+  function cycNote(o){
+    if(o.cycle === 'month') return '1 tháng học, tháng sau đóng tiếp';
+    if(o.cycle === 'quarter'){ var full3 = (o.monthly || 0) * 3; return '3 tháng' + (full3 > o.amount ? ' · <span class="save">tiết kiệm ' + money(full3 - o.amount) + '</span>' : ''); }
+    var mm = o.monthly ? Math.max(1, Math.ceil((daysTo(o.until) || 30) / 30.44)) : 0, full = mm * (o.monthly || 0);
+    return (o.until ? 'học đến ' + vnDate(o.until) : 'trọn khoá') + (full > o.amount && !o.upgrade ? ' · <span class="save">tiết kiệm ' + money(full - o.amount) + '</span>' : '');
+  }
+  function planGroups(){
+    var gs = [], by = {};
+    (S.data.options || []).forEach(function(o){
+      var k = o.kind === 'base' ? 'base' : o.plan;
+      if(!by[k]){ by[k] = { key: k, items: [] }; gs.push(by[k]); }
+      by[k].items.push(o);
+    });
+    gs.forEach(function(g){ g.items.sort(function(a, b){ return (CYC_ORDER[a.cycle] || 9) - (CYC_ORDER[b.cycle] || 9); }); });
+    return gs;
+  }
+  function optCard(g){
+    var o0 = g.items[0], last = g.items[g.items.length - 1], on = !!S.sel && g.items.some(function(x){ return x.id === S.sel.id; });
+    var multi = g.items.length > 1, unit, price;
+    if(o0.kind === 'base'){ price = money(o0.amount); unit = ''; }
+    else if(multi){ price = money(o0.amount) + (o0.cycle === 'month' ? '<small>/tháng</small>' : ''); unit = 'hoặc trọn khoá ' + money(last.amount); }
+    else { price = money(o0.amount); unit = o0.upgrade ? 'phần chênh lệch để nâng cấp' : 'trọn khoá' + (o0.until ? ' · học đến ' + vnDate(o0.until) : ''); }
+    var cyc = (on && multi) ? '<div class="cyc" role="radiogroup" aria-label="Cách đóng">' + g.items.map(function(o){
+        return '<button type="button" class="' + (S.sel.id === o.id ? 'on' : '') + '" data-opt="' + esc(o.id) + '"><span>' + esc(cycLabel(o)) + '<small>' + cycNote(o) + '</small></span><b>' + money(o.amount) + '</b></button>';
+      }).join('') + '</div>' : '';
+    return '<label class="opt' + (on ? ' on' : '') + '">' + (o0.badge ? '<span class="badge">' + esc(o0.badge) + '</span>' : '') +
+      '<input type="radio" name="opt" value="' + esc(g.key) + '"' + (on ? ' checked' : '') + '>' +
+      '<div class="nm">' + esc(o0.upgrade ? 'Nâng cấp lên ' + o0.name : o0.name) + '</div>' +
+      '<div class="pr">' + price + (unit ? ' <small>' + esc(unit) + '</small>' : '') + '</div>' + cyc +
+      ((o0.features || []).length ? '<ul>' + o0.features.map(function(f){ return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>' : '') + '</label>';
+  }
+  function defaultFor(g, ky){
+    return g.items.filter(function(o){ return ky && o.cycle === ky; })[0] || g.items.filter(function(o){ return o.cycle === 'full'; })[0] || g.items[0];
   }
   function appBtn(a, amt, last){
     var logo = a.appLogo ? '<img src="' + esc(a.appLogo) + '" alt="" loading="lazy">' : '<img alt="" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 30 30%22%3E%3Crect width=%2230%22 height=%2230%22 rx=%228%22 fill=%22%23a86a1c%22/%3E%3Ctext x=%2215%22 y=%2220%22 font-size=%2213%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22%3E%E2%82%AB%3C/text%3E%3C/svg%3E">';
@@ -218,10 +251,10 @@
     }
     var o = S.sel, amt = payAmount(o), b = d.bank, bankName = BANK_NAMES[String(b.code).toUpperCase()] || b.code;
 
-    html += '<section class="card"><h2><span class="n">1</span>' + (opts.length > 1 ? 'Chọn gói học' : 'Gói học') + '</h2><div class="opts" id="opts">' + opts.map(optCard).join('') + '</div></section>';
+    html += '<section class="card"><h2><span class="n">1</span>' + (planGroups().length > 1 ? 'Chọn gói học' : 'Gói học') + '</h2><div class="opts" id="opts">' + planGroups().map(optCard).join('') + '</div></section>';
 
     html += '<section class="card" id="paySec"><h2><span class="n">2</span>Chuyển khoản</h2>' +
-      '<div class="sub">Số tiền cần chuyển</div><div class="amount">' + money(amt) + '</div>' +
+      '<div class="sub">Số tiền cần chuyển · ' + esc(o.name) + (o.kind === 'base' ? '' : ' · ' + esc(cycLabel(o).toLowerCase())) + '</div><div class="amount">' + money(amt) + '</div>' +
       (credit() > 0 ? '<div class="sub">Đã trừ ' + money(credit()) + ' phụ huynh chuyển trước đó.</div>' : '');
 
     if(IS_MOBILE && S.apps && S.apps.length){
@@ -280,8 +313,14 @@
   function bind(){
     var opts = document.getElementById('opts');
     if(opts) opts.addEventListener('change', function(e){
-      var id = e.target && e.target.value; var o = (S.data.options || []).filter(function(x){ return x.id === id; })[0];
-      if(o){ S.sel = o; render(); var p = document.getElementById('paySec'); if(p && IS_MOBILE) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      var k = e.target && e.target.value; var g = planGroups().filter(function(x){ return x.key === k; })[0];
+      if(g){ S.sel = (S.lastBy && S.lastBy[k]) || defaultFor(g); render(); }
+    });
+    if(opts) opts.addEventListener('click', function(e){
+      var b = e.target.closest && e.target.closest('[data-opt]'); if(!b) return;
+      e.preventDefault();
+      var id = b.getAttribute('data-opt'), o = (S.data.options || []).filter(function(x){ return x.id === id; })[0];
+      if(o){ S.sel = o; S.lastBy = S.lastBy || {}; S.lastBy[o.kind === 'base' ? 'base' : o.plan] = o; render(); }
     });
     var more = document.getElementById('moreApps'); if(more) more.onclick = function(){ S.showAll = true; render(); var a = document.getElementById('apps'); if(a) a.scrollIntoView({ block: 'center' }); };
     var apps = document.getElementById('apps');
@@ -371,7 +410,8 @@
       try{ localStorage.removeItem(KEY); }catch(e){}
     }
     var opts = d.options || [];
-    S.sel = opts.filter(function(o){ return WANT && o.plan === WANT; })[0] || opts.filter(function(o){ return o.featured; })[0] || opts[0] || null;
+    var gs = planGroups(), g0 = gs.filter(function(g){ return WANT && g.key === WANT; })[0] || gs.filter(function(g){ return g.items[0].featured; })[0] || gs[0];
+    S.sel = g0 ? defaultFor(g0, WANT_KY) : null;
     render();
     if(d.gatewayOn && opts.length && !S.done){ S.t0 = Date.now(); schedule(); }
   }).catch(function(e){
