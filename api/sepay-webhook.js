@@ -2,7 +2,7 @@
 // THÊM 29/10/2026. Khi phụ huynh quét VietQR và chuyển khoản, SePay đọc biến động số dư của tài khoản ngân hàng rồi
 // gọi POST vào đây. Hàm này: (1) kiểm tra khoá API, (2) tìm học sinh theo MÃ trong nội dung chuyển khoản (vd. FDY7K3QX),
 // (3) cộng kỳ học phí vào students/{id}.billing (đã đóng tới ngày…), (4) ghi sổ payments/sepay_<id> (chống ghi trùng),
-// (5) cập nhật trang phụ huynh. TOÀN BỘ logic nằm trong MỘT file này (không cần thư mục lib/). Giao dịch không khớp / thiếu tiền / chưa thiết lập gói được GHI SỔ để thầy xử lý trong admin.
+// (5) cập nhật trang phụ huynh, (6) THÊM 26/11/2026: tự mở khoá tài khoản đang khoá + khớp gói theo bảng giá khi em chưa có billing.offers. TOÀN BỘ logic nằm trong MỘT file này (không cần thư mục lib/). Giao dịch không khớp / thiếu tiền / chưa thiết lập gói được GHI SỔ để thầy xử lý trong admin.
 // Biến môi trường (Vercel → Settings → Environment Variables):
 //   SEPAY_API_KEY             — khoá API đặt khi tạo webhook ở SePay (SePay gửi kèm header  Authorization: Apikey <khoá>)
 //   FIREBASE_SERVICE_ACCOUNT_JSON — đã có sẵn (dùng chung với api/student-login.js), không cần thêm
@@ -75,6 +75,40 @@ function matchOffer(offers, total, tol){
   return best;
 }
 
+// THÊM 26/11/2026 — GÓI TÍNH THẲNG TỪ BẢNG GIÁ (settings/pricing) khi học sinh chưa có billing.offers khớp (tài khoản thầy tạo trước đây,
+// tài khoản đang khoá, admin chưa mở tab Học phí…). Công thức = api/student-login.js › offersForStudent = admin-ops.js › offersFor.
+function cfgFromSettings(bill, pr){
+  bill = bill || {}; pr = pr || {};
+  var tiers = Array.isArray(pr.tiers) ? pr.tiers : [];
+  var plans = tiers.map(function(t, i){
+    t = t || {};
+    return { key: String(t.id || ('g' + (i + 1))).replace(/[^A-Za-z0-9_-]/g, ''), name: t.name || ('Gói ' + (i + 1)), monthly: Number(t.price) || 0, full: Number(t.fullPrice) || 0,
+      visible: t.visible !== false, courseOnly: !/th[aá]ng/i.test(String(t.unit || '/tháng')) };
+  });
+  return { allPlans: plans, plans: plans.filter(function(p){ return p.visible; }), examDate: pr.examDate || bill.examDate || '2027-06-11',
+    fullOff: pr.fullOff != null ? Number(pr.fullOff) : (bill.fullOff != null ? Number(bill.fullOff) : 20), remindDays: Number(bill.remindDays) || 5 };
+}
+function fullFeeOf(cfg, p, today){
+  if(!p) return 0;
+  var base = Number(p.monthly) || 0;
+  if(p.courseOnly || Number(p.full) > 0) return Number(p.full) > 0 ? Number(p.full) : base;
+  var m = Math.max(1, Math.ceil((parseYmd(cfg.examDate) - parseYmd(today)) / (30.44 * 86400000)));
+  return Math.round(base * m * (1 - (Number(cfg.fullOff) || 0) / 100) / 1000) * 1000;
+}
+function offersFromCfg(cfg, b, today){
+  b = b || {};
+  var paidFull = !!b.plan && b.cycle === 'full' && b.paidUntil && String(b.paidUntil).slice(0, 10) >= today;
+  var cur = paidFull ? cfg.allPlans.filter(function(x){ return x.key === b.plan; })[0] : null, curFee = cur ? fullFeeOf(cfg, cur, today) : 0;
+  var out = [];
+  cfg.plans.slice(0, 3).forEach(function(p){
+    var fee = fullFeeOf(cfg, p, today);
+    if(!(fee > 0)) return;
+    if(paidFull){ if(p.key === b.plan || fee <= curFee) return; fee = fee - curFee; }
+    out.push({ plan: p.key, name: p.name, amount: fee, cycle: 'full', fixedUntil: cfg.examDate, upgrade: !!paidFull });
+  });
+  return out;
+}
+
 function safeEqual(a, b){
   a = String(a || ''); b = String(b || '');
   if(a.length !== b.length) return false;
@@ -108,6 +142,13 @@ async function handle(req, res, db, FV, nowMs){
   try{
     var stuDocs = [];
     if(code){ var q = await db.collection('students').where('payCode', '==', code).limit(2).get(); q.forEach(function(d){ stuDocs.push(d); }); }
+    var cfg = null;   // THÊM 26/11/2026 — bảng giá, để khớp gói kể cả khi học sinh chưa có billing.offers
+    if(stuDocs.length === 1){
+      try{
+        var sb = await db.collection('settings').doc('billing').get(), sp = await db.collection('settings').doc('pricing').get();
+        cfg = cfgFromSettings(sb.exists ? sb.data() : {}, sp.exists ? sp.data() : {});
+      }catch(e){ console.error('Không đọc được bảng giá:', e && e.message); }
+    }
     var out = await db.runTransaction(async function(tx){
       var led = await tx.get(ledgerRef);
       if(led.exists) return { dup: true };
@@ -119,6 +160,11 @@ async function handle(req, res, db, FV, nowMs){
       var common = Object.assign({}, base, { studentId: ssnap.id, studentName: String(s.name || '').slice(0, 80) });
       // THÊM 2/11/2026 — phụ huynh chọn GÓI trên trang phụ huynh: số tiền khớp ưu đãi nào thì kích hoạt gói đó (trọn khóa / nâng cấp)
       var credit0 = Math.max(0, Number(b.credit) || 0), offer = matchOffer(b.offers, amount + credit0, 1000);
+      var plan = offer ? null : planPayment(b, amount, today);
+      // THÊM 26/11/2026 — chưa khớp gì: thử các gói tính thẳng từ bảng giá (link /thanhtoan cho tài khoản chưa có gói / đang khoá)
+      if(!offer && plan.status !== 'applied' && cfg) offer = matchOffer(offersFromCfg(cfg, b, today), amount + credit0, 1000);
+      // THÊM 26/11/2026 — đóng tiền thành công thì TỰ MỞ KHOÁ tài khoản (thầy khoá tay khi hết học thử) -> em đăng nhập lại là học
+      var unlock = s.status === 'inactive';
       if(offer){
         var until = String(offer.fixedUntil || '').slice(0, 10);
         if(!until || until < today) until = addMonths(today, 12);
@@ -126,22 +172,30 @@ async function handle(req, res, db, FV, nowMs){
         var pays0 = (Array.isArray(b.payments) ? b.payments : []).concat([{ date: today, amount: amount, months: 0, cycle: 'full', note: ('Tự động · ' + (offer.upgrade ? 'Nâng cấp lên ' : 'Chọn ') + String(offer.name || offer.plan).slice(0, 60) + ' · SePay #' + sid).slice(0, 120), auto: true }]).slice(-60);
         var upd0 = { 'billing.plan': offer.plan, 'billing.cycle': 'full', 'billing.paidUntil': until, 'billing.payments': pays0, 'billing.credit': Math.max(0, amount + credit0 - Number(offer.amount)), 'billing.offers': [], 'billing.lastAutoAt': base.receivedAt };
         if(!b.startDate) upd0['billing.startDate'] = today;
+        if(unlock){ upd0.status = 'active'; upd0['billing.unlockedByPaymentAt'] = base.receivedAt; }
         tx.update(sref, upd0);
-        tx.set(ledgerRef, Object.assign({}, common, { status: 'applied', plan: offer.plan, paidUntil: until, message: (offer.upgrade ? 'Nâng cấp lên ' : 'Kích hoạt ') + (offer.name || offer.plan) + ' tới ' + until }));
+        tx.set(ledgerRef, Object.assign({}, common, { status: 'applied', plan: offer.plan, paidUntil: until, message: (offer.upgrade ? 'Nâng cấp lên ' : 'Kích hoạt ') + (offer.name || offer.plan) + ' tới ' + until + (unlock ? ' · đã tự mở khoá tài khoản' : '') }));
         return { status: 'applied', token: s.parentViewToken || '', until: until, offerApplied: true };
       }
-      var plan = planPayment(b, amount, today);
       if(plan.status === 'applied'){
         var pays = (Array.isArray(b.payments) ? b.payments : []).concat([{ date: today, amount: amount, months: plan.months || (b.pay && b.pay.months) || 1, cycle: plan.cycle, note: ('Tự động · SePay #' + sid + (base.gateway ? ' · ' + base.gateway : '')).slice(0, 120), auto: true }]).slice(-60);
         var upd = { 'billing.paidUntil': plan.until, 'billing.cycle': plan.cycle, 'billing.payments': pays, 'billing.credit': plan.leftover, 'billing.lastAutoAt': base.receivedAt };
         if(!b.startDate) upd['billing.startDate'] = today;
+        if(unlock){ upd.status = 'active'; upd['billing.unlockedByPaymentAt'] = base.receivedAt; }
         tx.update(sref, upd);
-        tx.set(ledgerRef, Object.assign({}, common, { status: 'applied', periods: plan.periods, paidUntil: plan.until, message: 'Đã gia hạn tới ' + plan.until }));
+        tx.set(ledgerRef, Object.assign({}, common, { status: 'applied', periods: plan.periods, paidUntil: plan.until, message: 'Đã gia hạn tới ' + plan.until + (unlock ? ' · đã tự mở khoá tài khoản' : '') }));
         return { status: 'applied', token: s.parentViewToken || '', until: plan.until };
       }
       if(plan.status === 'partial'){
         tx.update(sref, { 'billing.credit': plan.credit });
         tx.set(ledgerRef, Object.assign({}, common, { status: 'partial', message: 'Mới đóng ' + plan.credit + 'đ, chưa đủ 1 kỳ (' + ((b.pay && b.pay.amount) || '?') + 'đ) — đã cộng dồn, chờ chuyển thêm.' }));
+        return { status: 'partial' };
+      }
+      // THÊM 26/11/2026 — em chưa có gói nhưng bảng giá có gói: giữ số tiền làm "đã chuyển trước" (credit) để lần chuyển thêm cộng dồn
+      // đủ giá gói là tự kích hoạt (trang /thanhtoan hiện "đã nhận X, chuyển thêm Y")
+      if(cfg && offersFromCfg(cfg, b, today).length){
+        tx.update(sref, { 'billing.credit': amount + credit0 });
+        tx.set(ledgerRef, Object.assign({}, common, { status: 'partial', message: 'Đã nhận ' + (amount + credit0) + 'đ, chưa khớp giá gói nào — đã cộng dồn, chờ chuyển thêm (hoặc thầy ghi nhận tay).' }));
         return { status: 'partial' };
       }
       tx.set(ledgerRef, Object.assign({}, common, { status: 'needs_setup', message: 'Học sinh chưa có gói/số tiền kỳ tới — thầy gán gói rồi ghi nhận tay.' }));

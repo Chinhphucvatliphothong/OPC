@@ -58,6 +58,10 @@ export default async function handler(req, res){
   if(act === 'signup_start' || act === 'signup_resend' || act === 'signup_verify' || act === 'signup_paystatus'){   // SỬA 24/11/2026: + signup_paystatus
     return handleFreeSignup(req, res, bodyPeek || {}, act);
   }
+  // THÊM 26/11/2026 — trang thanh toán 1 chạm /thanhtoan (pay_page, pay_status) + thẻ "Đóng học phí" trong app (pay_link)
+  if(act === 'pay_page' || act === 'pay_status' || act === 'pay_link'){
+    return handlePay(req, res, bodyPeek || {}, act);
+  }
 
   var app;
   try{
@@ -100,6 +104,18 @@ export default async function handler(req, res){
     var student = stuSnap.data() || {};
 
     if(student.status === 'inactive'){
+      // SỬA 26/11/2026 — đúng mật khẩu thì kèm link thanh toán: phụ huynh chuyển khoản xong, webhook tự MỞ KHOÁ, em đăng nhập lại là học
+      // (sai mật khẩu vẫn chỉ báo "tạm khoá" như cũ — không lộ thông tin gì thêm)
+      var pw0 = String(student.password || ''), ok0 = !!password && (looksHashed(pw0) ? bcrypt.compareSync(password, pw0) : pw0 === password);
+      var lockedPay = null;
+      if(ok0){ try{ lockedPay = await payLinkFor(db, stuRef, student); }catch(e){ console.error('payLinkFor:', e && e.message); } }
+      if(lockedPay && lockedPay.url && ['ok', 'free'].indexOf(lockedPay.state) < 0){
+        res.status(403).json({ locked: true, payUrl: lockedPay.url, state: lockedPay.state,
+          error: lockedPay.state === 'trialEnd'
+            ? 'Em đã hết thời gian học thử. Chọn gói và đóng học phí (em tự đóng hoặc chia sẻ link cho phụ huynh) — tiền vào là tài khoản TỰ MỞ, đăng nhập lại là học tiếp ngay.'
+            : 'Tài khoản đang tạm khoá. Đóng học phí (em tự đóng hoặc chia sẻ link cho phụ huynh) — tiền vào là tài khoản TỰ MỞ, đăng nhập lại là học tiếp ngay.' });
+        return;
+      }
       res.status(403).json({ error: 'Tài khoản này đang tạm khoá — liên hệ thầy cô để được hỗ trợ.' });
       return;
     }
@@ -235,7 +251,8 @@ function sendCredentialMail(to, info){
     (info.payment ? 'Tài khoản FaradayAI của em đã sẵn sàng (đăng ký ' + info.payment.planName + '):' : 'Tài khoản học thử miễn phí ' + FREE_TRIAL_DAYS + ' ngày trên FaradayAI của em đã sẵn sàng:'),
     '  Tên đăng nhập: ' + info.username, '  Mật khẩu: ' + info.password, '',
     'Cách vào học: mở ' + SITE_URL + ' → bấm "Đăng nhập" → nhập tên đăng nhập và mật khẩu ở trên.',
-    (info.payment ? payTextLines(info.payment) : 'Học thử đến hết ngày ' + vnDateText(info.trialEnd) + '. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.'), '',
+    (info.payment ? payTextLines(info.payment) : 'Học thử đến hết ngày ' + vnDateText(info.trialEnd) + '. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.' +
+      (info.payUrl ? '\nKhi muốn học chính thức, phụ huynh chọn gói và thanh toán tại (mở thẳng app ngân hàng, tiền vào là tự kích hoạt): ' + info.payUrl : '')), '',
     'Thầy FaradayAI'
   ].join('\n');
   var html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1b2430">' +
@@ -244,7 +261,8 @@ function sendCredentialMail(to, info){
     '<table style="border-collapse:collapse;margin:8px 0 14px"><tr><td style="padding:6px 12px;background:#f3f4ee">Tên đăng nhập</td><td style="padding:6px 12px;font-family:monospace;font-size:16px"><b>' + escHtml(info.username) + '</b></td></tr>' +
     '<tr><td style="padding:6px 12px;background:#f3f4ee">Mật khẩu</td><td style="padding:6px 12px;font-family:monospace;font-size:16px"><b>' + escHtml(info.password) + '</b></td></tr></table>' +
     '<p><a href="' + SITE_URL + '/#luyen-thi-prepscholar" style="display:inline-block;background:#b07a3c;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Vào học ngay</a></p>' +
-    (info.payment ? payHtml(info.payment) : '<p>Học thử đến hết ngày <b>' + escHtml(vnDateText(info.trialEnd)) + '</b>. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.</p>') +
+    (info.payment ? payHtml(info.payment) : '<p>Học thử đến hết ngày <b>' + escHtml(vnDateText(info.trialEnd)) + '</b>. Trước khi hết hạn, thầy sẽ gọi cho phụ huynh để trao đổi kết quả của em.</p>' +
+      (info.payUrl ? '<p>Khi muốn học chính thức, phụ huynh <a href="' + escHtml(info.payUrl) + '">chọn gói và thanh toán tại đây</a> — mở thẳng app ngân hàng, tiền vào là tài khoản tự kích hoạt.</p>' : '')) +
     '<p>Thầy FaradayAI</p></div>';
   return sendMail(to, (info.payment ? 'Tài khoản & học phí FaradayAI của ' : 'Tài khoản học thử FaradayAI của ') + info.name, text, html);
 }
@@ -498,14 +516,15 @@ async function signupVerify(db, res, body){
 
   // THÊM 24/11/2026 — khối thanh toán trả về trang chủ (mã QR đã điền sẵn số tiền + nội dung = mã học sinh)
   var payment = null;
+  var payUrlNew = payCode ? payPageUrl(stuRef.id, payCode) : '';   // THÊM 26/11/2026 — trang thanh toán 1 chạm (mở thẳng app ngân hàng)
   if(isPay && payPlan){
     var amt = fullFee(bc, payPlan);
     payment = payCode
       ? { auto: true, plan: payPlan.key, planName: payPlan.name, amount: amt, until: bc.examDate, content: payCode,
-          bank: bc.gateway.bank, acc: bc.gateway.acc, accName: bc.gateway.name || '', qrUrl: qrUrl(bc, payCode, amt) }
+          bank: bc.gateway.bank, acc: bc.gateway.acc, accName: bc.gateway.name || '', qrUrl: qrUrl(bc, payCode, amt), payUrl: payUrlNew }
       : { auto: false, plan: payPlan.key, planName: payPlan.name, amount: amt, until: bc.examDate, bankInfo: bc.bankInfo || '' };
   }
-  var mail = await sendCredentialMail(d.gmail, { name: d.name, username: username, password: password, trialEnd: trialEnd, payment: payment });
+  var mail = await sendCredentialMail(d.gmail, { name: d.name, username: username, password: password, trialEnd: trialEnd, payment: payment, payUrl: payUrlNew });
   res.status(200).json({
     ok: true, studentId: stuRef.id, username: username, password: password, trialEnd: trialEnd, trialDays: trialDays, mode: d.mode, payment: payment,
     emailSent: !!mail.sent, discountVnd: discountVnd, referrerFound: !!referrer, codeNotFound: !!(d.referralCode && !referrer)
@@ -541,14 +560,16 @@ async function loadBillingCfg(db){
   var plans = tiers.map(function(t, i){   // = admin-ops.js › tiersToPlans
     t = t || {};
     return { key: String(t.id || ('g' + (i + 1))).replace(/[^A-Za-z0-9_-]/g, ''), name: t.name || ('Gói ' + (i + 1)), monthly: Number(t.price) || 0, full: Number(t.fullPrice) || 0,
-      visible: t.visible !== false, courseOnly: !/th[aá]ng/i.test(String(t.unit || '/tháng')) };
+      visible: t.visible !== false, courseOnly: !/th[aá]ng/i.test(String(t.unit || '/tháng')),
+      features: (Array.isArray(t.features) ? t.features : []).slice(0, 6).map(function(x){ return String(x).slice(0, 140); }), badge: String(t.badge || '').slice(0, 40), featured: !!t.featured };   // THÊM 26/11/2026 — cho trang /thanhtoan
   });
   var g = bill.gateway || {};
   return {
     plans: plans.filter(function(p){ return p.visible; }), allPlans: plans,
     examDate: pr.examDate || bill.examDate || BILL_DEFAULTS.examDate,
     fullOff: pr.fullOff != null ? Number(pr.fullOff) : (bill.fullOff != null ? Number(bill.fullOff) : BILL_DEFAULTS.fullOff),
-    gateway: g, gatewayOn: !!(g.enabled && g.bank && g.acc), bankInfo: String(bill.bankInfo || '')
+    gateway: g, gatewayOn: !!(g.enabled && g.bank && g.acc), bankInfo: String(bill.bankInfo || ''),
+    remindDays: Number(bill.remindDays) || 5   // THÊM 26/11/2026 — = admin-ops.js › billingStatus "sắp đến hạn"
   };
 }
 function feeFor(bc, p, cycle){   // = admin-ops.js › cycleFee (không customFee)
@@ -597,7 +618,7 @@ function vnd(n){ return Math.round(Number(n) || 0).toLocaleString('vi-VN') + 'đ
 function payTextLines(p){
   if(p.auto) return 'HỌC PHÍ ' + p.planName + ' (trọn khoá đến kỳ thi ' + vnDateText(p.until) + '): ' + vnd(p.amount) +
     '\nChuyển khoản: ' + p.bank + ' ' + p.acc + (p.accName ? ' — ' + p.accName : '') + ', số tiền ' + vnd(p.amount) + ', NỘI DUNG: ' + p.content +
-    '\nMã QR (đã điền sẵn): ' + p.qrUrl +
+    '\nMã QR (đã điền sẵn): ' + p.qrUrl + (p.payUrl ? '\nThanh toán trên điện thoại (mở thẳng app ngân hàng, tự điền sẵn): ' + p.payUrl : '') +
     '\nGiữ nguyên nội dung ' + p.content + ' để hệ thống tự kích hoạt khoá học trong vài phút, không cần báo thầy. Trong lúc chờ, em vẫn vào học được.';
   return 'HỌC PHÍ ' + p.planName + ': ' + vnd(p.amount) + '. Thầy sẽ liên hệ phụ huynh để hướng dẫn thanh toán.' + (p.bankInfo ? '\nThông tin chuyển khoản: ' + p.bankInfo : '');
 }
@@ -605,6 +626,7 @@ function payHtml(p){
   if(p.auto) return '<div style="border:1px solid #e3d6c3;border-radius:10px;padding:12px 14px;margin:6px 0 14px">' +
     '<p style="margin:0 0 6px"><b>Học phí ' + escHtml(p.planName) + '</b> (trọn khoá đến kỳ thi ' + escHtml(vnDateText(p.until)) + '): <b>' + vnd(p.amount) + '</b></p>' +
     '<p style="margin:0 0 6px"><img src="' + escHtml(p.qrUrl) + '" alt="Mã QR chuyển khoản" width="240" style="max-width:100%"></p>' +
+    (p.payUrl ? '<p style="margin:0 0 8px"><a href="' + escHtml(p.payUrl) + '" style="display:inline-block;background:#0f8a3c;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:bold">📱 Thanh toán trên điện thoại (mở thẳng app ngân hàng)</a></p>' : '') +
     '<p style="margin:0 0 6px">' + escHtml(p.bank) + ' ' + escHtml(p.acc) + (p.accName ? ' — ' + escHtml(p.accName) : '') + ' · Nội dung: <b style="font-family:monospace">' + escHtml(p.content) + '</b></p>' +
     '<p style="margin:0">Giữ nguyên nội dung <b>' + escHtml(p.content) + '</b> để hệ thống <b>tự kích hoạt khoá học</b> trong vài phút, không cần báo thầy. Trong lúc chờ, em vẫn vào học được.</p></div>';
   return '<p><b>Học phí ' + escHtml(p.planName) + ': ' + vnd(p.amount) + '.</b> Thầy sẽ liên hệ phụ huynh để hướng dẫn thanh toán.' + (p.bankInfo ? '<br>Thông tin chuyển khoản: ' + escHtml(p.bankInfo) : '') + '</p>';
@@ -618,4 +640,134 @@ async function signupPayStatus(db, res, body){
   if(!st || st.payCode !== code){ res.status(404).json({ error: 'not_found' }); return; }
   var b = st.billing || {}, paid = b.cycle === 'full' && b.paidUntil && String(b.paidUntil).slice(0, 10) >= vnYmd();
   res.status(200).json({ ok: true, paid: !!paid, paidUntil: paid ? String(b.paidUntil).slice(0, 10) : '' });
+}
+
+
+// ================= THÊM 26/11/2026 — THANH TOÁN 1 CHẠM: trang /thanhtoan + thẻ "Đóng học phí" trong app =================
+// Mỗi em có 1 link riêng  https://faradayai.vn/thanhtoan?id=<studentId>&c=<payCode>  (studentId 20 ký tự ngẫu nhiên + mã FDY → không đoán được).
+// Link KHÔNG phụ thuộc trình duyệt admin của thầy: server tự tính gói/số tiền từ settings (bảng giá), tự cấp mã FDY nếu em chưa có
+// (tài khoản thầy tạo trước đây, tài khoản đang khoá). Phụ huynh chọn gói → bấm app ngân hàng (tự điền STK, số tiền, nội dung) → chuyển
+// → api/sepay-webhook.js kích hoạt gói + TỰ MỞ KHOÁ → trang này tự báo "Đã nhận" (hỏi pay_status vài giây/lần).
+//   { action:'pay_page',   id, c }               -> thông tin hiển thị trang thanh toán
+//   { action:'pay_status', id, c }               -> đã nhận tiền chưa (trang /thanhtoan hỏi định kỳ)
+//   { action:'pay_link',   idToken }             -> học sinh ĐANG ĐĂNG NHẬP xin link của chính mình (student-extras.js)
+function payPageUrl(id, code){ return SITE_URL + '/thanhtoan?id=' + encodeURIComponent(id) + '&c=' + encodeURIComponent(code); }
+function ymdDiff(a, b){ return Math.round((Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10)) - Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10))) / 86400000); }
+// = admin-ops.js › billingStatus (chỉ lấy mã trạng thái)
+function billState(bc, b, today){
+  b = b || {};
+  if(!b.plan) return 'none';
+  if(b.cycle === 'free') return 'free';
+  if(b.cycle === 'trial') return (b.trialEnd && String(b.trialEnd).slice(0, 10) < today) ? 'trialEnd' : 'trial';
+  if(!b.paidUntil) return 'unpaid';
+  var d = ymdDiff(String(b.paidUntil).slice(0, 10), today);
+  if(d < 0) return 'overdue';
+  return d <= (bc.remindDays || 5) ? 'due' : 'ok';
+}
+// = admin-ops.js › offersFor, nhưng tài khoản CHƯA CÓ GÓI / MIỄN PHÍ cũng được chọn mọi gói (giá trọn khoá) — để link thầy gửi cho
+// tài khoản tạo trước đây dùng được ngay, không phải thiết lập gói trước. Đang đóng đủ trọn khoá -> chỉ hiện gói cao hơn (phần chênh lệch).
+function offersForStudent(bc, b, today){
+  b = b || {};
+  var st = billState(bc, b, today);
+  var paidFull = !!b.plan && b.cycle === 'full' && (st === 'ok' || st === 'due');
+  var cur = paidFull ? bc.allPlans.filter(function(x){ return x.key === b.plan; })[0] : null;
+  var curFee = cur ? fullFee(bc, cur) : 0;
+  var out = [];
+  bc.plans.slice(0, 3).forEach(function(p){
+    var fee = fullFee(bc, p);
+    if(!(fee > 0)) return;
+    if(paidFull){ if(p.key === b.plan || fee <= curFee) return; fee = fee - curFee; }
+    out.push({ plan: p.key, name: p.name, amount: fee, cycle: 'full', fixedUntil: bc.examDate, upgrade: paidFull });
+  });
+  return out;
+}
+async function ensurePayCode(db, ref, s){
+  if(s.payCode) return s.payCode;
+  var code = await genUniquePayCode(db);
+  await ref.update({ payCode: code });
+  s.payCode = code;
+  return code;
+}
+// học sinh đang khoá / đang đăng nhập: link thanh toán của chính em (cấp mã FDY nếu chưa có)
+async function payLinkFor(db, ref, s){
+  var bc = await loadBillingCfg(db);
+  if(!bc.gatewayOn) return { gatewayOn: false, state: billState(bc, s.billing, vnYmd()) };
+  var code = await ensurePayCode(db, ref, s);
+  var today = vnYmd(), b = s.billing || {};
+  var plan = bc.allPlans.filter(function(x){ return x.key === b.plan; })[0];
+  return {
+    gatewayOn: true, url: payPageUrl(ref.id, code), state: billState(bc, b, today),
+    trialEnd: b.trialEnd ? String(b.trialEnd).slice(0, 10) : '', paidUntil: b.paidUntil ? String(b.paidUntil).slice(0, 10) : '',
+    planName: plan ? plan.name : '', upgradeable: offersForStudent(bc, b, today).length > 0
+  };
+}
+function payLookup(body){
+  var id = String(body.id || '').slice(0, 40), code = String(body.c || '').toUpperCase().slice(0, 12);
+  return (/^[A-Za-z0-9]{10,40}$/.test(id) && /^FDY[A-Z0-9]{5}$/.test(code)) ? { id: id, code: code } : null;
+}
+function lastPayOf(b){
+  var ps = Array.isArray(b.payments) ? b.payments : [], p = ps[ps.length - 1];
+  return p ? { date: String(p.date || '').slice(0, 10), amount: Number(p.amount) || 0 } : null;
+}
+
+async function handlePay(req, res, body, act){
+  var app;
+  try{ app = getAdminApp(); }catch(e){ res.status(500).json({ error: 'Server chưa cấu hình Firebase.' }); return; }
+  var db = admin.firestore(app);
+  try{
+    if(act === 'pay_link'){
+      var tok = String(body.idToken || '').slice(0, 4000) || String((req.headers && req.headers.authorization) || '').replace(/^Bearer\s+/i, '');
+      var uid;
+      try{ uid = (await admin.auth(app).verifyIdToken(tok)).uid; }catch(e){ res.status(401).json({ error: 'Phiên đăng nhập đã hết — em tải lại trang.' }); return; }
+      var ref0 = db.collection('students').doc(uid), sn0 = await ref0.get();
+      if(!sn0.exists){ res.status(404).json({ error: 'not_found' }); return; }
+      var info = await payLinkFor(db, ref0, sn0.data() || {});
+      res.status(200).json(Object.assign({ ok: true }, info));
+      return;
+    }
+
+    var q = payLookup(body);
+    if(!q){ res.status(400).json({ error: 'Link thanh toán chưa đúng — phụ huynh mở lại đúng link thầy hoặc em gửi.' }); return; }
+    var ref = db.collection('students').doc(q.id), sn = await ref.get();
+    var s = sn.exists ? (sn.data() || {}) : null;
+    if(!s || String(s.payCode || '').toUpperCase() !== q.code){ res.status(404).json({ error: 'Link thanh toán đã hết hiệu lực — phụ huynh nhắn thầy để lấy link mới.' }); return; }
+    var today = vnYmd(), b = s.billing || {};
+    // pay_status được hỏi vài giây/lần -> không đọc bảng giá (đỡ tốn lượt đọc); trang tự tải lại pay_page khi thấy tiền về
+    var bc = act === 'pay_page' ? await loadBillingCfg(db) : { remindDays: 5, allPlans: [] };
+    var state = billState(bc, b, today);
+    var cur = bc.allPlans.filter(function(x){ return x.key === b.plan; })[0];
+    var status = {
+      state: state, planName: cur ? cur.name : '', paidUntil: b.paidUntil ? String(b.paidUntil).slice(0, 10) : '',
+      trialEnd: b.trialEnd ? String(b.trialEnd).slice(0, 10) : '', locked: s.status === 'inactive',
+      stamp: String(b.lastAutoAt || ''), credit: Math.max(0, Number(b.credit) || 0), last: lastPayOf(b)
+    };
+    if(act === 'pay_status'){ res.status(200).json(Object.assign({ ok: true }, status)); return; }
+
+    // pay_page
+    if(!bc.gatewayOn){ res.status(200).json({ ok: true, gatewayOn: false, name: String(s.name || ''), status: status, bankInfo: bc.bankInfo }); return; }
+    var byKey = {}; bc.allPlans.forEach(function(p){ byKey[p.key] = p; });
+    var options = offersForStudent(bc, b, today).map(function(o){
+      var p = byKey[o.plan] || {};
+      return { id: 'o_' + o.plan, kind: 'offer', plan: o.plan, name: o.name, amount: o.amount, upgrade: !!o.upgrade, until: o.fixedUntil,
+        features: p.features || [], badge: p.badge || '', featured: !!p.featured };
+    });
+    // gói theo THÁNG đang dùng: thêm lựa chọn "gia hạn kỳ tới" (billing.pay do admin-ops.js ghi) nếu chưa trùng số tiền gói trọn khoá
+    var pay = b.pay;
+    if(pay && Number(pay.amount) > 0 && pay.cycle !== 'full' && ['unpaid', 'due', 'overdue', 'trial', 'trialEnd'].indexOf(state) > -1 &&
+       !options.some(function(o){ return Math.abs(o.amount - Number(pay.amount)) <= 1000; })){
+      options.unshift({ id: 'base', kind: 'base', plan: b.plan, name: (cur ? cur.name : 'Học phí') + ' · gia hạn ' + (Number(pay.months) || 1) + ' tháng',
+        amount: Math.round(Number(pay.amount)), upgrade: false, until: '', features: [], badge: '', featured: false });
+    }
+    var zalo = '';
+    try{ var dz = await db.collection('settings').doc('diagnostic5').get(); if(dz.exists) zalo = String((dz.data() || {}).zaloLink || '').slice(0, 200); }catch(e){}
+    var g = bc.gateway || {};
+    res.status(200).json({
+      ok: true, gatewayOn: true, name: String(s.name || '').slice(0, 80), khoi: s.khoi || '', status: status, options: options,
+      bank: { code: String(g.bank || ''), acc: String(g.acc || ''), name: String(g.name || '') }, content: q.code,
+      examDate: bc.examDate, zalo: /^https?:\/\//.test(zalo) ? zalo : ''
+    });
+  }catch(err){
+    console.error('Lỗi trang thanh toán:', err);
+    res.status(500).json({ error: 'Lỗi kết nối máy chủ — thử lại sau ít phút.' });
+  }
 }
