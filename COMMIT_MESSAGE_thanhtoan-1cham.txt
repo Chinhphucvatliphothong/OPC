@@ -1,0 +1,17 @@
+Thanh toán 1 chạm: trang /thanhtoan mở thẳng app ngân hàng + tự mở khoá khi tiền về
+
+- thanhtoan.html (mới): mỗi em 1 link /thanhtoan?id=…&c=FDY…; phụ huynh chọn gói → bấm app ngân hàng (VietQR deeplink,
+  VietinBank/BIDV/MB/ACB/OCB tự điền STK + số tiền + nội dung) hoặc quét/lưu ảnh QR; trang tự hỏi 4 giây/lần và báo
+  "Đã nhận học phí" ngay khi tiền vào; nút chia sẻ link cho phụ huynh/người thân; trừ sẵn tiền đã chuyển thiếu trước đó.
+- api/student-login.js: action pay_page / pay_status / pay_link (gói tính thẳng từ bảng giá, tự cấp mã FDY nếu chưa có —
+  dùng được cho cả tài khoản thầy tạo trước đây, chưa có gói); đăng nhập tài khoản đang khoá + đúng mật khẩu → trả link
+  thanh toán; thư gửi tài khoản kèm link thanh toán.
+- api/sepay-webhook.js: đóng tiền thành công → TỰ MỞ KHOÁ tài khoản; khớp gói theo bảng giá khi em chưa có billing.offers;
+  em chưa có gói chuyển thiếu → cộng dồn chờ chuyển thêm.
+- student-extras.js + opc-live-data.js: thẻ "Học thử còn N ngày / Hết học thử" với nút "💳 Đóng học phí" + "📤 Chia sẻ link" (không hiện
+  với tài khoản Miễn phí / chưa có gói).
+- prepscholar-ui.js: màn đăng nhập tài khoản bị khoá có nút "💳 Đóng học phí" + "📤 Chia sẻ link".
+- admin-ops.js: nút "🔗 Link TT" ở tab Học phí (chép tin nhắn kèm link + mở Zalo phụ huynh); tin nhắc học phí kèm link.
+- phuhuynh.html: nút "Thanh toán ngay — mở thẳng app ngân hàng". index.html: nút tương tự sau khi đăng ký khoá học.
+
+Co-Authored-By: Claude <noreply@anthropic.com>

@@ -163,6 +163,15 @@
     var exS = React.useState(false); var inExam = exS[0], setInExam = exS[1];
     var cfgRef = React.useRef({ survey: null, state: null });
     var stuRef = React.useRef(null); stuRef.current = stu;
+    var pyS = React.useState(null); var payInfo = pyS[0], setPayInfo = pyS[1];   // THÊM 26/11/2026 — thẻ "Gói học / Đóng học phí"
+    React.useEffect(function(){
+      setPayInfo(null);
+      if(!stu) return;
+      var cancelled = false;
+      function load(){ var L = live(); if(L && L.getMyPayLink) L.getMyPayLink().then(function(r){ if(!cancelled) setPayInfo(r); }); }
+      var t0 = setTimeout(load, 1500);
+      return function(){ cancelled = true; clearTimeout(t0); };
+    }, [stu && stu.id]);
 
     React.useEffect(function(){
       function onAuth(e){
@@ -284,8 +293,35 @@
         h('div', { className: 'tx' }, h('b', null, m.title), h('small', null, sub), btns.length ? h('div', { className: 'sx-btns' }, btns) : null));
     });
     var nFx = lessons.filter(function(l){ return l.kind !== 'youtube'; }).length, nYt = lessons.length - nFx;
+    // THÊM 26/11/2026 — thẻ GÓI HỌC: học thử / hết học thử / sắp hạn / quá hạn → "Đóng học phí" (em tự đóng) + "Chia sẻ link" (gửi phụ huynh đóng): mở link, chọn gói,
+    // app ngân hàng tự điền sẵn, chuyển xong tự kích hoạt). Đang đóng đủ mà còn gói cao hơn → nút nhỏ "Nâng cấp".
+    // Tài khoản Miễn phí / chưa có gói (thầy tạo cho lớp) KHÔNG hiện gì.
+    var payCard = null;
+    if(payInfo && payInfo.gatewayOn && payInfo.url){
+      var ps = payInfo.state, dl = null;
+      if(payInfo.trialEnd){ var a = payInfo.trialEnd.split('-'), tt = new Date(+a[0], +a[1] - 1, +a[2]), n0 = new Date(); n0.setHours(0, 0, 0, 0); dl = Math.round((tt - n0) / DAY); }
+      var pcTitle = '', pcSub = '', strong = true;
+      if(ps === 'trial'){ pcTitle = dl != null ? ('Học thử · còn ' + Math.max(0, dl) + ' ngày') : 'Đang học thử'; pcSub = 'Muốn học tiếp không gián đoạn? Chọn gói và đóng học phí — chuyển khoản xong tự kích hoạt.'; strong = dl != null && dl <= 5; }
+      else if(ps === 'trialEnd'){ pcTitle = 'Đã hết học thử'; pcSub = 'Chọn gói để học tiếp — chuyển khoản xong tài khoản tự kích hoạt, không cần chờ thầy.'; }
+      else if(ps === 'unpaid'){ pcTitle = 'Chưa đóng học phí'; pcSub = 'Chọn gói và thanh toán — app ngân hàng tự điền sẵn.'; }
+      else if(ps === 'due' || ps === 'overdue'){ pcTitle = ps === 'due' ? 'Sắp đến hạn học phí' : 'Học phí đã quá hạn'; pcSub = 'Đóng học phí để gia hạn — chuyển khoản xong hệ thống tự ghi nhận.'; }
+      else if(ps === 'ok' && payInfo.upgradeable){ pcTitle = 'Gói ' + (payInfo.planName || 'hiện tại'); pcSub = 'Đang học đến ' + vnDate(payInfo.paidUntil) + ' · có thể nâng cấp, chỉ đóng phần chênh lệch.'; strong = false; }
+      if(pcTitle){
+        var shareLink = function(){
+          var url = payInfo.url, txt = 'Link đóng học phí FaradayAI: bấm link, chọn gói, app ngân hàng tự điền sẵn — chuyển khoản xong tài khoản tự kích hoạt:';
+          if(navigator.share){ navigator.share({ title: 'Học phí FaradayAI', text: txt, url: url }).catch(function(){}); return; }
+          (navigator.clipboard ? navigator.clipboard.writeText(txt + ' ' + url) : Promise.reject()).then(function(){ alert('Đã chép link thanh toán — dán vào Zalo để gửi.'); }, function(){ window.prompt('Chép link thanh toán:', url); });
+        };
+        payCard = h('div', { className: 'sx-card' + (strong ? ' mock' : ''), style: strong ? null : { flex: '0 1 260px' } }, h('span', { className: 'ic' }, ps === 'ok' ? '⭐' : '💳'),
+          h('div', { className: 'tx' }, h('b', null, pcTitle), h('small', null, pcSub),
+            h('div', { className: 'sx-btns' },
+              h('a', { className: 'sx-b' + (ps === 'ok' ? '' : ' pri'), href: payInfo.url, target: '_blank', rel: 'noopener', style: { textDecoration: 'none' } }, ps === 'ok' ? '⭐ Nâng cấp' : '💳 Đóng học phí'),
+              ps === 'ok' ? null : h('button', { type: 'button', className: 'sx-b', onClick: shareLink, title: 'Gửi link để phụ huynh/người thân thanh toán' }, '📤 Chia sẻ link'))));
+      }
+    }
     return h('div', null,
       inExam ? null : h('div', { className: 'sx-strip' },
+        payCard,
         mockCards,
         // THÊM 26/10/2026 — luyện thi ĐGNL ĐHQG-HCM (chỉ em được thầy mở khoá)
         (window.OPC_DGNL && (stu.specialAccess || []).indexOf('dgnl') > -1) ? h('div', { className: 'sx-card mock' }, h('span', { className: 'ic' }, '🎯'),

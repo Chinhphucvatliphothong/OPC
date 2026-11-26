@@ -172,7 +172,10 @@ function payCard(v){
   if(choose) body = `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${offersHtml}`;
   else if(hd[1] === 'open') body = `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${baseBody}${offersHtml ? `<details style="margin-top:10px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Hoặc đóng trọn khóa / nâng cấp gói</summary>${offersHtml}</details>` : ''}`;
   else body = `<p style="margin:0;font-weight:700">${esc(hd[0])}</p>${baseBody ? `<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Đóng kỳ tiếp theo</summary>${baseBody}</details>` : ''}${offersHtml ? `<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent);font-weight:700">Nâng cấp gói</summary>${offersHtml}</details>` : ''}`;
-  return `<section class="card"><h2>💳 ${choose ? 'Chọn gói học' : 'Học phí'}</h2>${body}</section>`;
+  // THÊM 26/11/2026 — nút sang trang thanh toán 1 chạm (/thanhtoan): bấm app ngân hàng là tự điền sẵn, chuyển xong trang tự báo "Đã nhận"
+  const payUrl = (p.sid && /^[A-Za-z0-9]{10,40}$/.test(p.sid)) ? '/thanhtoan?id=' + encodeURIComponent(p.sid) + '&c=' + encodeURIComponent(p.content) : '';
+  const fast = payUrl && (p.status !== 'ok' || offers.length) ? `<a class="btn primary" href="${esc(payUrl)}" style="display:inline-flex;margin:10px 0 4px">📱 ${p.status === 'ok' ? 'Nâng cấp gói' : 'Thanh toán ngay'} — mở thẳng app ngân hàng</a>` : '';
+  return `<section class="card"><h2>💳 ${choose ? 'Chọn gói học' : 'Học phí'}</h2>${body}${fast}</section>`;
 }
 
 function render(v){

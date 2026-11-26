@@ -60,7 +60,8 @@ async function loginStudent(usernameRaw, passwordRaw){
     });
     var data = await res.json().catch(function(){ return {}; });
     if(!res.ok || !data || !data.ok || !data.token){
-      return { ok: false, error: (data && data.error) || 'Đăng nhập thất bại — thử lại sau ít phút.' };
+      // SỬA 26/11/2026 — tài khoản đang khoá (hết học thử) + đúng mật khẩu: server trả kèm link thanh toán để hiện nút "Đóng học phí" + "Chia sẻ link"
+      return { ok: false, error: (data && data.error) || 'Đăng nhập thất bại — thử lại sau ít phút.', locked: !!(data && data.locked), payUrl: (data && data.payUrl) || '' };
     }
     await signInWithCustomToken(auth, data.token);
     var stuSnap = await getDoc(doc(db, 'students', data.studentId));
@@ -74,6 +75,17 @@ async function loginStudent(usernameRaw, passwordRaw){
     console.error('Lỗi đăng nhập học sinh:', e);
     return { ok: false, error: 'Lỗi kết nối tới máy chủ (' + (e && (e.code || e.message) || 'không rõ') + ') — thử lại sau ít phút.' };
   }
+}
+
+// THÊM 26/11/2026 — link thanh toán 1 chạm của CHÍNH em đang đăng nhập (student-extras.js › thẻ "Gói học / Đóng học phí")
+async function getMyPayLink(){
+  try{
+    if(!auth.currentUser) return null;
+    var idToken = await auth.currentUser.getIdToken();
+    var res = await fetch('/api/student-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'pay_link', idToken: idToken }) });
+    var data = await res.json().catch(function(){ return null; });
+    return (res.ok && data && data.ok) ? data : null;
+  }catch(e){ console.error('Lỗi lấy link thanh toán:', e); return null; }
 }
 
 function logoutStudent(){
@@ -942,6 +954,7 @@ window.OPC_LIVE = {
   getSurveyState: getSurveyState, saveSurveyState: saveSurveyState, submitSurvey: submitSurvey, recordLessonView: recordLessonView, loadLessonViews: loadLessonViews, loadLessonAudio: loadLessonAudio,
   loadCurriculum: loadCurriculum,
   loginStudent: loginStudent,
+  getMyPayLink: getMyPayLink, // THÊM 26/11/2026
   logoutStudent: logoutStudent,
   resumeSession: resumeSession,
   loadRealQuestionBank: loadRealQuestionBank,

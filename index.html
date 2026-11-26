@@ -1656,6 +1656,8 @@
       box.innerHTML = '<div><b>Học phí ' + escT(p.planName) + '</b> (trọn khoá đến kỳ thi ' + escT(vnDate(p.until)) + ')</div>' +
         '<div class="amt">' + vndText(p.amount) + '</div>' +
         '<img src="' + escT(p.qrUrl) + '" alt="Mã QR chuyển khoản học phí" loading="lazy">' +
+        // THÊM 26/11/2026 — đang dùng điện thoại: sang trang thanh toán 1 chạm (bấm app ngân hàng là tự điền sẵn)
+        (p.payUrl ? '<div><a href="' + escT(p.payUrl) + '" style="display:inline-block;background:#0f8a3c;color:#fff;padding:9px 14px;border-radius:9px;font-weight:700;text-decoration:none;margin:4px 0">📱 Đang dùng điện thoại? Bấm để mở thẳng app ngân hàng</a></div>' : '') +
         '<div>' + escT(p.bank) + ' · ' + escT(p.acc) + (p.accName ? ' · ' + escT(p.accName) : '') + '</div>' +
         '<div>Nội dung chuyển khoản: <code>' + escT(p.content) + '</code> (giữ nguyên)</div>' +
         '<div class="st" id="dkPayStatus">⏳ Đang chờ chuyển khoản — chuyển xong, hệ thống tự kích hoạt khoá học trong vài phút.</div>';

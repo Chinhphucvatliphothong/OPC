@@ -31,6 +31,11 @@
   function token(){ var a = new Uint8Array(24); (window.crypto || window.msCrypto).getRandomValues(a); return Array.prototype.map.call(a, function(x){ return 'abcdefghijkmnpqrstuvwxyz23456789'[x % 32]; }).join('').slice(0, 24); }
   function origin(){ var o = location.origin; return (o && o !== 'null') ? o : 'https://faradayai.vn'; }
   function parentUrl(t){ return origin() + '/phuhuynh?t=' + t; }
+  // THÊM 26/11/2026 — trang thanh toán 1 chạm của từng em (api/student-login.js › pay_page): phụ huynh chọn gói, app ngân hàng tự điền sẵn
+  function payPageUrl(s){ return (s && s.id && s.payCode) ? origin() + '/thanhtoan?id=' + encodeURIComponent(s.id) + '&c=' + encodeURIComponent(s.payCode) : ''; }
+  function payLinkMsg(s){
+    return 'Kính gửi phụ huynh em ' + (s.name || '') + ',\nThầy gửi link chọn gói và đóng học phí FaradayAI của con. Phụ huynh bấm link, chọn gói, bấm vào app ngân hàng của mình (số tài khoản, số tiền, nội dung đã điền sẵn) rồi xác nhận chuyển — tiền vào là tài khoản của con tự kích hoạt, không cần báo thầy:\n' + payPageUrl(s) + '\nThầy cảm ơn phụ huynh!';
+  }
   function lastName(n){ var p = String(n || '').trim().split(/\s+/); return p[p.length - 1] || n || 'em'; }
 
   // ------------------------------------------------------------------ 1) ảnh chụp tiến độ cho phụ huynh
@@ -284,13 +289,15 @@
     var g = cfg.gateway || {}, b = s.billing || {}, st = billingStatus(cfg, b);
     var offers = offersRich(cfg, offersFor(cfg, s));
     var showBase = pay && !(pay.cycle === 'full' && st.k === 'ok');   // đã đóng trọn khóa thì không mời "đóng kỳ tiếp theo"
-    return { bank: g.bank, acc: g.acc, name: g.name || '', amount: showBase ? pay.amount : 0, content: code, cycle: showBase ? (CYCLES[pay.cycle] || '') : '', status: st.k, paidUntil: b.paidUntil || '', trialEnd: b.trialEnd || '', offers: offers };
+    return { bank: g.bank, acc: g.acc, name: g.name || '', amount: showBase ? pay.amount : 0, content: code, cycle: showBase ? (CYCLES[pay.cycle] || '') : '', status: st.k, paidUntil: b.paidUntil || '', trialEnd: b.trialEnd || '', offers: offers,
+      sid: s.id };   // THÊM 26/11/2026 — trang phụ huynh dựng nút "Thanh toán trên điện thoại" (/thanhtoan?id=…&c=…)
   }
   function payLines(cfg, stu, fee){
     var b = stu.billing || {}, pay = payInfoFor(cfg, stu);
     if(gwOn(cfg) && stu.payCode && pay){
       var g = cfg.gateway;
-      return '\nCách đóng nhanh: phụ huynh mở mã QR (đã điền sẵn số tiền & nội dung) tại: ' + qrUrl(cfg, stu.payCode, pay.amount) +
+      return '\nCách đóng nhanh nhất: bấm link, chọn app ngân hàng (tự điền sẵn): ' + payPageUrl(stu) +   // SỬA 26/11/2026
+        '\nHoặc mở mã QR (đã điền sẵn số tiền & nội dung): ' + qrUrl(cfg, stu.payCode, pay.amount) +
         '\nHoặc chuyển khoản: ' + g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ', số tiền ' + vnd(pay.amount) + ', NỘI DUNG: ' + stu.payCode +
         ' (giữ nguyên nội dung để hệ thống tự ghi nhận, không cần báo thầy).';
     }
@@ -378,6 +385,7 @@
         h('p', { style: { margin: '0 0 8px', fontSize: '0.86rem', color: 'var(--ink-2)' } }, g.bank + ' ' + g.acc + (g.name ? ' — ' + g.name : '') + ' · Nội dung: ', h('b', null, s.payCode)),
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' } },
           h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(url).then(function(){ props.fireToast('Đã chép link mã QR.'); }); } }, '📋 Chép link QR'),
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: function(){ copy(payPageUrl(s)).then(function(){ props.fireToast('Đã chép link thanh toán 1 chạm.'); }); } }, '🔗 Chép link thanh toán'),
           s.parentPhone ? h('button', { type: 'button', className: 'btn btn-primary', onClick: function(){ copy(billingMsg(cfg, s)).then(function(){ props.fireToast('Đã chép tin nhắn kèm QR — dán vào Zalo.'); window.open(zalo(s.parentPhone), '_blank'); }); } }, '💬 Gửi Zalo phụ huynh') : null),
         h('p', { style: { fontSize: '0.78rem', color: 'var(--muted)', marginTop: '10px' } }, 'Phụ huynh quét mã bằng app ngân hàng: số tiền và nội dung đã điền sẵn. Tiền vào là hệ thống tự ghi nhận, thầy không cần làm gì.')));
   }
@@ -524,6 +532,9 @@
               h('td', { style: { whiteSpace: 'nowrap' } },
                 h('button', { type: 'button', className: 'btn btn-success', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ setPay(s); } }, '💵 Đóng tiền'), ' ',
                 (gwOn(cfg) && s.payCode && payInfoFor(cfg, s)) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, title: 'Mã QR thu học phí của em này', onClick: function(){ setQrStu(s); } }, '📱 QR') : null, ' ',
+                // THÊM 26/11/2026 — link thanh toán 1 chạm: dùng được cả khi em chưa có gói (phụ huynh tự chọn gói trên trang)
+                (gwOn(cfg) && s.payCode) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, title: 'Chép tin nhắn kèm link chọn gói + thanh toán (mở thẳng app ngân hàng)' + (s.parentPhone ? ' rồi mở Zalo phụ huynh' : ''),
+                  onClick: function(){ copy(payLinkMsg(s)).then(function(){ fire(s.parentPhone ? 'Đã chép tin nhắn kèm link — dán vào Zalo.' : 'Đã chép tin nhắn kèm link thanh toán.'); if(s.parentPhone) window.open(zalo(s.parentPhone), '_blank'); }); } }, '🔗 Link TT') : null, ' ',
                 h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, onClick: function(){ setEdit(s); } }, 'Gói'), ' ',
                 (s.parentPhone && ['overdue', 'due', 'trialEnd', 'unpaid'].indexOf(r.st.k) > -1) ? h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.75rem', padding: '4px 9px' }, title: 'Chép tin nhắn nhắc học phí rồi mở Zalo phụ huynh',
                   onClick: function(){ copy(billingMsg(cfg, s)).then(function(){ fire('Đã chép tin nhắn — dán vào Zalo.'); window.open(zalo(s.parentPhone), '_blank'); }); } }, '💬 Nhắc') : null));

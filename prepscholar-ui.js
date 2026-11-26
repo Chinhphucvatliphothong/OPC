@@ -692,6 +692,7 @@
     var loginUserState = React.useState(''); var loginUser = loginUserState[0], setLoginUser = loginUserState[1];
     var loginPassState = React.useState(''); var loginPass = loginPassState[0], setLoginPass = loginPassState[1];
     var loginErrState = React.useState(''); var loginErr = loginErrState[0], setLoginErr = loginErrState[1];
+    var loginPayState = React.useState(''); var loginPayUrl = loginPayState[0], setLoginPayUrl = loginPayState[1]; // THÊM 26/11/2026 — tài khoản khoá: link thanh toán
     var loginBusyState = React.useState(false); var loginBusy = loginBusyState[0], setLoginBusy = loginBusyState[1];
     // authed: THÊM 25/9/2026 — true khi đã có phiên Firebase Auth thật (đăng
     // nhập thành công hoặc khôi phục phiên cũ), dùng để trì hoãn việc tải
@@ -951,13 +952,14 @@
     function handleLoginSubmit(e){
       if(e && e.preventDefault) e.preventDefault();
       if(!window.OPC_LIVE) return;
-      setLoginBusy(true); setLoginErr('');
+      setLoginBusy(true); setLoginErr(''); setLoginPayUrl('');
       window.OPC_LIVE.loginStudent(loginUser, loginPass).then(function(res){
         setLoginBusy(false);
         if(res && res.ok){
           hydrateAndEnter(res.student);
         } else {
           setLoginErr((res && res.error) || 'Đăng nhập thất bại.');
+          if(res && res.locked && res.payUrl) setLoginPayUrl(res.payUrl);
         }
       }).catch(function(){ setLoginBusy(false); setLoginErr('Lỗi kết nối — thử lại.'); });
     }
@@ -2757,7 +2759,15 @@
             h('div', { className: 'sm-field', style: { marginBottom: '14px' } },
               h('label', null, 'Mật khẩu'),
               h('input', { type: 'password', value: loginPass, onChange: function(e){ setLoginPass(e.target.value); }, placeholder: '••••••' })),
-            loginErr ? h('div', { className: 'banner warn', style: { marginBottom: '12px' } }, h('span', null, '⚠️'), h('div', null, loginErr)) : null,
+            loginErr ? h('div', { className: 'banner warn', style: { marginBottom: '12px' } }, h('span', null, '⚠️'), h('div', null, loginErr,
+              // THÊM 26/11/2026 — hết học thử / đang khoá: đóng học phí (em tự đóng hoặc chia sẻ link cho phụ huynh) — tiền vào là tự mở khoá
+              loginPayUrl ? h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' } },
+                h('a', { className: 'btn btn-primary', style: { fontSize: '0.85rem', textDecoration: 'none' }, href: loginPayUrl, target: '_blank', rel: 'noopener' }, '💳 Đóng học phí'),
+                h('button', { type: 'button', className: 'btn btn-secondary', style: { fontSize: '0.85rem' }, title: 'Gửi link để phụ huynh/người thân thanh toán', onClick: function(){
+                  var url = loginPayUrl, txt = 'Link đóng học phí FaradayAI: bấm link, chọn gói, app ngân hàng tự điền sẵn — chuyển khoản xong tài khoản tự kích hoạt:';
+                  if(navigator.share){ navigator.share({ title: 'Học phí FaradayAI', text: txt, url: url }).catch(function(){}); return; }
+                  (navigator.clipboard ? navigator.clipboard.writeText(txt + ' ' + url) : Promise.reject()).then(function(){ alert('Đã chép link thanh toán — dán vào Zalo để gửi.'); }, function(){ window.prompt('Chép link thanh toán:', url); });
+                } }, '📤 Chia sẻ link')) : null)) : null,
             h('button', { type: 'submit', className: 'btn btn-primary', style: { width: '100%' }, disabled: loginBusy || !liveReady }, loginBusy ? 'Đang đăng nhập…' : (liveReady ? 'Đăng nhập' : 'Đang kết nối…'))
           ),
           h('p', { style: { fontSize: '0.74rem', color: 'var(--muted)', marginTop: '14px', lineHeight: 1.5 } },

@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<script>/* áp giao diện sáng/tối đã chọn (xem theme-toggle.js) */(function(){try{var t=localStorage.getItem("opc-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#a86a1c">
+<title>Học phí FaradayAI</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Literata:wght@600;700&display=swap">
+<!--
+  THÊM 26/11/2026 — TRANG THANH TOÁN 1 CHẠM (mỗi em 1 link /thanhtoan?id=<studentId>&c=<mã FDY>).
+  Ai có link (em tự đóng, hoặc phụ huynh/người thân được chia sẻ link) đều trả được, KHÔNG cần đăng nhập:
+    1) chọn gói (giá lấy thẳng từ bảng giá — api/student-login.js › pay_page);
+    2) trên điện thoại: bấm app ngân hàng → app mở ra, ĐÃ ĐIỀN SẴN số tài khoản, số tiền, nội dung (VietQR deeplink dl.vietqr.io;
+       5 app hỗ trợ tự điền: VietinBank, BIDV, ACB, OCB, MB — app khác: lưu ảnh QR rồi quét ảnh trong app);
+       trên máy tính: quét mã QR bằng app ngân hàng;
+    3) trang tự hỏi server vài giây/lần (pay_status) — tiền vào là báo "Đã nhận", gói đã kích hoạt, tài khoản tự mở khoá
+       (api/sepay-webhook.js). Không cần chụp màn hình, không cần nhắn thầy.
+-->
+<style>
+  :root{
+    --bg:#f5f6f1; --surface:#ffffff; --surface-2:#eceee5; --ink:#12161c; --ink-2:#4a5262; --muted:#868d7c; --line:#dde1d5;
+    --accent:#a86a1c; --accent-strong:#8f5714; --accent-ink:#fffaf1; --good:#0f8a3c; --good-bg:#e3f5e9; --warning:#b8790a; --warn-bg:#fdf3dc; --critical:#d03b3b;
+    --shadow:0 1px 2px rgba(16,21,29,.05),0 10px 30px -14px rgba(16,21,29,.18);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14171a; --surface:#1c2024; --surface-2:#23272c; --ink:#f1f0ea; --ink-2:#c4c8c2; --muted:#8b9088; --line:#2d312e;
+      --accent:#dba24f; --accent-strong:#eab868; --accent-ink:#1b1204; --good:#3ccf6e; --good-bg:#1d3326; --warning:#e0a838; --warn-bg:#3a3020; --critical:#ee6b69;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14171a; --surface:#1c2024; --surface-2:#23272c; --ink:#f1f0ea; --ink-2:#c4c8c2; --muted:#8b9088; --line:#2d312e;
+    --accent:#dba24f; --accent-strong:#eab868; --accent-ink:#1b1204; --good:#3ccf6e; --good-bg:#1d3326; --warning:#e0a838; --warn-bg:#3a3020; --critical:#ee6b69;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Be Vietnam Pro",system-ui,sans-serif;padding-bottom:env(safe-area-inset-bottom);}
+  .wrap{max-width:640px;margin:0 auto;padding:0 14px;}
+  header.top{border-bottom:1px solid var(--line);background:var(--surface);}
+  header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;}
+  .logo{height:28px;display:block;} .logo.dark{display:none;}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .logo.light{display:none;} :root:not([data-theme="light"]) .logo.dark{display:block;} }
+  :root[data-theme="dark"] .logo.light{display:none;} :root[data-theme="dark"] .logo.dark{display:block;}
+  .secure{font-size:.74rem;color:var(--muted);font-weight:600;}
+  .hero{padding:18px 0 4px;}
+  .kicker{font-size:.72rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--accent-strong);}
+  h1{font-family:Literata,Georgia,serif;font-size:clamp(1.45rem,6vw,1.9rem);margin:2px 0 6px;line-height:1.2;}
+  .pill{display:inline-block;font-size:.8rem;font-weight:700;padding:4px 11px;border-radius:99px;background:var(--surface-2);color:var(--ink-2);}
+  .pill.warn{background:var(--warn-bg);color:var(--warning);} .pill.good{background:var(--good-bg);color:var(--good);}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow);margin:12px 0;}
+  h2{font-size:1rem;margin:0 0 10px;display:flex;align-items:center;gap:8px;}
+  h2 .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:.78rem;align-items:center;justify-content:center;flex:none;}
+  .sub{color:var(--ink-2);font-size:.86rem;}
+  .opts{display:grid;gap:10px;}
+  .opt{position:relative;display:block;border:2px solid var(--line);border-radius:14px;padding:12px 14px 12px 44px;cursor:pointer;background:var(--surface);transition:border-color .15s,background .15s;}
+  .opt input{position:absolute;left:14px;top:15px;width:18px;height:18px;accent-color:var(--accent);}
+  .opt.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface));}
+  .opt .nm{font-weight:800;} .opt .pr{font-size:1.3rem;font-weight:800;margin:1px 0;} .opt .pr small{font-size:.78rem;color:var(--muted);font-weight:600;}
+  .opt ul{margin:6px 0 0;padding-left:18px;font-size:.84rem;color:var(--ink-2);line-height:1.5;}
+  .badge{position:absolute;top:-10px;right:12px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:99px;}
+  .amount{font-size:1.9rem;font-weight:800;letter-spacing:-.5px;}
+  .apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin:8px 0 4px;}
+  .app{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:9px 10px;background:var(--surface);color:var(--ink);text-decoration:none;font-weight:700;font-size:.84rem;cursor:pointer;min-height:52px;text-align:left;font-family:inherit;}
+  .app img{width:30px;height:30px;border-radius:8px;flex:none;background:#fff;}
+  .app .tg{display:block;font-size:.66rem;font-weight:700;color:var(--good);} .app .tg.m{color:var(--muted);}
+  .app.last{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;}
+  .app:active{transform:scale(.98);}
+  .more{background:none;border:0;color:var(--accent-strong);font-weight:700;cursor:pointer;padding:6px 0;font-family:inherit;font-size:.86rem;}
+  .qrbox{text-align:center;}
+  .qrbox img{width:min(270px,80vw);height:auto;border-radius:12px;background:#fff;display:block;margin:6px auto;border:1px solid var(--line);}
+  .rows{display:grid;gap:2px;margin-top:8px;}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:.9rem;}
+  .row:last-child{border-bottom:0;} .row .k{color:var(--ink-2);} .row .v{font-weight:700;text-align:right;word-break:break-all;}
+  .row .v.code{font-family:ui-monospace,Menlo,monospace;font-size:1.05rem;letter-spacing:1px;color:var(--accent-strong);}
+  .cp{border:1px solid var(--line);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:4px 9px;font-weight:700;font-size:.76rem;cursor:pointer;margin-left:6px;font-family:inherit;white-space:nowrap;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:12px;padding:12px 16px;font:700 .92rem "Be Vietnam Pro",sans-serif;cursor:pointer;text-decoration:none;}
+  .btn.primary{background:var(--accent);color:var(--accent-ink);} .btn.ghost{background:var(--surface-2);color:var(--ink);} .btn.zalo{background:#0068ff;color:#fff;} .btn.good{background:var(--good);color:#fff;}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;} .btns .btn{flex:1 1 160px;}
+  .wait{display:flex;gap:10px;align-items:center;background:var(--warn-bg);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:.86rem;margin-top:12px;}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--warning);flex:none;animation:pulse 1.3s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warning) 60%,transparent);}70%{box-shadow:0 0 0 10px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+  .note{font-size:.8rem;color:var(--ink-2);background:var(--surface-2);border-radius:10px;padding:9px 11px;margin-top:10px;line-height:1.5;}
+  .hint{border:1px dashed var(--accent);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:.86rem;line-height:1.55;}
+  .hint ol{margin:4px 0 0;padding-left:20px;}
+  .done{text-align:center;padding:26px 14px;}
+  .done .big{font-size:3.4rem;line-height:1;} .done h2{justify-content:center;font-size:1.3rem;margin:10px 0 4px;}
+  .empty{text-align:center;padding:60px 14px;color:var(--ink-2);}
+  .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-weight:700;font-size:.86rem;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;}
+  .toast.on{opacity:1;}
+  footer{font-size:.74rem;color:var(--muted);text-align:center;padding:18px 0 30px;line-height:1.5;}
+  .hide{display:none !important;}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a href="/" aria-label="FaradayAI"><img class="logo light" src="/logo-horizontal.svg" alt="FaradayAI"><img class="logo dark" src="/logo-horizontal-dark.svg" alt="FaradayAI"></a>
+  <span class="secure">🔒 Chuyển khoản trực tiếp</span>
+</div></header>
+<main class="wrap" id="app"><div class="empty">Đang tải…</div></main>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+  'use strict';
+  var $app = document.getElementById('app');
+  var qs = new URLSearchParams(location.search);
+  var SID = qs.get('id') || '', CODE = (qs.get('c') || '').toUpperCase(), WANT = qs.get('goi') || '';
+  var BANK_NAMES = { MB: 'MB Bank', VCB: 'Vietcombank', TCB: 'Techcombank', ACB: 'ACB', VPB: 'VPBank', TPB: 'TPBank', BIDV: 'BIDV', ICB: 'VietinBank', STB: 'Sacombank',
+    VBA: 'Agribank', OCB: 'OCB', MSB: 'MSB', HDB: 'HDBank', SHB: 'SHB', VIB: 'VIB', SEAB: 'SeABank', LPB: 'LPBank', EIB: 'Eximbank' };
+  // app hỗ trợ TỰ ĐIỀN (VietQR deeplink) — danh sách đầy đủ tải từ api.vietqr.io, đây là bản dự phòng khi không tải được
+  var FALLBACK_APPS = [
+    { appId: 'icb', appName: 'VietinBank iPay', autofill: 1 }, { appId: 'bidv', appName: 'BIDV SmartBanking', autofill: 1 },
+    { appId: 'mb', appName: 'MB Bank', autofill: 1 }, { appId: 'acb', appName: 'ACB ONE', autofill: 1 }, { appId: 'ocb', appName: 'OCB OMNI', autofill: 1 },
+    { appId: 'vcb', appName: 'Vietcombank', autofill: 0 }, { appId: 'tcb', appName: 'Techcombank', autofill: 0 }, { appId: 'tpb', appName: 'TPBank', autofill: 0 },
+    { appId: 'vpb', appName: 'VPBank NEO', autofill: 0 }, { appId: 'vba', appName: 'Agribank Plus', autofill: 0 }
+  ];
+  var ua = navigator.userAgent || '', IS_ANDROID = /Android/i.test(ua), IS_IOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var IS_MOBILE = IS_ANDROID || IS_IOS;
+
+  var S = { data: null, sel: null, apps: null, showAll: false, pendingApp: null, initStamp: '', initCredit: 0, done: null, pollN: 0, timer: null };
+
+  function esc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(n){ return Math.round(Number(n) || 0).toLocaleString('vi-VN') + 'đ'; }
+  function vnDate(s){ var p = String(s || '').slice(0, 10).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; }
+  function daysTo(s){ var p = String(s || '').split('-'); if(p.length !== 3) return null; var t = new Date(+p[0], +p[1] - 1, +p[2]), n = new Date(); n.setHours(0, 0, 0, 0); return Math.round((t - n) / 86400000); }
+  function toast(m){ var t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(function(){ t.classList.remove('on'); }, 1800); }
+  function copy(text, label){
+    var ok = function(){ toast('Đã chép ' + (label || '')); };
+    try{ if(navigator.clipboard && window.isSecureContext){ navigator.clipboard.writeText(text).then(ok, fallback); return; } }catch(e){}
+    fallback();
+    function fallback(){ var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); ok(); }catch(e){ window.prompt('Chép:', text); } ta.remove(); }
+  }
+  function api(action){
+    return fetch('/api/student-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action, id: SID, c: CODE }) })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(b){ return { status: r.status, body: b || {} }; }); });
+  }
+
+  // ----- số tiền cần chuyển: trừ tiền đã chuyển trước (billing.credit — webhook cộng dồn khi chuyển thiếu)
+  function credit(){ return Math.max(0, Number(S.data && S.data.status && S.data.status.credit) || 0); }
+  function payAmount(o){ return Math.max(0, Math.round(o.amount - credit())); }
+  function qrUrl(amt){
+    var b = S.data.bank;
+    return 'https://img.vietqr.io/image/' + encodeURIComponent(b.code) + '-' + encodeURIComponent(b.acc) + '-compact2.png?amount=' + amt + '&addInfo=' + encodeURIComponent(S.data.content) + (b.name ? '&accountName=' + encodeURIComponent(b.name) : '');
+  }
+  function deeplink(app, amt){
+    var b = S.data.bank;
+    var u = 'https://dl.vietqr.io/pay?app=' + encodeURIComponent(app.appId);
+    if(app.autofill){
+      u += '&ba=' + encodeURIComponent(b.acc + '@' + String(b.code).toLowerCase()) + '&am=' + amt + '&tn=' + encodeURIComponent(S.data.content) +
+        (b.name ? '&bn=' + encodeURIComponent(b.name) : '') + '&url=' + encodeURIComponent(location.href.split('#')[0]);
+    }
+    return u;
+  }
+  function loadApps(){
+    if(!IS_MOBILE){ S.apps = []; return Promise.resolve(); }
+    var url = 'https://api.vietqr.io/v2/' + (IS_ANDROID ? 'android' : 'ios') + '-app-deeplinks';
+    return fetch(url).then(function(r){ return r.json(); }).then(function(j){
+      var list = (j && Array.isArray(j.apps)) ? j.apps.filter(function(a){ return a && a.appId; }) : [];
+      S.apps = list.length ? list : FALLBACK_APPS;
+    }).catch(function(){ S.apps = FALLBACK_APPS; });
+  }
+  function sortedApps(){
+    var last = ''; try{ last = localStorage.getItem('fdy-bank-app') || ''; }catch(e){}
+    return (S.apps || []).slice().sort(function(a, b){
+      if(a.appId === last) return -1; if(b.appId === last) return 1;
+      if(!!a.autofill !== !!b.autofill) return a.autofill ? -1 : 1;
+      return (Number(b.monthlyInstall) || 0) - (Number(a.monthlyInstall) || 0);
+    });
+  }
+
+  // ----- hiển thị
+  function statusLine(st, name){
+    var dl = daysTo(st.trialEnd);
+    if(st.locked && st.state !== 'ok') return '<span class="pill warn">🔒 Tài khoản đang tạm khoá — chuyển khoản xong sẽ TỰ MỞ</span>';
+    switch(st.state){
+      case 'trial': return '<span class="pill">Đang học thử' + (dl != null ? ' · còn ' + Math.max(0, dl) + ' ngày' : '') + '</span>';
+      case 'trialEnd': return '<span class="pill warn">Đã hết học thử ngày ' + esc(vnDate(st.trialEnd)) + '</span>';
+      case 'ok': return '<span class="pill good">✅ Đang học ' + esc(st.planName || '') + ' đến ' + esc(vnDate(st.paidUntil)) + '</span>';
+      case 'due': return '<span class="pill warn">Sắp đến hạn học phí (' + esc(vnDate(st.paidUntil)) + ')</span>';
+      case 'overdue': return '<span class="pill warn">Học phí đã quá hạn từ ' + esc(vnDate(st.paidUntil)) + '</span>';
+      default: return '';
+    }
+  }
+  function optCard(o){
+    var on = S.sel && S.sel.id === o.id;
+    var unit = o.kind === 'base' ? '' : (o.upgrade ? 'phần chênh lệch để nâng cấp' : 'trọn khoá' + (o.until ? ' · học đến ' + vnDate(o.until) : ''));
+    return '<label class="opt' + (on ? ' on' : '') + '">' + (o.badge ? '<span class="badge">' + esc(o.badge) + '</span>' : '') +
+      '<input type="radio" name="opt" value="' + esc(o.id) + '"' + (on ? ' checked' : '') + '>' +
+      '<div class="nm">' + esc(o.upgrade ? 'Nâng cấp lên ' + o.name : o.name) + '</div>' +
+      '<div class="pr">' + money(o.amount) + (unit ? ' <small>' + esc(unit) + '</small>' : '') + '</div>' +
+      ((o.features || []).length ? '<ul>' + o.features.map(function(f){ return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>' : '') + '</label>';
+  }
+  function appBtn(a, amt, last){
+    var logo = a.appLogo ? '<img src="' + esc(a.appLogo) + '" alt="" loading="lazy">' : '<img alt="" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 30 30%22%3E%3Crect width=%2230%22 height=%2230%22 rx=%228%22 fill=%22%23a86a1c%22/%3E%3Ctext x=%2215%22 y=%2220%22 font-size=%2213%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22%3E%E2%82%AB%3C/text%3E%3C/svg%3E">';
+    var tag = a.autofill ? '<span class="tg">⚡ Tự điền sẵn</span>' : '<span class="tg m">Quét ảnh QR</span>';
+    if(a.autofill) return '<a class="app' + (last ? ' last' : '') + '" data-app="' + esc(a.appId) + '" href="' + esc(deeplink(a, amt)) + '">' + logo + '<span>' + esc(a.appName) + tag + '</span></a>';
+    return '<button type="button" class="app' + (last ? ' last' : '') + '" data-app="' + esc(a.appId) + '">' + logo + '<span>' + esc(a.appName) + tag + '</span></button>';
+  }
+
+  function render(){
+    var d = S.data, st = d.status, first = String(d.name || '').trim().split(/\s+/).pop() || 'em';
+    document.title = 'Học phí FaradayAI — ' + d.name;
+    if(S.done){ renderDone(); return; }
+    var html = '<div class="hero"><div class="kicker">Học phí FaradayAI</div><h1>' + esc(d.name) + '</h1>' + statusLine(st) + '</div>';
+
+    if(!d.gatewayOn){
+      html += '<section class="card"><h2>Thông tin chuyển khoản</h2><p class="sub">' + esc(d.bankInfo || 'Thầy sẽ liên hệ phụ huynh để hướng dẫn đóng học phí.') + '</p>' + zaloBtn() + '</section>';
+      $app.innerHTML = html + footer(); return;
+    }
+    var opts = d.options || [];
+    if(!opts.length){
+      html += '<section class="card"><h2>✅ Không có khoản nào cần đóng</h2><p class="sub">' + (st.state === 'ok' ? 'Em ' + esc(first) + ' đang học gói cao nhất đến ' + esc(vnDate(st.paidUntil)) + '.' : 'Hiện chưa có gói nào đang mở bán — phụ huynh nhắn thầy để được tư vấn.') + '</p>' + zaloBtn() + '</section>';
+      $app.innerHTML = html + footer(); return;
+    }
+    var o = S.sel, amt = payAmount(o), b = d.bank, bankName = BANK_NAMES[String(b.code).toUpperCase()] || b.code;
+
+    html += '<section class="card"><h2><span class="n">1</span>' + (opts.length > 1 ? 'Chọn gói học' : 'Gói học') + '</h2><div class="opts" id="opts">' + opts.map(optCard).join('') + '</div></section>';
+
+    html += '<section class="card" id="paySec"><h2><span class="n">2</span>Chuyển khoản</h2>' +
+      '<div class="sub">Số tiền cần chuyển</div><div class="amount">' + money(amt) + '</div>' +
+      (credit() > 0 ? '<div class="sub">Đã trừ ' + money(credit()) + ' phụ huynh chuyển trước đó.</div>' : '');
+
+    if(IS_MOBILE && S.apps && S.apps.length){
+      var list = sortedApps(), last = ''; try{ last = localStorage.getItem('fdy-bank-app') || ''; }catch(e){}
+      var shown = S.showAll ? list : list.slice(0, 8);
+      html += '<p style="margin:12px 0 2px;font-weight:700">Bấm vào app ngân hàng bạn đang dùng:</p>' +
+        '<div class="sub">App có "⚡ Tự điền sẵn" sẽ mở ra với số tài khoản, số tiền và nội dung đã điền — chỉ cần xác nhận.</div>' +
+        '<div class="apps" id="apps">' + shown.map(function(a){ return appBtn(a, amt, a.appId === last); }).join('') + '</div>' +
+        (list.length > shown.length ? '<button type="button" class="more" id="moreApps">Xem thêm ' + (list.length - shown.length) + ' app ngân hàng ▾</button>' : '') +
+        '<div id="hintBox"></div>';
+    }
+
+    html += '<div class="qrbox"' + (IS_MOBILE ? ' style="margin-top:12px"' : '') + '>' +
+      (IS_MOBILE ? '<p style="margin:6px 0 0;font-weight:700">Hoặc dùng mã QR</p><div class="sub">Lưu ảnh mã QR, mở app ngân hàng → Quét QR → chọn ảnh vừa lưu.</div>'
+                 : '<p style="margin:6px 0 0;font-weight:700">Mở app ngân hàng trên điện thoại và quét mã này</p><div class="sub">Số tiền và nội dung đã điền sẵn trong mã.</div>') +
+      '<img id="qrImg" src="' + esc(qrUrl(amt)) + '" alt="Mã QR chuyển khoản ' + esc(money(amt)) + '">' +
+      '<div class="btns" style="justify-content:center"><button type="button" class="btn ghost" id="saveQr">⬇️ Lưu ảnh mã QR</button></div></div>' +
+      '<div class="rows">' +
+        '<div class="row"><span class="k">Ngân hàng</span><span class="v">' + esc(bankName) + '</span></div>' +
+        '<div class="row"><span class="k">Số tài khoản</span><span class="v">' + esc(b.acc) + '<button type="button" class="cp" data-cp="' + esc(b.acc) + '" data-lb="số tài khoản">Chép</button></span></div>' +
+        (b.name ? '<div class="row"><span class="k">Chủ tài khoản</span><span class="v">' + esc(b.name) + '</span></div>' : '') +
+        '<div class="row"><span class="k">Số tiền</span><span class="v">' + money(amt) + '<button type="button" class="cp" data-cp="' + amt + '" data-lb="số tiền">Chép</button></span></div>' +
+        '<div class="row"><span class="k">Nội dung <b style="color:var(--critical)">(bắt buộc)</b></span><span class="v code">' + esc(d.content) + '<button type="button" class="cp" data-cp="' + esc(d.content) + '" data-lb="nội dung">Chép</button></span></div>' +
+      '</div>' +
+      '<div class="note">Nếu nhập tay, nội dung chuyển khoản phải đúng <b>' + esc(d.content) + '</b> (viết liền, không dấu cách) để hệ thống nhận ra em ' + esc(first) + '. Chuyển xong <b>không cần chụp màn hình hay nhắn thầy</b> — trang này tự báo khi tiền vào.</div>' +
+      '<div class="wait" id="waitBox"><span class="dot"></span><span id="waitTx">Đang chờ tiền về — trang tự cập nhật, không cần tải lại.</span></div>' +
+      '</section>';
+
+    html += '<section class="card"><h2>📤 Chia sẻ link thanh toán</h2><p class="sub" style="margin:0">Gửi link này cho phụ huynh hoặc người thân để đóng giúp — mở trên điện thoại là thanh toán được ngay.</p>' +
+      '<div class="btns"><button type="button" class="btn primary" id="shareBtn">📤 Chia sẻ link</button>' + zaloBtn(true) + '</div></section>';
+    $app.innerHTML = html + footer();
+    bind();
+  }
+  function zaloBtn(inline){ var z = S.data && S.data.zalo; if(!z) return ''; var a = '<a class="btn zalo" href="' + esc(z) + '" target="_blank" rel="noopener">💬 Hỏi thầy qua Zalo</a>'; return inline ? a : '<div class="btns">' + a + '</div>'; }
+  function footer(){
+    var b = (S.data && S.data.bank) || {};
+    return '<footer>Tiền chuyển thẳng vào tài khoản ' + esc(BANK_NAMES[String(b.code || '').toUpperCase()] || b.code || '') + (b.name ? ' của ' + esc(b.name) : '') +
+      '. FaradayAI không thu hay lưu thông tin tài khoản, thẻ của phụ huynh.<br>Trang này chỉ dành cho gia đình em ' + esc((S.data && S.data.name) || '') + ' — vui lòng không chia sẻ công khai.</footer>';
+  }
+  function renderDone(){
+    var d = S.data, st = d.status, x = S.done;
+    var html = '<div class="card done"><div class="big">🎉</div><h2>Đã nhận học phí!</h2>' +
+      '<p style="margin:0 0 4px">' + (x.amount ? 'Hệ thống đã nhận <b>' + money(x.amount) + '</b>. ' : '') +
+      (st.state === 'ok' || st.state === 'due' ? 'Em <b>' + esc(d.name) + '</b> đã được kích hoạt <b>' + esc(st.planName || 'gói học') + '</b> đến <b>' + esc(vnDate(st.paidUntil)) + '</b>.' : 'Thầy sẽ xác nhận trong ít phút.') + '</p>' +
+      (x.unlocked ? '<p class="sub">Tài khoản đã được mở khoá — em đăng nhập lại là học tiếp được ngay.</p>' : '<p class="sub">Em đăng nhập là học được ngay, không cần chờ thầy.</p>') +
+      '<div class="btns" style="justify-content:center"><a class="btn good" href="/#luyen-thi-prepscholar">▶ Vào học ngay</a>' + zaloBtn(true) + '</div>' +
+      '<p class="sub" style="margin-top:14px">Cảm ơn phụ huynh đã tin tưởng FaradayAI!</p></div>';
+    $app.innerHTML = '<div class="hero"><div class="kicker">Học phí FaradayAI</div><h1>' + esc(d.name) + '</h1></div>' + html + footer();
+  }
+  function partialNote(){
+    var w = document.getElementById('waitTx'); if(!w || !S.sel) return;
+    var c = credit(), left = Math.max(0, S.sel.amount - c);
+    if(c > S.initCredit) w.innerHTML = 'Đã nhận ' + money(c) + ' nhưng <b>chưa đủ ' + esc(S.sel.name) + '</b> — chuyển thêm <b>' + money(left) + '</b> với cùng nội dung ' + esc(S.data.content) + '.';
+  }
+
+  function bind(){
+    var opts = document.getElementById('opts');
+    if(opts) opts.addEventListener('change', function(e){
+      var id = e.target && e.target.value; var o = (S.data.options || []).filter(function(x){ return x.id === id; })[0];
+      if(o){ S.sel = o; render(); var p = document.getElementById('paySec'); if(p && IS_MOBILE) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    });
+    var more = document.getElementById('moreApps'); if(more) more.onclick = function(){ S.showAll = true; render(); var a = document.getElementById('apps'); if(a) a.scrollIntoView({ block: 'center' }); };
+    var apps = document.getElementById('apps');
+    if(apps) apps.addEventListener('click', function(e){
+      var el = e.target.closest('[data-app]'); if(!el) return;
+      var id = el.getAttribute('data-app'); try{ localStorage.setItem('fdy-bank-app', id); }catch(x){}
+      var a = (S.apps || []).filter(function(x){ return x.appId === id; })[0]; if(!a) return;
+      if(a.autofill) return;   // thẻ <a>: trình duyệt tự mở app (đã điền sẵn)
+      e.preventDefault();
+      // app chưa hỗ trợ tự điền: lưu ảnh QR trước, rồi mở app để quét ảnh
+      var hb = document.getElementById('hintBox');
+      if(hb) hb.innerHTML = '<div class="hint"><b>' + esc(a.appName) + '</b> chưa hỗ trợ tự điền. Làm 2 bước:<ol>' +
+        '<li>Bấm <b>Lưu ảnh mã QR</b> (ảnh vào thư viện ảnh).</li><li>Bấm <b>Mở ' + esc(a.appName) + '</b> → chọn <b>Quét QR</b> → biểu tượng <b>ảnh</b> → chọn ảnh vừa lưu.</li></ol>' +
+        '<div class="btns"><button type="button" class="btn ghost" id="saveQr2">⬇️ Lưu ảnh mã QR</button><a class="btn primary" href="' + esc(deeplink(a, payAmount(S.sel))) + '">Mở ' + esc(a.appName) + '</a></div></div>';
+      var s2 = document.getElementById('saveQr2'); if(s2) s2.onclick = saveQr;
+      if(hb) hb.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    var sq = document.getElementById('saveQr'); if(sq) sq.onclick = saveQr;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-cp]'), function(b){ b.onclick = function(){ copy(b.getAttribute('data-cp'), b.getAttribute('data-lb')); }; });
+    var sh = document.getElementById('shareBtn'); if(sh) sh.onclick = shareLink;
+    partialNote();
+  }
+  function saveQr(){
+    var url = qrUrl(payAmount(S.sel)), name = 'FaradayAI-' + S.data.content + '.png';
+    fetch(url).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(blob){
+      var file = null; try{ file = new File([blob], name, { type: 'image/png' }); }catch(e){}
+      if(IS_MOBILE && file && navigator.canShare && navigator.canShare({ files: [file] })){
+        return navigator.share({ files: [file], title: 'Mã QR học phí' }).catch(function(){});   // iPhone: chọn "Lưu hình ảnh"
+      }
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500); toast('Đã lưu ảnh mã QR');
+    }).catch(function(){ window.open(url, '_blank'); toast('Nhấn giữ ảnh để lưu'); });
+  }
+  function shareLink(){
+    var url = location.href.split('#')[0], txt = 'Link đóng học phí FaradayAI của ' + S.data.name + ' — bấm link, chọn gói, app ngân hàng tự điền sẵn, chuyển xong tự kích hoạt:';
+    if(navigator.share){ navigator.share({ title: 'Học phí FaradayAI', text: txt, url: url }).catch(function(){}); return; }
+    copy(txt + ' ' + url, 'link — dán vào Zalo để gửi');
+  }
+
+  // ----- chờ tiền về: hỏi server 4 giây/lần (15 phút đầu), sau đó 15 giây/lần (tối đa 2 giờ); quay lại từ app ngân hàng thì hỏi ngay
+  function poll(){
+    if(S.done) return;
+    S.pollN++;
+    api('pay_status').then(function(r){
+      var b = r.body || {};
+      if(r.status !== 200 || !b.ok) return;
+      if(b.stamp && b.stamp !== S.initStamp){
+        api('pay_page').then(function(p){
+          if(p.body && p.body.ok){ S.data = p.body; }
+          var lp = (S.data.status && S.data.status.last) || b.last;
+          S.done = { amount: lp ? lp.amount : 0, unlocked: S.data.status && S.data.status.locked === false && S.wasLocked };
+          try{ localStorage.removeItem('fdy-pay-' + CODE); }catch(e){}
+          render(); try{ window.scrollTo({ top: 0, behavior: 'smooth' }); }catch(e){}
+        });
+        return;
+      }
+      if(S.data && S.data.status){ S.data.status.credit = b.credit || 0; partialNote(); }
+    }).catch(function(){});
+    schedule();
+  }
+  function schedule(){
+    clearTimeout(S.timer);
+    if(S.done) return;
+    var elapsed = Date.now() - S.t0;
+    if(elapsed > 2 * 3600000) return;
+    S.timer = setTimeout(poll, elapsed < 15 * 60000 ? 4000 : 15000);
+  }
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible' && S.data && !S.done){ clearTimeout(S.timer); poll(); } });
+
+  // ----- khởi động
+  if(!/^[A-Za-z0-9]{10,40}$/.test(SID) || !/^FDY[A-Z0-9]{5}$/.test(CODE)){
+    $app.innerHTML = '<div class="empty">Link thanh toán chưa đúng. Phụ huynh vui lòng mở lại đúng link thầy hoặc con gửi.</div>'; return;
+  }
+  Promise.all([api('pay_page'), loadApps()]).then(function(res){
+    var r = res[0], d = r.body || {};
+    if(r.status !== 200 || !d.ok){ $app.innerHTML = '<div class="empty">' + esc(d.error || 'Chưa tải được trang thanh toán — thử tải lại sau ít phút.') + '</div>'; return; }
+    S.data = d; S.initStamp = (d.status && d.status.stamp) || ''; S.initCredit = (d.status && d.status.credit) || 0; S.wasLocked = !!(d.status && d.status.locked);
+    // app ngân hàng mở lại trang này sau khi chuyển (tham số url của deeplink) -> nhớ mốc lúc phụ huynh MỚI MỞ trang (2 giờ),
+    // để lần tải lại vẫn nhận ra "tiền vừa về" và hiện màn hình Đã nhận
+    var KEY = 'fdy-pay-' + CODE, mem = null;
+    try{ mem = JSON.parse(localStorage.getItem(KEY) || 'null'); }catch(e){}
+    if(mem && Date.now() - (mem.t || 0) < 2 * 3600000){ S.initStamp = mem.stamp || ''; S.initCredit = mem.credit || 0; S.wasLocked = !!mem.locked; }
+    else { try{ localStorage.setItem(KEY, JSON.stringify({ t: Date.now(), stamp: S.initStamp, credit: S.initCredit, locked: S.wasLocked })); }catch(e){} }
+    if(S.initStamp !== ((d.status && d.status.stamp) || '')){
+      var lp0 = d.status && d.status.last;
+      S.done = { amount: lp0 ? lp0.amount : 0, unlocked: S.wasLocked && d.status && d.status.locked === false };
+      try{ localStorage.removeItem(KEY); }catch(e){}
+    }
+    var opts = d.options || [];
+    S.sel = opts.filter(function(o){ return WANT && o.plan === WANT; })[0] || opts.filter(function(o){ return o.featured; })[0] || opts[0] || null;
+    render();
+    if(d.gatewayOn && opts.length && !S.done){ S.t0 = Date.now(); schedule(); }
+  }).catch(function(e){
+    $app.innerHTML = '<div class="empty">Chưa kết nối được máy chủ (' + esc(e && e.message) + '). Phụ huynh thử tải lại trang.</div>';
+  });
+})();
+</script>
+</body>
+</html>
