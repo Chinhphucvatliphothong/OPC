@@ -1266,6 +1266,16 @@
     var videoViews = videoViewsState[0];
     var setVideoViews = videoViewsState[1];
     var liveStudentId = (student && student.isLive) ? student.id : null;
+    // THÊM 26/11/2026 — nút "Gói học / Đóng học phí" cạnh Đăng xuất: MỌI tài khoản (kể cả thầy tạo, Miễn phí, chưa có gói)
+    // đều tự mở được trang /thanhtoan của mình để chọn gói và thanh toán (hoặc chia sẻ link cho phụ huynh)
+    var myPayState = React.useState(null); var myPay = myPayState[0], setMyPay = myPayState[1];
+    React.useEffect(function(){
+      setMyPay(null);
+      if(!liveStudentId || !window.OPC_LIVE || !window.OPC_LIVE.getMyPayLink) return;
+      var alive = true;
+      var t = setTimeout(function(){ window.OPC_LIVE.getMyPayLink().then(function(r){ if(alive) setMyPay(r); }); }, 1200);
+      return function(){ alive = false; clearTimeout(t); };
+    }, [liveStudentId]);
     React.useEffect(function(){
       setVideoViews({});
       if(!liveStudentId || !window.OPC_LIVE || !window.OPC_LIVE.loadVideoViews) return;
@@ -2852,7 +2862,13 @@
             h('p', null, 'Tài khoản luyện thi cá nhân hóa · ' + student.email)
           )
         ),
-        h('button', { type: 'button', className: 'btn btn-secondary', onClick: handleLogout }, '🚪 Đăng xuất')
+        h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+          (myPay && myPay.gatewayOn && myPay.url) ? h('a', {
+            className: 'btn ' + (['trial', 'trialEnd', 'unpaid', 'due', 'overdue'].indexOf(myPay.state) > -1 ? 'btn-primary' : 'btn-secondary'),
+            href: myPay.url, target: '_blank', rel: 'noopener', style: { textDecoration: 'none' },
+            title: 'Chọn gói và thanh toán — em tự đóng hoặc chia sẻ link cho phụ huynh'
+          }, ['trial', 'trialEnd', 'unpaid', 'due', 'overdue'].indexOf(myPay.state) > -1 ? '💳 Đóng học phí' : '💳 Gói học') : null,
+          h('button', { type: 'button', className: 'btn btn-secondary', onClick: handleLogout }, '🚪 Đăng xuất'))
       ),
 
       // 2. PrepScholar Core Metrics Grid
