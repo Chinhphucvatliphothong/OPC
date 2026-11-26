@@ -568,6 +568,7 @@ async function loadBillingCfg(db){
     plans: plans.filter(function(p){ return p.visible; }), allPlans: plans,
     examDate: pr.examDate || bill.examDate || BILL_DEFAULTS.examDate,
     fullOff: pr.fullOff != null ? Number(pr.fullOff) : (bill.fullOff != null ? Number(bill.fullOff) : BILL_DEFAULTS.fullOff),
+    quarterOff: pr.quarterOff != null ? Number(pr.quarterOff) : (bill.quarterOff != null ? Number(bill.quarterOff) : 10),   // THÊM 26/11/2026 — đóng theo quý
     gateway: g, gatewayOn: !!(g.enabled && g.bank && g.acc), bankInfo: String(bill.bankInfo || ''),
     remindDays: Number(bill.remindDays) || 5   // THÊM 26/11/2026 — = admin-ops.js › billingStatus "sắp đến hạn"
   };
@@ -677,6 +678,14 @@ function offersForStudent(bc, b, today){
     var fee = fullFee(bc, p);
     if(!(fee > 0)) return;
     if(paidFull){ if(p.key === b.plan || fee <= curFee) return; fee = fee - curFee; }
+    // THÊM 26/11/2026 (lần 2) — gói tính giá THEO THÁNG (vd "Học online cùng thầy"): phụ huynh chọn đóng theo tháng / theo quý (3 tháng) / trọn khoá
+    // (= admin-ops.js › cycleFee: quý = 3 tháng giảm quarterOff%). Đang đóng đủ trọn khoá gói khác thì chỉ nâng cấp trọn khoá (phần chênh lệch).
+    if(!paidFull && !p.courseOnly && Number(p.monthly) > 0){
+      var m1 = Math.round(Number(p.monthly)), q3 = Math.round(Number(p.monthly) * 3 * (1 - (Number(bc.quarterOff) || 0) / 100) / 1000) * 1000;
+      out.push({ plan: p.key, name: p.name, amount: m1, cycle: 'month', months: 1, upgrade: false });
+      if(q3 > 0 && q3 < fee) out.push({ plan: p.key, name: p.name, amount: q3, cycle: 'quarter', months: 3, upgrade: false });
+      if(fee <= m1) return;   // tháng cuối trước kỳ thi: trọn khoá = 1 tháng -> không lặp
+    }
     out.push({ plan: p.key, name: p.name, amount: fee, cycle: 'full', fixedUntil: bc.examDate, upgrade: paidFull });
   });
   return out;
@@ -695,11 +704,24 @@ async function payLinkFor(db, ref, s){
   var code = await ensurePayCode(db, ref, s);
   var today = vnYmd(), b = s.billing || {};
   var plan = bc.allPlans.filter(function(x){ return x.key === b.plan; })[0];
+  var opts = payOptions(bc, b, today);
   return {
-    gatewayOn: true, url: payPageUrl(ref.id, code), state: billState(bc, b, today),
+    gatewayOn: true, url: payPageUrl(ref.id, code), state: billState(bc, b, today), cycle: String(b.cycle || ''),
     trialEnd: b.trialEnd ? String(b.trialEnd).slice(0, 10) : '', paidUntil: b.paidUntil ? String(b.paidUntil).slice(0, 10) : '',
-    planName: plan ? plan.name : '', upgradeable: offersForStudent(bc, b, today).length > 0
+    planName: plan ? plan.name : '', upgradeable: opts.length > 0,
+    options: opts   // THÊM 26/11/2026 (lần 2) — hộp "Nâng cấp gói học" ngay trong app
   };
+}
+// danh sách lựa chọn hiển thị (trang /thanhtoan + hộp nâng cấp trong app)
+function cleanFeature(x){ return String(x || '').replace(/^[\s•·\-–*]+/, '').trim(); }
+function payOptions(bc, b, today){
+  var byKey = {}; bc.allPlans.forEach(function(p){ byKey[p.key] = p; });
+  return offersForStudent(bc, b, today).map(function(o){
+    var p = byKey[o.plan] || {};
+    return { id: 'o_' + o.plan + '_' + o.cycle, kind: 'offer', plan: o.plan, name: o.name, amount: o.amount, cycle: o.cycle, months: o.months || 0,
+      upgrade: !!o.upgrade, until: o.fixedUntil || '', monthly: p.courseOnly ? 0 : Math.round(Number(p.monthly) || 0),
+      features: (p.features || []).map(cleanFeature).filter(Boolean), badge: p.badge || '', featured: !!p.featured };
+  });
 }
 function payLookup(body){
   var id = String(body.id || '').slice(0, 40), code = String(body.c || '').toUpperCase().slice(0, 12);
@@ -745,24 +767,19 @@ async function handlePay(req, res, body, act){
 
     // pay_page
     if(!bc.gatewayOn){ res.status(200).json({ ok: true, gatewayOn: false, name: String(s.name || ''), status: status, bankInfo: bc.bankInfo }); return; }
-    var byKey = {}; bc.allPlans.forEach(function(p){ byKey[p.key] = p; });
-    var options = offersForStudent(bc, b, today).map(function(o){
-      var p = byKey[o.plan] || {};
-      return { id: 'o_' + o.plan, kind: 'offer', plan: o.plan, name: o.name, amount: o.amount, upgrade: !!o.upgrade, until: o.fixedUntil,
-        features: p.features || [], badge: p.badge || '', featured: !!p.featured };
-    });
+    var options = payOptions(bc, b, today);
     // gói theo THÁNG đang dùng: thêm lựa chọn "gia hạn kỳ tới" (billing.pay do admin-ops.js ghi) nếu chưa trùng số tiền gói trọn khoá
     var pay = b.pay;
     if(pay && Number(pay.amount) > 0 && pay.cycle !== 'full' && ['unpaid', 'due', 'overdue', 'trial', 'trialEnd'].indexOf(state) > -1 &&
        !options.some(function(o){ return Math.abs(o.amount - Number(pay.amount)) <= 1000; })){
       options.unshift({ id: 'base', kind: 'base', plan: b.plan, name: (cur ? cur.name : 'Học phí') + ' · gia hạn ' + (Number(pay.months) || 1) + ' tháng',
-        amount: Math.round(Number(pay.amount)), upgrade: false, until: '', features: [], badge: '', featured: false });
+        amount: Math.round(Number(pay.amount)), cycle: 'base', months: Number(pay.months) || 1, upgrade: false, until: '', monthly: 0, features: [], badge: '', featured: false });
     }
     var zalo = '';
     try{ var dz = await db.collection('settings').doc('diagnostic5').get(); if(dz.exists) zalo = String((dz.data() || {}).zaloLink || '').slice(0, 200); }catch(e){}
     var g = bc.gateway || {};
     res.status(200).json({
-      ok: true, gatewayOn: true, name: String(s.name || '').slice(0, 80), khoi: s.khoi || '', status: status, options: options,
+      ok: true, gatewayOn: true, name: String(s.name || '').slice(0, 80), khoi: s.khoi || '', status: status, options: options, quarterOff: Number(bc.quarterOff) || 0,
       bank: { code: String(g.bank || ''), acc: String(g.acc || ''), name: String(g.name || '') }, content: q.code,
       examDate: bc.examDate, zalo: /^https?:\/\//.test(zalo) ? zalo : ''
     });

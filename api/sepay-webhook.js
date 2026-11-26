@@ -86,7 +86,8 @@ function cfgFromSettings(bill, pr){
       visible: t.visible !== false, courseOnly: !/th[aá]ng/i.test(String(t.unit || '/tháng')) };
   });
   return { allPlans: plans, plans: plans.filter(function(p){ return p.visible; }), examDate: pr.examDate || bill.examDate || '2027-06-11',
-    fullOff: pr.fullOff != null ? Number(pr.fullOff) : (bill.fullOff != null ? Number(bill.fullOff) : 20), remindDays: Number(bill.remindDays) || 5 };
+    fullOff: pr.fullOff != null ? Number(pr.fullOff) : (bill.fullOff != null ? Number(bill.fullOff) : 20), remindDays: Number(bill.remindDays) || 5,
+    quarterOff: pr.quarterOff != null ? Number(pr.quarterOff) : (bill.quarterOff != null ? Number(bill.quarterOff) : 10) };
 }
 function fullFeeOf(cfg, p, today){
   if(!p) return 0;
@@ -104,6 +105,13 @@ function offersFromCfg(cfg, b, today){
     var fee = fullFeeOf(cfg, p, today);
     if(!(fee > 0)) return;
     if(paidFull){ if(p.key === b.plan || fee <= curFee) return; fee = fee - curFee; }
+    // THÊM 26/11/2026 (lần 2) — gói giá theo tháng: thêm đóng theo tháng / theo quý (= api/student-login.js › offersForStudent)
+    if(!paidFull && !p.courseOnly && Number(p.monthly) > 0){
+      var m1 = Math.round(Number(p.monthly)), q3 = Math.round(Number(p.monthly) * 3 * (1 - (Number(cfg.quarterOff) || 0) / 100) / 1000) * 1000;
+      out.push({ plan: p.key, name: p.name, amount: m1, cycle: 'month', months: 1, upgrade: false });
+      if(q3 > 0 && q3 < fee) out.push({ plan: p.key, name: p.name, amount: q3, cycle: 'quarter', months: 3, upgrade: false });
+      if(fee <= m1) return;
+    }
     out.push({ plan: p.key, name: p.name, amount: fee, cycle: 'full', fixedUntil: cfg.examDate, upgrade: !!paidFull });
   });
   return out;
@@ -160,17 +168,32 @@ async function handle(req, res, db, FV, nowMs){
       var common = Object.assign({}, base, { studentId: ssnap.id, studentName: String(s.name || '').slice(0, 80) });
       // THÊM 2/11/2026 — phụ huynh chọn GÓI trên trang phụ huynh: số tiền khớp ưu đãi nào thì kích hoạt gói đó (trọn khóa / nâng cấp)
       var credit0 = Math.max(0, Number(b.credit) || 0), offer = matchOffer(b.offers, amount + credit0, 1000);
-      var plan = offer ? null : planPayment(b, amount, today);
-      // THÊM 26/11/2026 — chưa khớp gì: thử các gói tính thẳng từ bảng giá (link /thanhtoan cho tài khoản chưa có gói / đang khoá)
-      if(!offer && plan.status !== 'applied' && cfg) offer = matchOffer(offersFromCfg(cfg, b, today), amount + credit0, 1000);
+      var plan = null;
+      // SỬA 26/11/2026 (lần 2) — thứ tự khớp: ưu đãi đã lưu → đúng số tiền kỳ tới (billing.pay) → các lựa chọn tính từ bảng giá
+      // (trọn khoá / theo quý / theo tháng, trang /thanhtoan) → gia hạn nhiều kỳ / cộng dồn như cũ
+      if(!offer){
+        var baseExact = b.pay && Number(b.pay.amount) > 0 && Math.abs(Number(b.pay.amount) - (amount + credit0)) <= 1000;
+        if(!baseExact && cfg) offer = matchOffer(offersFromCfg(cfg, b, today), amount + credit0, 1000);
+        if(!offer) plan = planPayment(b, amount, today);
+      }
       // THÊM 26/11/2026 — đóng tiền thành công thì TỰ MỞ KHOÁ tài khoản (thầy khoá tay khi hết học thử) -> em đăng nhập lại là học
       var unlock = s.status === 'inactive';
       if(offer){
-        var until = String(offer.fixedUntil || '').slice(0, 10);
-        if(!until || until < today) until = addMonths(today, 12);
-        if(b.paidUntil && String(b.paidUntil).slice(0, 10) > until) until = String(b.paidUntil).slice(0, 10);
-        var pays0 = (Array.isArray(b.payments) ? b.payments : []).concat([{ date: today, amount: amount, months: 0, cycle: 'full', note: ('Tự động · ' + (offer.upgrade ? 'Nâng cấp lên ' : 'Chọn ') + String(offer.name || offer.plan).slice(0, 60) + ' · SePay #' + sid).slice(0, 120), auto: true }]).slice(-60);
-        var upd0 = { 'billing.plan': offer.plan, 'billing.cycle': 'full', 'billing.paidUntil': until, 'billing.payments': pays0, 'billing.credit': Math.max(0, amount + credit0 - Number(offer.amount)), 'billing.offers': [], 'billing.lastAutoAt': base.receivedAt };
+        var ocyc = (offer.cycle === 'month' || offer.cycle === 'quarter') ? offer.cycle : 'full', omon = 0, until;
+        if(ocyc === 'full'){
+          until = String(offer.fixedUntil || '').slice(0, 10);
+          if(!until || until < today) until = addMonths(today, 12);
+          if(b.paidUntil && String(b.paidUntil).slice(0, 10) > until) until = String(b.paidUntil).slice(0, 10);
+        } else {
+          // THÊM 26/11/2026 (lần 2) — đóng theo tháng / quý: cùng gói đang còn hạn thì nối tiếp từ ngày hết hạn, ngược lại tính từ hôm nay
+          omon = Number(offer.months) || (ocyc === 'quarter' ? 3 : 1);
+          var pu0 = b.paidUntil ? String(b.paidUntil).slice(0, 10) : '';
+          var from0 = (b.plan === offer.plan && ['month', 'quarter', 'full'].indexOf(b.cycle) > -1 && pu0 >= today) ? pu0 : today;
+          until = addMonths(from0, omon);
+        }
+        var pays0 = (Array.isArray(b.payments) ? b.payments : []).concat([{ date: today, amount: amount, months: omon, cycle: ocyc, note: ('Tự động · ' + (offer.upgrade ? 'Nâng cấp lên ' : 'Chọn ') + String(offer.name || offer.plan).slice(0, 60) + (ocyc === 'month' ? ' (1 tháng)' : ocyc === 'quarter' ? ' (1 quý)' : '') + ' · SePay #' + sid).slice(0, 120), auto: true }]).slice(-60);
+        var upd0 = { 'billing.plan': offer.plan, 'billing.cycle': ocyc, 'billing.paidUntil': until, 'billing.payments': pays0, 'billing.credit': Math.max(0, amount + credit0 - Number(offer.amount)), 'billing.offers': [], 'billing.lastAutoAt': base.receivedAt };
+        if(ocyc !== 'full') upd0['billing.pay'] = { amount: Math.round(Number(offer.amount)), cycle: ocyc, months: omon };   // kỳ sau gia hạn đúng mức này
         if(!b.startDate) upd0['billing.startDate'] = today;
         if(unlock){ upd0.status = 'active'; upd0['billing.unlockedByPaymentAt'] = base.receivedAt; }
         tx.update(sref, upd0);
