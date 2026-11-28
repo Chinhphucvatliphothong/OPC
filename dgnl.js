@@ -9,6 +9,8 @@
  * SỬA 27/10/2026 — (1) LỖI KHÔNG VÀO ĐƯỢC: khung danh sách bọc class 'dg2-fs' không có CSS nên bị đẩy xuống cuối trang → đổi sang 'dg2-ov' (toàn màn hình).
  *   (2) MINI TEST THÍCH ỨNG: gom câu từ mọi đề ĐGNL, chọn phần thi + số câu (5/10/20/30), ưu tiên câu chưa làm/từng sai, giữ nguyên cụm câu chung dữ kiện; lưu track 'dgnl-mini' (không lẫn điểm 1.200).
  * SỬA 19/11/2026 — "Làm cả đề (150 phút)": hệ thống tự tạo đề 120 câu đúng cấu trúc V-ACT từ ngân hàng (buildFullExam), không còn hiện đề thô.
+ * SỬA 28/11/2026 — (1) LUYỆN TẬP THÍCH ỨNG (Practice): từng câu, chấm ngay, chọn câu tiếp theo sau mỗi câu; lưu track 'dgnl-practice'.
+ *   (2) Viết lại bộ hiển thị LaTeX (tex): \\[..\\], bảng tabular/\\resizebox, \\underline, \\hspace*{\\fill}, danh sách…
  * Xuất: window.OPC_DGNL = { openList(student) }
  */
 (function(window){
@@ -18,16 +20,159 @@
   function live(){ return window.OPC_LIVE || null; }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   // LaTeX trong đề → HTML (KaTeX nếu có)
+  // SỬA 28/11/2026 — VIẾT LẠI bộ hiển thị cho đề ĐGNL (đề nạp bằng AI/Claude hay có lệnh LaTeX mà bản cũ chỉ in thô ra màn hình):
+  //  • công thức \[...\], \(...\), $$...$$, $...$ (phương trình hoá học \xrightarrow, \text{CO}_2 … nằm trong \[ \] trước đây hiện thô);
+  //  • bảng \begin{tabular} (kể cả bọc \resizebox{\textwidth}{!}{%…}, \begin{table}, \begin{center}, \multicolumn, \hline) → bảng HTML có khung;
+  //  • chữ: \textbf \textit \emph \underline \uline \text \texttt…, lồng nhau và có công thức bên trong; **đậm** kiểu markdown;
+  //  • \hspace*{\fill} / \hfill (tên tác giả/nguồn trích dẫn) → canh phải; bỏ \vspace \noindent \quad \centering…; \itemize/\enumerate → danh sách;
+  //  • ký hiệu ngoài công thức: \% \& \_ \# ~ -- --- `` '' \ldots \circ, chữ Hy Lạp…; lệnh lạ còn lại: bỏ tên lệnh, giữ nội dung.
+  var TX_TAG = { textbf: 'b', bf: 'b', bfseries: 'b', textit: 'i', it: 'i', emph: 'i', textsl: 'i', underline: 'u', uline: 'u', underbar: 'u',
+    text: 'span', textrm: 'span', textnormal: 'span', mbox: 'span', textup: 'span', textsf: 'span', textsc: 'span', mathrm: 'span', texttt: 'code' };
+  var TX_DROP_ARG = { vspace: 1, label: 1, ref: 0, includegraphics: 1, phantom: 1, hphantom: 1, vphantom: 1, setlength: 2, renewcommand: 2, setcounter: 2, addtocounter: 2, color: 1, pagecolor: 1 };
+  var TX_DROP = { noindent: 1, centering: 1, raggedright: 1, raggedleft: 1, medskip: 1, smallskip: 1, bigskip: 1, small: 1, footnotesize: 1, scriptsize: 1, large: 1, Large: 1, LARGE: 1, normalsize: 1, huge: 1,
+    allowbreak: 1, newpage: 1, clearpage: 1, sffamily: 1, rmfamily: 1, selectfont: 1, displaystyle: 1, hline: 1, toprule: 1, midrule: 1, bottomrule: 1, protect: 1, relax: 1, null: 1, indent: 1 };
+  var TX_SYM = { circ: '°', deg: '°', degree: '°', pm: '±', mp: '∓', times: '×', div: '÷', cdot: '·', infty: '∞', approx: '≈', neq: '≠', ne: '≠', leq: '≤', le: '≤', geq: '≥', ge: '≥',
+    rightarrow: '→', to: '→', Rightarrow: '⇒', leftarrow: '←', Leftrightarrow: '⇔', ldots: '…', dots: '…', cdots: '⋯', textendash: '–', textemdash: '—', textquotedblleft: '“', textquotedblright: '”',
+    Omega: 'Ω', omega: 'ω', Delta: 'Δ', delta: 'δ', alpha: 'α', beta: 'β', gamma: 'γ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', theta: 'θ', Phi: 'Φ', phi: 'φ', varphi: 'φ', rho: 'ρ', eta: 'η', epsilon: 'ε', varepsilon: 'ε',
+    quad: ' ', qquad: '  ', enspace: ' ', thinspace: ' ', textbackslash: '\\', S: '§', copyright: '©', checkmark: '✓', textbullet: '•', bullet: '•' };
+  var TX_HF = '\u0003';
+  function brace(s, i){ // s[i] === '{' → { body, end } (end = vị trí sau '}')
+    var d = 0, j = i;
+    for(; j < s.length; j++){ var c = s[j]; if(c === '\\'){ j++; continue; } if(c === '{') d++; else if(c === '}'){ d--; if(d === 0) return { body: s.slice(i + 1, j), end: j + 1 }; } }
+    return { body: s.slice(i + 1), end: s.length };
+  }
+  function skipWs(s, j){ while(j < s.length && (s[j] === ' ' || s[j] === '\t' || s[j] === '\n')) j++; return j; }
+  function skipOpt(s, j){ j = skipWs(s, j); if(s[j] !== '['){ return j; } var d = 0; for(; j < s.length; j++){ if(s[j] === '[') d++; else if(s[j] === ']'){ d--; if(d === 0) return j + 1; } } return j; }
+  // \resizebox{w}{h}{X} / \scalebox{k}{X} / \adjustbox{..}{X} / \makebox[..]{X} / \parbox{w}{X} / \fbox{X} → X
+  function unwrapBoxes(s){
+    var re = /\\(resizebox|scalebox|adjustbox|makebox|parbox|framebox|fbox|mbox)\*?/g, m, guard = 0;
+    while((m = re.exec(s)) && guard++ < 200){
+      var name = m[1], j = skipOpt(s, m.index + m[0].length), drop = { resizebox: 2, scalebox: 1, adjustbox: 1, parbox: 1, makebox: 0, framebox: 0, fbox: 0, mbox: 0 }[name];
+      if(name === 'mbox') continue;
+      for(var k = 0; k < drop; k++){ j = skipWs(s, j); if(s[j] === '{') j = brace(s, j).end; }
+      j = skipWs(s, j);
+      if(s[j] !== '{') continue;
+      var b = brace(s, j);
+      s = s.slice(0, m.index) + b.body + s.slice(b.end);
+      re.lastIndex = m.index;
+    }
+    return s;
+  }
+  function splitCells(row){
+    var out = [], cur = '', d = 0;
+    for(var i = 0; i < row.length; i++){
+      var c = row[i];
+      if(c === '\\' && row[i + 1] === '&'){ cur += '\\&'; i++; continue; }
+      if(c === '{') d++; else if(c === '}') d--;
+      if(c === '&' && d <= 0){ out.push(cur); cur = ''; continue; }
+      cur += c;
+    }
+    out.push(cur); return out;
+  }
+  function splitRows(body){ // tách theo \\ ở mức ngoặc 0 (bỏ \\[2pt])
+    var out = [], cur = '', d = 0;
+    for(var i = 0; i < body.length; i++){
+      var c = body[i];
+      if(c === '{') d++; else if(c === '}') d--;
+      if(c === '\\' && body[i + 1] === '\\' && d <= 0){ out.push(cur); cur = ''; i++; if(body[i + 1] === '['){ var e = body.indexOf(']', i); if(e > -1) i = e; } continue; }
+      cur += c;
+    }
+    out.push(cur); return out;
+  }
   function tex(t){
     // SỬA 27/10/2026 — bỏ comment LaTeX (dòng tag %[M3][..][..], % @nano…) còn sót trong dữ liệu cũ; giữ \% (phần trăm thật)
-    t = String(t || '').replace(/%\s*\[M[1-4]\]\s*\[[^\]\n]*\]\s*\[[^\]\n]*\]/gi, '').replace(/(^|\n)[ \t]*%[^\n]*/g, '$1').replace(/%\s*(?:@nano[\w-]*\s*:|AI_TU_GIAI|AI_CAN_KIEM_TRA|CHUA_CO_DAP_AN)[^\n]*/gi, '');
-    var s = String(t || '').replace(/\\textbf\{([^{}]*)\}/g, '**$1**').replace(/\\textit\{([^{}]*)\}/g, '$1').replace(/\\\\/g, '\n').replace(/~/g, ' ');
-    var out = '';
-    s.split(/(\$\$[\s\S]+?\$\$|\$[^$]+\$)/g).forEach(function(p){
-      var m = /^\$\$([\s\S]+)\$\$$/.exec(p) || /^\$([^$]+)\$$/.exec(p);
-      if(m){ try{ out += window.katex ? window.katex.renderToString(m[1], { displayMode: p.indexOf('$$') === 0, throwOnError: false }) : esc(p); }catch(e){ out += esc(p); } }
-      else out += esc(p).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+    var s = String(t || '').replace(/%\s*\[M[1-4]\]\s*\[[^\]\n]*\]\s*\[[^\]\n]*\]/gi, '').replace(/(^|\n)[ \t]*%[^\n]*/g, '$1').replace(/%\s*(?:@nano[\w-]*\s*:|@group|AI_TU_GIAI|AI_CAN_KIEM_TRA|CHUA_CO_DAP_AN)[^\n]*/gi, '');
+    s = s.replace(/([{}])[ \t]*%[ \t]*(?=\n|$)/g, '$1');                     // "%" ngay sau ngoặc ở cuối dòng (vd \resizebox{..}{!}{%) là comment LaTeX; "50%" trong chữ giữ nguyên
+    s = s.replace(/\\(?:Opensolutionfile|Closesolutionfile)\s*\{[^}]*\}(?:\s*\[[^\]]*\])?/g, '');
+    s = unwrapBoxes(s);
+    s = s.replace(/\\begin\{(?:table|figure|center|flushleft|flushright|minipage|adjustbox)\}(?:\[[^\]]*\])?(?:\{[^}]*\})*/g, '\n').replace(/\\end\{(?:table|figure|center|flushleft|flushright|minipage|adjustbox)\}/g, '\n');
+    s = s.replace(/\\caption\*?\{([^{}]*)\}/g, '\\textbf{$1}\n');
+    var keep = [];
+    function hold(html){ keep.push(html); return '\u0001' + (keep.length - 1) + '\u0002'; }
+    function km(src, disp){
+      src = src.replace(/\\ce\{([^{}]*)\}/g, '\\mathrm{$1}');
+      try{ return window.katex ? window.katex.renderToString(src, { displayMode: disp, throwOnError: false, strict: 'ignore' }) : esc(src); }catch(e){ return esc(src); }
+    }
+    s = s.replace(/\\\$/g, '\u0004');                                          // \$ = dấu $ thật
+    // 1) công thức → giữ chỗ (KaTeX)
+    s = s.replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\begin\{(equation|align|gather)\*?\}([\s\S]+?)\\end\{\3\*?\}|\\\(([\s\S]+?)\\\)|\$([^$]+?)\$/g, function(all, a, b, env, c, d, e){
+      if(a != null) return hold('<div class="dg2-dm">' + km(a, true) + '</div>');
+      if(b != null) return hold('<div class="dg2-dm">' + km(b, true) + '</div>');
+      if(c != null) return hold('<div class="dg2-dm">' + km(env === 'equation' ? c : '\\begin{aligned}' + c.replace(/\\label\{[^}]*\}/g, '') + '\\end{aligned}', true) + '</div>');
+      return hold(km(d != null ? d : e, false));
     });
+    // 2) bảng
+    s = s.replace(/\\begin\{(tabular\*?|tabularx|longtable|array)\}(?:\{[^{}]*\})?\{((?:[^{}]|\{[^{}]*\})*)\}([\s\S]*?)\\end\{\1\}/g, function(all, env, spec, body){
+      var rows = splitRows(body.replace(/\\(?:hline|toprule|midrule|bottomrule|endhead|endfirsthead)\b/g, '').replace(/\\cline\{[^}]*\}/g, ''))
+        .map(function(r){ return r.trim(); }).filter(function(r){ return r.replace(/\s/g, ''); });
+      if(!rows.length) return '';
+      var html = '<div class="dg2-tbw"><table class="dg2-tb">' + rows.map(function(r, ri){
+        return '<tr>' + splitCells(r).map(function(cell){
+          var cs = 1, mc = /^\s*\\multicolumn\{(\d+)\}\{[^}]*\}\{([\s\S]*)\}\s*$/.exec(cell);
+          if(mc){ cs = +mc[1] || 1; cell = mc[2]; }
+          cell = cell.replace(/^\s*\\multirow\{\d+\}\{[^}]*\}\{([\s\S]*)\}\s*$/, '$1');
+          return '<td' + (cs > 1 ? ' colspan="' + cs + '"' : '') + '>' + inline(cell.trim()) + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</table></div>';
+      return hold(html);
+    });
+    // 3) danh sách
+    s = s.replace(/\\begin\{(itemize|enumerate)\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{\1\}/g, function(all, env, body){
+      var items = body.split(/\\item\b(?:\[[^\]]*\])?/).slice(1).map(function(x){ return '<li>' + inline(x.trim()) + '</li>'; }).join('');
+      return hold(env === 'enumerate' ? '<ol>' + items + '</ol>' : '<ul>' + items + '</ul>');
+    });
+    s = s.replace(/\\begin\{[a-zA-Z*]+\}(?:\[[^\]]*\])?|\\end\{[a-zA-Z*]+\}/g, '');   // môi trường còn lại: bỏ khung, giữ nội dung
+    // 4) chữ + dòng; dòng có \hfill → canh phải
+    var html = inline(s);
+    html = html.split('<br>').map(function(line){
+      if(line.indexOf(TX_HF) < 0) return line;
+      var parts = line.split(TX_HF), left = parts[0].trim(), right = parts.slice(1).join(' ').trim();
+      return left ? '<span class="dg2-hfl"><span>' + left + '</span><span>' + right + '</span></span>' : '<span class="dg2-hfr">' + right + '</span>';
+    }).join('<br>');
+    for(var guard = 0; guard < 4 && /\u0001\d+\u0002/.test(html); guard++) html = html.replace(/\u0001(\d+)\u0002/g, function(all, n){ return keep[+n]; });   // bảng chứa công thức → thay 2 lượt
+    // bảng/công thức riêng dòng đã là khối → bỏ <br> thừa quanh nó
+    return html.replace(/(<br>\s*)+(<div class="dg2-(?:tbw|dm)">)/g, '$2').replace(/(<\/table><\/div>|<\/div>)(\s*<br>)+/g, '$1').replace(/^(\s*<br>)+|(<br>\s*)+$/g, '');
+  }
+  // phần chữ (ngoài công thức): lệnh định dạng lồng nhau, ký hiệu, xuống dòng
+  function inline(s){
+    var out = '', i = 0, n = s.length;
+    while(i < n){
+      var c = s[i];
+      if(c === '\u0001'){ var e = s.indexOf('\u0002', i); out += s.slice(i, e + 1); i = e + 1; continue; }
+      if(c === '\u0004'){ out += '$'; i++; continue; }
+      if(c === '\\'){
+        var nx = s[i + 1];
+        if(nx === '\\'){ out += '<br>'; i += 2; if(s[i] === '['){ var e2 = s.indexOf(']', i); if(e2 > -1 && e2 - i < 12) i = e2 + 1; } continue; }
+        if(nx && '%&_#{}$'.indexOf(nx) > -1){ out += esc(nx); i += 2; continue; }
+        if(nx && ',;:! '.indexOf(nx) > -1){ out += ' '; i += 2; continue; }
+        if(nx === '-' ){ i += 2; continue; }
+        var m = /^\\([a-zA-Z]+)(\*?)/.exec(s.slice(i));
+        if(!m){ out += '\\'; i++; continue; }
+        var name = m[1], j = i + m[0].length;
+        if(name === 'hfill' || name === 'hfil'){ out += TX_HF; i = j; continue; }
+        if(name === 'hspace'){ j = skipWs(s, j); if(s[j] === '{'){ var hb = brace(s, j); out += /fill/.test(hb.body) ? TX_HF : ' '; j = hb.end; } i = j; continue; }
+        if(name === 'newline' || name === 'linebreak' || name === 'par' || name === 'break'){ out += '<br>'; i = j; continue; }
+        if(TX_SYM[name] !== undefined){ out += esc(TX_SYM[name]); i = j; if(s[i] === '{' && s[i + 1] === '}') i += 2; continue; }
+        if(TX_DROP[name]){ i = j; if(s[i] === ' ' ) i++; continue; }
+        if(TX_DROP_ARG[name] != null){ j = skipOpt(s, j); var na = TX_DROP_ARG[name] || 1; for(var k = 0; k < na; k++){ j = skipWs(s, j); if(s[j] === '{') j = brace(s, j).end; } i = j; continue; }
+        var j2 = skipOpt(s, j); j2 = (s[j2] === ' ' && s[j2 + 1] === '{') ? j2 + 1 : j2;
+        if(s[j2] === '{'){
+          var b = brace(s, j2), tag = TX_TAG[name];
+          if(name === 'href'){ var b2 = s[b.end] === '{' ? brace(s, b.end) : null; out += inline(b2 ? b2.body : b.body); i = b2 ? b2.end : b.end; continue; }
+          out += tag && tag !== 'span' ? '<' + tag + '>' + inline(b.body) + '</' + tag + '>' : inline(b.body);
+          i = b.end; continue;
+        }
+        i = j; continue;   // lệnh lạ không tham số: bỏ
+      }
+      if(c === '{' || c === '}'){ i++; continue; }
+      if(c === '~'){ out += '&nbsp;'; i++; continue; }
+      if(c === '\n'){ out += (s[i + 1] === '\n') ? '<br>' : '<br>'; i++; continue; }
+      if(c === '-' && s[i + 1] === '-'){ if(s[i + 2] === '-'){ out += '—'; i += 3; } else { out += '–'; i += 2; } continue; }
+      if(c === '`' && s[i + 1] === '`'){ out += '“'; i += 2; continue; }
+      if(c === '\'' && s[i + 1] === '\''){ out += '”'; i += 2; continue; }
+      if(c === '*' && s[i + 1] === '*'){ var e3 = s.indexOf('**', i + 2); if(e3 > -1 && e3 - i < 300){ out += '<b>' + inline(s.slice(i + 2, e3)) + '</b>'; i = e3 + 2; continue; } }
+      out += esc(c); i++;
+    }
     return out;
   }
   function T(t, tag){ return h(tag || 'span', { dangerouslySetInnerHTML: { __html: tex(t) } }); }
@@ -82,6 +227,10 @@
     '.dg2-gh{font-size:.78rem;font-weight:800;color:var(--ink-2,#555);margin:10px 0 5px;}',
     '.dg2-sol{margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--surface-2,#f6f3ec);font-size:.92rem;line-height:1.6;}',
     '.dg2-score{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:12px;} .dg2-score div{background:var(--surface-2,#f6f3ec);border-radius:10px;padding:10px 12px;} .dg2-score b{display:block;font-size:1.5rem;}',
+    // THÊM 28/11/2026 — bảng, công thức riêng dòng, dòng canh phải (\\hfill), danh sách
+    '.dg2-tbw{overflow-x:auto;margin:10px 0;} .dg2-tb{border-collapse:collapse;margin:0 auto;font-size:.9rem;min-width:50%;} .dg2-tb td{border:1px solid var(--line-strong,#bdb5a3);padding:5px 9px;text-align:center;vertical-align:middle;} .dg2-tb tr:first-child td{background:var(--surface-2,#f1ede3);font-weight:700;}',
+    '.dg2-dm{overflow-x:auto;overflow-y:hidden;margin:8px 0;text-align:center;} .dg2-hfr{display:block;text-align:right;font-style:italic;} .dg2-hfl{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}',
+    '.dg2-stem ul,.dg2-stem ol,.dg2-sol ul,.dg2-sol ol,.dg2-pass ul,.dg2-pass ol{margin:6px 0;padding-left:22px;} .dg2-stem code,.dg2-sol code{font-family:ui-monospace,monospace;font-size:.92em;}',
     '.dg2-ex{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line,#e5e0d4);border-radius:10px;padding:10px 12px;margin-top:8px;flex-wrap:wrap;}'
   ].join('\n');
   function ensureCss(){ if(document.getElementById('dg2-css')) return; var s = document.createElement('style'); s.id = 'dg2-css'; s.textContent = CSS; document.head.appendChild(s); }
@@ -218,7 +367,7 @@
   function buildHistory(attempts, byUid){
     var st = {};
     (attempts || []).forEach(function(a){ // attempts đã sắp mới nhất trước → chỉ ghi nếu chưa có
-      if(a.track !== 'dgnl' && a.track !== 'dgnl-mini') return;
+      if(a.track !== 'dgnl' && a.track !== 'dgnl-mini' && a.track !== 'dgnl-practice' && a.track !== 'dgnl-paper') return;   // SỬA 28/11/2026 — tính cả luyện tập thích ứng + bài giấy đã chấm
       Object.keys(a.answers || {}).forEach(function(k){
         var uid = String(k).indexOf('_q') > -1 ? String(k) : String(a.examId) + '_q' + k;
         var it = byUid[uid]; if(!it || st[uid] != null) return;
@@ -303,13 +452,113 @@
   }
   function fullPendingKey(st){ return 'dgnl-auto-' + st.id; }
 
+  // ===== THÊM 28/11/2026 — LUYỆN TẬP THÍCH ỨNG ĐGNL (giống "Luyện tập thích ứng" Vật lí 12): làm TỪNG CÂU, chấm & xem lời giải ngay,
+  // câu tiếp theo do hệ thống chọn lại sau MỖI câu theo kết quả vừa làm: ưu tiên phần thi em đang yếu, câu chưa làm, câu từng sai,
+  // nano (đơn vị kiến thức) đang yếu; câu chung dữ kiện đi cùng nhau. Không giới hạn số câu, không đồng hồ.
+  // Lưu vào lịch sử (track 'dgnl-practice') mỗi 10 câu và khi bấm "Kết thúc" → thầy xem ở admin, lần sau chọn câu dựa trên kết quả này.
+  function Practice(props){
+    var st = props.student, pool = props.pool, okList = props.list, secSel = props.sections;
+    var hs = React.useState(function(){ return Object.assign({}, props.history); }); var hist = hs[0], setHist = hs[1];
+    var qs0 = React.useState([]); var queue = qs0[0], setQueue = qs0[1];          // các câu của cụm hiện tại
+    var ci = React.useState(0); var qi = ci[0], setQi = ci[1];
+    var an = React.useState({}); var picked = an[0], setPicked = an[1];           // uid → phương án em chọn (phiên này)
+    var ld = React.useState(''); var busy = ld[0], setBusy = ld[1];
+    var sv = React.useState(''); var saveMsg = sv[0], setSaveMsg = sv[1];
+    var sk = React.useState(0); var streak = sk[0], setStreak = sk[1];
+    var seenRef = React.useRef({}), cacheRef = React.useRef({}), pendRef = React.useRef([]), t0Ref = React.useRef(Date.now()), allRef = React.useRef([]);
+    var nanoStats = React.useMemo(function(){ return buildNanoStats(hist, pool.byUid); }, [hist]);
+
+    function loadEx(id){
+      if(cacheRef.current[id]) return Promise.resolve(cacheRef.current[id]);
+      var ex = okList.filter(function(e){ return e.id === id; })[0];
+      return live().loadSpecialExam('dgnl', ex).then(function(qs){ var m = {}; qs.forEach(function(q){ m[id + '_q' + q.index] = q; }); cacheRef.current[id] = m; return m; });
+    }
+    function next(){
+      var left = { units: pool.units.filter(function(u){ return !seenRef.current[u.items[0].uid]; }), byUid: pool.byUid };
+      if(!left.units.filter(function(u){ return secSel.indexOf(u.sec) > -1; }).length){ seenRef.current = {}; left = pool; }   // đã đi hết ngân hàng → vòng mới
+      var u = pickMini(left, hist, secSel, 1, true, nanoStats)[0];
+      if(!u){ setQueue([]); return; }
+      seenRef.current[u.items[0].uid] = 1;
+      setBusy('Đang chọn câu phù hợp…');
+      loadEx(u.exId).then(function(m){
+        var out = []; u.items.forEach(function(it){ var q = m[it.uid]; if(q) out.push(Object.assign({}, q, { uid: it.uid, index: it.uid })); });
+        setBusy(''); if(!out.length){ next(); return; }
+        setQueue(out); setQi(0);
+        try{ document.querySelector('.dg2-ov').scrollTo(0, 0); }catch(e){}
+      }).catch(function(){ setBusy('Không tải được câu hỏi — kiểm tra mạng rồi bấm "Câu tiếp".'); });
+    }
+    React.useEffect(function(){ next(); }, []);
+    React.useEffect(function(){ return function(){ if(pendRef.current.length) flush(false); }; }, []);   // đóng ngang (không bấm Kết thúc) vẫn lưu câu đã làm
+
+    function flush(final){
+      var items = pendRef.current; if(!items.length){ if(final) props.onExit(); return; }
+      pendRef.current = [];
+      var r = score(items, items.reduce(function(m, q){ m[q.index] = picked[q.index] || q._ans; return m; }, {}));
+      var sec = {}; Object.keys(r.sections).forEach(function(k){ sec[k] = { name: r.sections[k].name, correct: r.sections[k].correct, total: r.sections[k].total }; });
+      var ans = {}; items.forEach(function(q){ ans[q.index] = q._ans; });
+      var L = live(), mins = Math.max(1, Math.round((Date.now() - t0Ref.current) / 60000)); t0Ref.current = Date.now();
+      var p = (L && L.saveSpecialAttempt) ? L.saveSpecialAttempt(st.id, { track: 'dgnl-practice', examId: 'practice', examTitle: 'Luyện tập thích ứng · ' + items.length + ' câu', correct: r.correct, total: r.total,
+        pct: Math.round(r.correct / Math.max(1, r.total) * 100), sections: sec, nanos: nanoSummary(items, ans), minutesUsed: mins, answers: ans, qids: items.map(function(q){ return q.index; }) }) : Promise.resolve({ ok: false });
+      p.then(function(res){ setSaveMsg(res && res.ok ? '✓ Đã lưu ' + items.length + ' câu vào lịch sử' : '⚠ Chưa lưu được — kiểm tra mạng'); if(!(res && res.ok)) pendRef.current = items.concat(pendRef.current); if(final) props.onExit(); });
+    }
+    function choose(o){
+      var q = queue[qi]; if(!q || picked[q.index]) return;
+      var ck = correctKey(q), ok = o.key === ck;
+      var pk = Object.assign({}, picked); pk[q.index] = o.key; setPicked(pk);
+      var h2 = Object.assign({}, hist); h2[q.uid] = ok ? 1 : 0; setHist(h2);
+      setStreak(ok ? streak + 1 : 0);
+      var rec = Object.assign({}, q, { _ans: o.key }); pendRef.current.push(rec); allRef.current.push(rec);
+      if(allRef.current.length % 10 === 0) flush(false);
+    }
+    function goNext(){ if(qi < queue.length - 1) setQi(qi + 1); else next(); }
+
+    var all = allRef.current, nOk = all.filter(function(q){ return q._ans === correctKey(q); }).length;
+    var bySec = {}; all.forEach(function(q){ var s = sectionOf(q); var x = bySec[s.key] = bySec[s.key] || { name: s.name, ok: 0, n: 0 }; x.n++; if(q._ans === correctKey(q)) x.ok++; });
+    var weak = Object.keys(nanoStats).map(function(k){ var x = nanoStats[k]; return { k: k, x: x }; }).filter(function(o){ return o.x.seen >= 2 && o.x.ok / o.x.seen < 0.6; })
+      .sort(function(a, b){ return a.x.ok / a.x.seen - b.x.ok / b.x.seen; }).slice(0, 6);
+    var nanoName = {}; Object.keys(pool.byUid).forEach(function(u){ var it = pool.byUid[u]; if(it.nano && !nanoName[it.nano]) nanoName[it.nano] = it.nanoName; });
+    var q = queue[qi], done = q && picked[q.index], ck = q && correctKey(q);
+    function optCls(o){ var c = 'dg2-opt'; if(done){ if(o.key === ck) c += ' ok'; else if(picked[q.index] === o.key) c += ' bad'; } return c; }
+
+    return h('div', null,
+      h('div', { className: 'dg2-top' },
+        h('div', { className: 't' }, '🧠 Luyện tập thích ứng ĐGNL', h('div', { style: { fontSize: '.78rem', fontWeight: 500, color: 'var(--ink-2,#666)' } },
+          'Đã làm ' + all.length + ' câu · đúng ' + nOk + (all.length ? ' (' + Math.round(nOk / all.length * 100) + '%)' : '') + (streak >= 2 ? ' · 🔥 chuỗi đúng ' + streak : '') + (saveMsg ? ' · ' + saveMsg : ''))),
+        h('button', { type: 'button', className: 'dg2-b p', onClick: function(){ flush(true); } }, 'Kết thúc & lưu')),
+      h('div', { className: 'dg2-wrap' },
+        h('div', null,
+          busy ? h('div', { className: 'dg2-card', style: { fontWeight: 700 } }, '⏳ ' + busy, /Không tải/.test(busy) ? h('div', null, h('button', { type: 'button', className: 'dg2-b', style: { marginTop: '8px' }, onClick: next }, 'Câu tiếp →')) : null) :
+          !q ? h('div', { className: 'dg2-card' }, 'Chưa có câu phù hợp trong các phần đã chọn.') :
+          h('div', { className: 'dg2-card' },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px', flexWrap: 'wrap' } },
+              h('b', null, 'Câu ' + (all.length + (done ? 0 : 1)) + ' · ', h('span', { style: { fontWeight: 600, color: 'var(--ink-2)' } }, sectionOf(q).name)),
+              queue.length > 1 ? h('span', { style: { fontSize: '.78rem', color: 'var(--ink-2)' } }, 'Cụm câu chung dữ kiện · ' + (qi + 1) + '/' + queue.length) : null,
+              hist[q.uid] === 0 && !done ? h('span', { style: { fontSize: '.74rem', fontWeight: 700, color: '#b45309' } }, '↻ Câu em từng làm sai') : null),
+            q.groupPassage ? h('div', { className: 'dg2-pass' }, T(q.groupPassage, 'div'), (q.groupImages || []).map(function(im, k){ return h('img', { key: k, className: 'dg2-img', src: im.url, alt: '' }); })) : null,
+            h('div', { className: 'dg2-stem' }, T(q.stem, 'div')),
+            (q.images || []).map(function(im, k){ return h('img', { key: k, className: 'dg2-img', src: im.url, alt: '' }); }),
+            (q.options || []).map(function(o){ return h('button', { key: o.key, type: 'button', className: optCls(o), disabled: !!done, onClick: function(){ choose(o); } }, h('b', null, o.key), T(o.text, 'div')); }),
+            done ? h('div', { className: 'dg2-sol' }, q.nano ? h('div', { style: { fontSize: '.76rem', fontWeight: 700, color: '#8a5a12', marginBottom: '6px' } }, '🔬 Kiến thức: ' + q.nano) : null,
+              h('b', null, picked[q.index] === ck ? '✅ Chính xác! ' : '❌ Chưa đúng — đáp án ' + ck + '. '), q.loiGiai ? T(q.loiGiai, 'div') : h('span', { style: { color: 'var(--ink-2)' } }, 'Thầy chưa nạp lời giải.')) : null,
+            done ? h('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: '14px' } }, h('button', { type: 'button', className: 'dg2-b p', onClick: goNext }, qi < queue.length - 1 ? 'Câu tiếp trong cụm →' : 'Câu tiếp →')) : null)),
+        h('div', null, h('div', { className: 'dg2-card', style: { position: 'sticky', top: '70px' } },
+          h('b', null, 'Phiên luyện này'),
+          !all.length ? h('p', { style: { fontSize: '.84rem', color: 'var(--ink-2)' } }, 'Làm câu đầu tiên để bắt đầu.') :
+          Object.keys(bySec).map(function(k){ var x = bySec[k], pc = Math.round(x.ok / x.n * 100);
+            return h('div', { key: k, style: { margin: '8px 0' } }, h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '.84rem' } }, h('span', null, x.name), h('b', null, x.ok + '/' + x.n)),
+              h('div', { style: { height: '6px', borderRadius: '99px', background: 'var(--surface-2,#eee)', overflow: 'hidden', marginTop: '3px' } }, h('div', { style: { width: pc + '%', height: '100%', background: pc > 50 ? '#16a34a' : '#d97706' } }))); }),
+          weak.length ? h('div', { style: { marginTop: '12px' } }, h('b', { style: { fontSize: '.86rem' } }, '🔬 Kiến thức đang yếu'),
+            weak.map(function(o){ return h('div', { key: o.k, style: { fontSize: '.8rem', marginTop: '4px' } }, (nanoName[o.k] || o.k) + ' · ' + o.x.ok + '/' + o.x.seen); })) : null,
+          h('div', { style: { fontSize: '.74rem', color: 'var(--ink-2)', marginTop: '12px', lineHeight: 1.5 } }, 'Sau mỗi câu, hệ thống chọn câu tiếp theo ưu tiên phần em còn yếu, câu chưa làm, câu từng sai và kiến thức (nano) em hay sai. Tự lưu mỗi 10 câu.')))));
+  }
+
   function List(props){
     var st = props.student;
     var ls = React.useState(null); var list = ls[0], setList = ls[1];
     var hs = React.useState([]); var hist = hs[0], setHist = hs[1];
     var es = React.useState(null); var exam = es[0], setExam = es[1];
     var bs = React.useState(''); var busy = bs[0], setBusy = bs[1];
-    var ms = React.useState('mini'); var mode = ms[0], setMode = ms[1];
+    var ms = React.useState('practice'); var mode = ms[0], setMode = ms[1];   // SỬA 28/11/2026 — mặc định mở Luyện tập thích ứng
     var ns = React.useState(10); var nQ = ns[0], setNQ = ns[1];
     var ps = React.useState(null); var picked = ps[0], setPicked = ps[1]; // null = mặc định tất cả phần có sẵn
     var as = React.useState(true); var adaptive = as[0], setAdaptive = as[1];
@@ -428,8 +677,10 @@
       }).catch(function(){ setBusy(''); alert('Không tải được câu hỏi — thử lại.'); });
     }
 
+    var ps2 = React.useState(null); var practice = ps2[0], setPractice = ps2[1];   // THÊM 28/11/2026 — đang luyện tập thích ứng
     var body;
-    if(exam) body = h(Exam, { exam: exam.meta, questions: exam.questions, reviewAns: exam.reviewAns, student: st, onExit: function(){ setExam(null); load(); } });
+    if(practice) body = h(Practice, { student: st, pool: pool, list: okList, sections: practice.sections, history: history, onExit: function(){ setPractice(null); load(); } });
+    else if(exam) body = h(Exam, { exam: exam.meta, questions: exam.questions, reviewAns: exam.reviewAns, student: st, onExit: function(){ setExam(null); load(); } });
     else {
       var locked = list && !Array.isArray(list);
       var tabBtn = function(k, label){ return h('button', { type: 'button', className: 'dg2-b' + (mode === k ? ' p' : ''), onClick: function(){ setMode(k); } }, label); };
@@ -440,7 +691,16 @@
           !list ? h('div', { className: 'dg2-card' }, 'Đang tải…') :
           locked ? h('div', { className: 'dg2-card' }, list.locked ? 'Em cần được thầy mở khoá chức năng này.' : ('Không tải được đề (' + (list.error || 'lỗi') + ') — thử lại sau.')) :
           h('div', null,
-            h('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' } }, tabBtn('mini', '⚡ Mini test thích ứng'), tabBtn('full', '📝 Làm cả đề (150 phút)')),
+            h('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' } }, tabBtn('practice', '🧠 Luyện tập thích ứng'), tabBtn('mini', '⚡ Mini test thích ứng'), tabBtn('full', '📝 Làm cả đề (150 phút)')),
+            // THÊM 28/11/2026 — thẻ Luyện tập thích ứng
+            mode === 'practice' ? h('div', { className: 'dg2-card' },
+              h('b', { style: { fontSize: '1.02rem' } }, '🧠 Luyện tập thích ứng — từng câu, chấm ngay'),
+              h('div', { style: { fontSize: '.86rem', color: 'var(--ink-2)', margin: '4px 0 10px', lineHeight: 1.55 } }, 'Làm từng câu, chọn xong là biết đúng/sai và đọc lời giải ngay. Sau mỗi câu hệ thống chọn câu tiếp theo phù hợp với em: phần đang yếu, câu chưa làm, câu từng sai, kiến thức hay sai. Không giới hạn thời gian, dừng lúc nào cũng được.'),
+              h('b', null, 'Luyện phần'),
+              h('div', { className: 'dg2-sec', style: { marginTop: '8px' } }, secKeys.map(function(k){ return h('button', { key: k, type: 'button', className: sel.indexOf(k) > -1 ? 'on' : '', onClick: function(){ toggleSec(k); } }, SEC_NAMES[k] + ' (' + avail[k] + ')'); })),
+              h('div', { style: { fontSize: '.78rem', color: 'var(--ink-2)', margin: '0 0 12px' } }, 'Em đã làm ' + seenCount + ' câu' + (wrongCount ? ', ' + wrongCount + ' câu sai gần nhất sẽ được ưu tiên làm lại' : '') + (weakNanos ? '; ' + weakNanos + ' kiến thức (nano) cần ôn thêm.' : '.')),
+              h('button', { type: 'button', className: 'dg2-b p', disabled: !!busy || !sel.length, onClick: function(){ if(!sel.length){ alert('Chọn ít nhất 1 phần.'); return; } setPractice({ sections: sel.slice() }); } }, 'Bắt đầu luyện ➔')
+            ) :
             mode === 'mini' ? h('div', { className: 'dg2-card' },
               h('b', null, 'Chọn phần thi'),
               h('div', { className: 'dg2-sec', style: { marginTop: '8px' } }, secKeys.map(function(k){ return h('button', { key: k, type: 'button', className: sel.indexOf(k) > -1 ? 'on' : '', onClick: function(){ toggleSec(k); } }, SEC_NAMES[k] + ' (' + avail[k] + ')'); })),
@@ -471,12 +731,12 @@
                     startFull(); } }, 'Tạo đề mới & vào thi ➔')));
             })(),
             h('div', { className: 'dg2-card', style: { marginTop: '12px' } }, h('b', null, '🕒 Lịch sử bài làm'),
-              (function(){ var hh = hist.filter(function(a){ return a.track === 'dgnl' || a.track === 'dgnl-mini'; }).slice(0, 15);
+              (function(){ var hh = hist.filter(function(a){ return a.track === 'dgnl' || a.track === 'dgnl-mini' || a.track === 'dgnl-practice' || a.track === 'dgnl-paper'; }).slice(0, 15);
                 return hh.length === 0 ? h('p', { style: { color: 'var(--ink-2)' } }, 'Chưa có bài nào.') :
                 hh.map(function(a){ return h('div', { key: a.id, style: { padding: '8px 0', borderBottom: '1px dashed var(--line,#ccc)' } },
-                  h('b', null, a.track === 'dgnl-mini' ? '⚡ ' + (a.examTitle || 'Mini test') : (a.examTitle || 'Đề đầy đủ')), h('br'),
+                  h('b', null, a.track === 'dgnl-mini' ? '⚡ ' + (a.examTitle || 'Mini test') : a.track === 'dgnl-practice' ? '🧠 ' + (a.examTitle || 'Luyện tập thích ứng') : a.track === 'dgnl-paper' ? (a.examTitle || '🖨️ Bài làm giấy') : (a.examTitle || 'Đề đầy đủ')), h('br'),
                   h('small', { style: { color: 'var(--ink-2)' } }, new Date(a.createdAt || a.time || Date.now()).toLocaleString('vi-VN'), ' — ',
-                    a.track === 'dgnl-mini' ? h('b', null, a.correct + '/' + a.total + ' câu (' + (a.pct != null ? a.pct : Math.round(a.correct / Math.max(1, a.total) * 100)) + '%)') : h('b', null, (a.autoScore != null ? a.autoScore : '—') + '/1.200', ' (đúng ' + a.correct + '/' + a.total + ')')),
+                    a.track !== 'dgnl' ? h('b', null, a.correct + '/' + a.total + ' câu (' + (a.pct != null ? a.pct : Math.round(a.correct / Math.max(1, a.total) * 100)) + '%)') : h('b', null, (a.autoScore != null ? a.autoScore : '—') + '/1.200', ' (đúng ' + a.correct + '/' + a.total + ')')),
                   (function(){ var nw = attemptWrong(a, true).length; return nw ? h('div', { style: { marginTop: '6px' } }, h('button', { type: 'button', className: 'dg2-b', style: { padding: '4px 12px', fontSize: '.8rem' }, disabled: !!busy, onClick: function(){ reviewWrong(a); } }, '🔍 Xem lại ' + nw + ' câu sai')) : null; })()); }); })()
             )
           )
@@ -493,5 +753,6 @@
     function close(){ try{ ReactDOM.unmountComponentAtNode(host); }catch(e){} }
     ReactDOM.render(h(List, { student: student, onClose: close }), host);
   }
-  window.OPC_DGNL = { openList: openList, _score: score, _sectionOf: sectionOf, _buildPool: buildPool, _buildHistory: buildHistory, _pickMini: pickMini, _buildNanoStats: buildNanoStats, _buildFullExam: buildFullExam };
+  window.OPC_DGNL = { tex: tex, SEC_NAMES: SEC_NAMES, SEC_ORDER: SEC_ORDER, CSS: CSS, openList: openList,   // SỬA 28/11/2026 — admin dùng tex/tên phần để in đề ĐGNL
+     _score: score, _nanoSummary: nanoSummary, _sectionOf: sectionOf, _buildPool: buildPool, _buildHistory: buildHistory, _pickMini: pickMini, _buildNanoStats: buildNanoStats, _buildFullExam: buildFullExam };
 })(window);

@@ -854,7 +854,10 @@
     OPC.hsgBank = makeExamBankApi('de_thi_hsg');
     OPC.olympicBank = makeExamBankApi('de_thi_olympic');
     OPC.dgnlBank = makeExamBankApi('de_thi_dgnl'); // THÊM 26/10/2026 — Luyện thi ĐGNL ĐHQG-HCM (V-ACT)
-    OPC.specialAttempts = { loadForStudent: async function(id){ var snap = await getDocs(collection(db, 'students', id, 'specialAttempts')); return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); }); } };
+    OPC.specialAttempts = { loadForStudent: async function(id){ var snap = await getDocs(collection(db, 'students', id, 'specialAttempts')); return snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data() || {}); }); },
+      // THÊM 28/11/2026 — đề ĐGNL in giấy (track 'dgnl-paper-pending') + kết quả chấm phiếu (track 'dgnl-paper'); rules sẵn cho admin ghi
+      save: function(sid, id, data){ return setDoc(doc(db, 'students', sid, 'specialAttempts', id), JSON.parse(JSON.stringify(data)), { merge: true }); },
+      remove: function(sid, id){ return deleteDoc(doc(db, 'students', sid, 'specialAttempts', id)); } };
 
     // ================= Đề cá nhân hóa ĐÃ GIAO cho học sinh =================
     // Lưu dưới subcollection students/{studentId}/assignedExams — khi thầy
@@ -1318,6 +1321,7 @@
 <script src="/admin-sales.js"></script>
 <script src="/admin-cleanup.js"></script>
 <script src="/admin-progress.js"></script> <!-- THÊM 29/10/2026 — 📈 Tiến bộ học sinh -->
+<script src="/dgnl.js"></script> <!-- THÊM 28/11/2026 — dùng chung bộ chọn câu + hiển thị LaTeX của ĐGNL cho "Tạo đề cá nhân hoá & in" -->
 <script src="/exam-matrix.js"></script> <!-- THÊM 27/10/2026 — ma trận đề kiểu Bộ GD cho đề cá nhân hóa -->
 <script src="/admin-aiimport.js"></script> <!-- THÊM 26/10/2026 — nhập đề từ PDF/ảnh bằng AI --> <!-- THÊM 25/10/2026 — xoá bài làm ẩu + thùng rác --> <!-- THÊM 24/10/2026 — 📣 Bán hàng --> <!-- THÊM 23/10/2026 — Thi thử tháng · Video bài giảng · Khảo sát -->
 <script src="/study-tools.js"></script> <!-- THÊM 16/10/2026 — máy tính nổi cho Phòng dạy -->
@@ -1718,8 +1722,10 @@
       return '';
     }).join('');
   }
+  var PDF_TEX_OVERRIDE = null;
   function latexToHtmlPDF(text){
     if(!text) return '';
+    if(PDF_TEX_OVERRIDE) return PDF_TEX_OVERRIDE(text);   // THÊM 28/11/2026 — đề ĐGNL: dùng bộ hiển thị của dgnl.js (bảng, \\[..\\], \\resizebox…)
     var src = String(text);
     // dọn phần \immini bóc dở quanh hình TikZ (xem cleanLatexSource trong prepscholar-ui.js)
     if(/\}\s*\{\s*\\begin\{tikzpicture\}/.test(src)){
@@ -1794,7 +1800,7 @@
     ['I', 'II', 'III'].forEach(function(p){
       var list = parts[p];
       if(!list.length) return;
-      bodyHtml += '<section class="part"><div class="part-head"><b>' + PART_INTRO[p][0] + '</b> ' + PART_INTRO[p][1](list.length) + '</div>';
+      bodyHtml += '<section class="part"><div class="part-head"><b>' + ((p === 'I' && cfg.partIntroI) ? cfg.partIntroI[0] : PART_INTRO[p][0]) + '</b> ' + ((p === 'I' && cfg.partIntroI) ? cfg.partIntroI[1] : PART_INTRO[p][1](list.length)) + '</div>';   // SỬA 28/11/2026 — đề ĐGNL ghi lời dẫn riêng
       for(var i = 0; i < list.length; i++){
         var q = list[i];
         // Câu hỏi chùm: in ngữ cảnh 1 lần cho cả dãy câu liên tiếp dùng chung
@@ -1805,6 +1811,7 @@
           var label = j > i ? ('Sử dụng các thông tin sau cho Câu ' + (i + 1) + (j - i === 1 ? ' và Câu ' : ' đến Câu ') + (j + 1) + ':') : 'Sử dụng các thông tin sau cho Câu ' + (i + 1) + ':';
           bodyHtml += '<div class="group-passage"><div class="gp-label">' + label + '</div>' + latexToHtmlPDF(gpCleanLead(q.groupPassage)) + pdfImagesHtml(q.groupImages) + '</div>';
         }
+        if(q._secHead) bodyHtml += '<div class="sec-head">' + escapeHtmlPDF(q._secHead) + '</div>';   // THÊM 28/11/2026 — tiêu đề từng phần thi ĐGNL (Toán học, Logic…)
         bodyHtml += pdfQuestionHtml(q, i + 1);
       }
       bodyHtml += '</section>';
@@ -2012,7 +2019,7 @@
       '<link rel="icon" href="' + origin + '/favicon.svg">' +
       '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap">' +
       '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">' +
-      '<style>' + css + '</style><style id="pagecss">' + printPageCss('fa', '') + '</style><style id="pagemargin"></style></head><body class="fs-12 show-omr">' +
+      '<style>' + css + '.sec-head{font-weight:800;font-size:1.02em;margin:10px 0 6px;padding:3px 0;border-bottom:1.5px solid #a86a1c;break-after:avoid;}' + (cfg.extraCss || '') + '</style><style id="pagecss">' + printPageCss('fa', '') + '</style><style id="pagemargin"></style></head><body class="fs-12 show-omr">' +
       '<div class="toolbar">' +
         '<span class="tb-title">🖨️ Bản in đề · FaradayAI.vn</span>' +
         '<label><input type="checkbox" onchange="setOpt(\'show-key\',this.checked)"> Bảng đáp án (trang cuối)</label>' +
@@ -2039,7 +2046,7 @@
       '<main class="sheet">' +
         '<header class="doc-head">' +
           '<div class="brand-fa"><img class="brand-logo" src="' + ((cfg.logos && cfg.logos.horizontal) || (origin + '/logo-horizontal.svg')) + '" alt="FaradayAI">' +
-          '<div class="brand-sub"><b>FaradayAI.vn</b> · Luyện thi Tốt nghiệp THPT môn Vật lí</div></div>' +
+          '<div class="brand-sub"><b>FaradayAI.vn</b> · ' + escapeHtmlPDF(cfg.brandSub || 'Luyện thi Tốt nghiệp THPT môn Vật lí') + '</div></div>' +
           '<div class="brand-school"><img class="school-logo" alt="">' +
             '<div class="school-text"><div class="school-l1" contenteditable="true" spellcheck="false" data-br="l1" data-ph="TRƯỜNG …">TRƯỜNG TH – THCS – THPT</div>' +
             '<div class="school-l2" contenteditable="true" spellcheck="false" data-br="l2" data-ph="TÊN TRƯỜNG">LÊ THÁNH TÔNG</div></div></div>' +
@@ -2048,7 +2055,7 @@
           '<div class="code-box">Mã đề <b contenteditable="true" spellcheck="false" data-ed="code" data-ph="…">' + escapeHtmlPDF(cfg.examCode || '') + '</b></div></div>' +
         '</header>' +
         '<h1 class="doc-title" contenteditable="true" spellcheck="false" data-ed="title" data-ph="Nhập tiêu đề đề thi">' + escapeHtmlPDF(cfg.heading || 'Đề luyện thi Vật lí 12') + '</h1>' +
-        '<div class="doc-sub" contenteditable="true" spellcheck="false" data-ed="sub">Môn: Vật lí 12 · Thời gian làm bài: <span id="dur">' + (cfg.durationMin || 50) + '</span> phút, không kể thời gian phát đề · ' + qs.length + ' câu</div>' +
+        '<div class="doc-sub" contenteditable="true" spellcheck="false" data-ed="sub">' + escapeHtmlPDF(cfg.subjectLine || 'Môn: Vật lí 12') + ' · Thời gian làm bài: <span id="dur">' + (cfg.durationMin || 50) + '</span> phút, không kể thời gian phát đề · ' + qs.length + ' câu</div>' +
         '<div class="doc-note" contenteditable="true" spellcheck="false" data-ed="note" data-ph="＋ Thêm dòng ghi chú (vd. Kiểm tra 15 phút — Lớp 12A1)">' + escapeHtmlPDF(cfg.note || '') + '</div>' +
         '<div class="student-box"><div>' + studentRow + '</div><div class="score-box">ĐIỂM<div></div></div></div>' +
         bodyHtml +
@@ -11177,31 +11184,307 @@
     { key:'dgnl', label:'🎯 Đề ĐGNL ĐHQG-HCM (V-ACT)', short:'ĐGNL' } // THÊM 26/10/2026
   ];
   // THÊM 26/10/2026 — kết quả luyện ĐGNL của các em đã mở khoá
+  // SỬA 28/11/2026 — trước đây chỉ lấy bài "Làm cả đề" (track 'dgnl') nên MINI TEST (track 'dgnl-mini', chế độ mặc định học sinh hay làm)
+  // và LUYỆN TẬP THÍCH ỨNG (track 'dgnl-practice', mới) không hiện → thầy tưởng không ghi lịch sử. Nay lấy đủ 3 loại, bấm tên em để xem
+  // từng lượt (ngày giờ, loại bài, điểm, từng phần, thời gian, kiến thức sai nhiều).
   function DgnlResultsCard(props){
     var OPCref = window.OPC;
     var rs = React.useState(null); var rows = rs[0], setRows = rs[1];
+    var os = React.useState(''); var open = os[0], setOpen = os[1];
     var stu = props.students.filter(function(s){ return (s.specialAccess || []).indexOf('dgnl') > -1; });
     var key = stu.map(function(s){ return s.id; }).join(',');
+    var TRACKS = { dgnl: 1, 'dgnl-mini': 1, 'dgnl-practice': 1, 'dgnl-paper': 1 };   // SỬA 28/11/2026 — thêm bài giấy
     React.useEffect(function(){
       var cancelled = false;
-      Promise.all(stu.map(function(s){ return OPCref.specialAttempts.loadForStudent(s.id).then(function(l){ return { s: s, list: l.filter(function(a){ return a.track === 'dgnl'; }).sort(function(a, b){ return String(b.createdAt).localeCompare(String(a.createdAt)); }) }; }).catch(function(){ return { s: s, list: [] }; }); }))
-        .then(function(r){ if(!cancelled) setRows(r); });
+      Promise.all(stu.map(function(s){ return OPCref.specialAttempts.loadForStudent(s.id).then(function(l){ return { s: s, list: l.filter(function(a){ return TRACKS[a.track]; }).sort(function(a, b){ return String(b.createdAt).localeCompare(String(a.createdAt)); }) }; }).catch(function(){ return { s: s, list: [] }; }); }))
+        .then(function(r){ if(!cancelled) setRows(r.sort(function(a, b){ return String((b.list[0] || {}).createdAt || '').localeCompare(String((a.list[0] || {}).createdAt || '')); })); });
       return function(){ cancelled = true; };
     }, [key]);
     function secTxt(a){ return Object.keys(a.sections || {}).map(function(k){ var x = a.sections[k]; return x.name + ' ' + x.correct + '/' + x.total; }).join(' · '); }
+    function kind(a){ return a.track === 'dgnl' ? '📝 Cả đề' : a.track === 'dgnl-practice' ? '🧠 Luyện thích ứng' : a.track === 'dgnl-paper' ? '🖨️ Bài giấy' : '⚡ Mini test'; }
+    function scoreTxt(a){ return (a.track === 'dgnl' || (a.track === 'dgnl-paper' && a.autoScore)) ? ((a.autoScore != null ? a.autoScore : '—') + '/1.200 · đúng ' + a.correct + '/' + a.total) : (a.correct + '/' + a.total + ' câu (' + Math.round(a.correct / Math.max(1, a.total) * 100) + '%)'); }
+    function when(a){ try{ return new Date(a.createdAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }catch(e){ return ''; } }
+    function weakTxt(a){ var n = a.nanos || {}; return Object.keys(n).map(function(k){ return { k: k, w: (n[k].total || 0) - (n[k].correct || 0) }; }).filter(function(x){ return x.w > 0; }).sort(function(x, y){ return y.w - x.w; }).slice(0, 3).map(function(x){ return x.k + ' (sai ' + x.w + ')'; }).join(', '); }
+    var cell = { fontSize:'0.8rem' }, mut = { fontSize:'0.74rem', color:'var(--muted)' };
     return h('div', { className:'card', style:{ marginBottom:14 } },
       h('h3', { style:{ margin:0 } }, '📈 Kết quả luyện ĐGNL (' + stu.length + ' em đã mở khoá)'),
+      h('p', { className:'sm-sub', style:{ margin:'4px 0 8px' } }, 'Gồm ⚡ Mini test, 🧠 Luyện tập thích ứng, 📝 Làm cả đề và 🖨️ Bài giấy đã chấm phiếu. Bấm tên em để xem từng lượt làm bài.'),
       !rows ? h('p', { className:'sm-sub' }, 'Đang tải…') : !rows.length ? h('p', { className:'sm-sub' }, 'Chưa mở khoá cho em nào — vào tab "🔑 Mở khoá cho học sinh".') :
       h('div', { className:'sm-table-wrap' }, h('table', { className:'sm-table' },
-        h('thead', null, h('tr', null, ['Học sinh', 'Số lần', 'Lần gần nhất', 'Cao nhất', 'Chi tiết lần gần nhất'].map(function(t){ return h('th', { key:t }, t); }))),
+        h('thead', null, h('tr', null, ['Học sinh', 'Số lượt', 'Lần gần nhất', 'Tỉ lệ đúng (mọi lượt)', 'Điểm cả đề cao nhất'].map(function(t){ return h('th', { key:t }, t); }))),
         h('tbody', null, rows.map(function(r){
-          var last = r.list[0], best = r.list.reduce(function(m, a){ return Math.max(m, a.autoScore || 0); }, 0);
-          return h('tr', { key: r.s.id }, h('td', null, h('b', null, r.s.name)), h('td', null, r.list.length),
-            h('td', null, last ? h('span', null, h('b', null, (last.autoScore != null ? last.autoScore : '—') + '/1.200'), h('div', { style:{ fontSize:'0.74rem', color:'var(--muted)' } }, new Date(last.createdAt).toLocaleDateString('vi-VN') + ' · ' + (last.examTitle || ''))) : '—'),
-            h('td', null, best ? best + '/1.200' : '—'),
-            h('td', { style:{ fontSize:'0.8rem' } }, last ? 'Đúng ' + last.correct + '/' + last.total + ' · ' + secTxt(last) : '—'));
+          var last = r.list[0], full = r.list.filter(function(a){ return a.track === 'dgnl' || (a.track === 'dgnl-paper' && a.autoScore); });
+          var best = full.reduce(function(m, a){ return Math.max(m, a.autoScore || 0); }, 0);
+          var c = 0, t = 0; r.list.forEach(function(a){ c += Number(a.correct) || 0; t += Number(a.total) || 0; });
+          var nMini = r.list.filter(function(a){ return a.track === 'dgnl-mini'; }).length, nPr = r.list.filter(function(a){ return a.track === 'dgnl-practice'; }).length, nPa = r.list.filter(function(a){ return a.track === 'dgnl-paper'; }).length;
+          var isOpen = open === r.s.id;
+          var main = h('tr', { key: r.s.id, style:{ cursor: r.list.length ? 'pointer' : 'default' }, onClick: function(){ if(r.list.length) setOpen(isOpen ? '' : r.s.id); } },
+            h('td', null, h('b', null, (r.list.length ? (isOpen ? '▾ ' : '▸ ') : '') + (r.s.name || '(chưa đặt tên)')), h('div', { style: mut }, 'Khối ' + ((Number(r.s.khoi) === 10 || Number(r.s.khoi) === 11) ? Number(r.s.khoi) : 12))),
+            h('td', null, r.list.length ? h('span', null, h('b', null, r.list.length), h('div', { style: mut }, [nMini ? nMini + ' mini' : '', nPr ? nPr + ' luyện thích ứng' : '', nPa ? nPa + ' bài giấy' : '', full.filter(function(a){ return a.track === 'dgnl'; }).length ? full.filter(function(a){ return a.track === 'dgnl'; }).length + ' cả đề' : ''].filter(Boolean).join(' · '))) : h('span', { style: mut }, 'chưa làm')),
+            h('td', null, last ? h('span', null, h('b', { style: cell }, kind(last) + ' · ' + scoreTxt(last)), h('div', { style: mut }, when(last))) : '—'),
+            h('td', null, t ? h('b', null, Math.round(c / t * 100) + '%') : '—', t ? h('div', { style: mut }, c + '/' + t + ' câu') : null),
+            h('td', null, best ? best + '/1.200' : '—'));
+          if(!isOpen) return main;
+          return [main, h('tr', { key: r.s.id + '_d' }, h('td', { colSpan: 5, style:{ background:'var(--surface-2, #f6f3ec)', padding:'8px 10px' } },
+            h('table', { className:'sm-table', style:{ margin:0 } },
+              h('thead', null, h('tr', null, ['Thời gian', 'Loại', 'Kết quả', 'Từng phần', 'Thời gian làm', 'Kiến thức sai nhiều'].map(function(x){ return h('th', { key:x }, x); }))),
+              h('tbody', null, r.list.slice(0, 40).map(function(a){
+                return h('tr', { key: a.id }, h('td', { style: cell }, when(a)), h('td', { style: cell }, kind(a)), h('td', { style: cell }, h('b', null, scoreTxt(a))),
+                  h('td', { style: cell }, secTxt(a) || '—'), h('td', { style: cell }, a.minutesUsed != null ? a.minutesUsed + ' phút' : '—'), h('td', { style: cell }, weakTxt(a) || '—'));
+              }))),
+            r.list.length > 40 ? h('div', { style: mut }, 'Hiện 40 lượt gần nhất / ' + r.list.length + '.') : null))];
         })))),
       h('p', { style:{ fontSize:'0.76rem', color:'var(--ink-2)', marginTop:8 } }, 'Điểm thang 1.200 là quy đổi tham khảo theo % đúng từng phần (đề thật chấm IRT).'));
+  }
+  // ===================== THÊM 28/11/2026 — TẠO ĐỀ ĐGNL CÁ NHÂN HOÁ & IN (giống đề cá nhân hoá Vật lí 12) =====================
+  // Chọn 1 em hoặc cả lớp → hệ thống bốc câu từ toàn bộ ngân hàng ĐGNL (de_thi_dgnl) theo LỊCH SỬ LUYỆN của từng em (mini test,
+  // luyện tập thích ứng, cả đề): ưu tiên câu em chưa làm, câu từng sai, phần & kiến thức (nano) em còn yếu; câu chung dữ kiện đi cùng.
+  // Cấu trúc: đủ 120 câu chuẩn V-ACT (Tiếng Việt 30 · Tiếng Anh 30 · Toán 30 · Logic 12 · Suy luận khoa học 18) hoặc tự chọn phần + số câu.
+  // Cả lớp: mỗi em 1 đề riêng (in chung 1 file, mỗi em sang trang mới, có tên em) hoặc cả lớp chung 1 đề (ưu tiên chỗ cả lớp hay sai).
+  // Bản in dùng chung khung in đề Vật lí 12 (buildPrintExamHtml): logo, phiếu tô đáp án, bảng đáp án, lời giải, bố cục 2 cột, In / Lưu PDF.
+  // Dùng thuật toán chọn câu + bộ hiển thị LaTeX của dgnl.js (window.OPC_DGNL) nên bản in khớp đúng màn hình học sinh.
+  var DGNL_PRINT_CSS = '.dg2-tbw{margin:6px 0;overflow:visible;} .dg2-tb{border-collapse:collapse;margin:0 auto;font-size:.92em;} .dg2-tb td{border:1px solid #555;padding:3px 7px;text-align:center;vertical-align:middle;} .dg2-tb tr:first-child td{font-weight:700;background:#f3efe6;}' +
+    '.dg2-dm{text-align:center;margin:6px 0;} .dg2-hfr{display:block;text-align:right;font-style:italic;} .dg2-hfl{display:flex;justify-content:space-between;gap:8px;} .q-stem ul,.q-stem ol{margin:4px 0;padding-left:20px;}';
+  function DgnlPrintPanel(props){
+    var OPCref = window.OPC, D = window.OPC_DGNL;
+    var exS = React.useState(null); var exams = exS[0], setExams = exS[1];
+    var tgS = React.useState('one'); var target = tgS[0], setTarget = tgS[1];            // one | class
+    var sidS = React.useState(''); var sid = sidS[0], setSid = sidS[1];
+    var lopS = React.useState(''); var lop = lopS[0], setLop = lopS[1];                    // '' = các em đã mở khoá ĐGNL
+    var shS = React.useState('each'); var share = shS[0], setShare = shS[1];              // each | common
+    var stS = React.useState('full'); var struct = stS[0], setStruct = stS[1];            // full | custom
+    var scS = React.useState(['toan', 'logic', 'kh']); var secs = scS[0], setSecs = scS[1];
+    var nS = React.useState(30); var nQ = nS[0], setNQ = nS[1];
+    var bS = React.useState(''); var busy = bS[0], setBusy = bS[1];
+    var pvS = React.useState(false); var paperView = pvS[0], setPaperView = pvS[1];   // THÊM 28/11/2026 — mục 📝 Chấm bài giấy
+    var plS = React.useState(null); var papers = plS[0], setPapers = plS[1];
+    var pscS = React.useState(''); var pScope = pscS[0], setPScope = pscS[1];
+    var enS = React.useState(null); var entry = enS[0], setEntry = enS[1];
+    React.useEffect(function(){
+      if(!OPCref.dgnlBank) return;
+      var un = OPCref.dgnlBank.subscribe(function(snap){ setExams(snap.docs.map(function(d){ return Object.assign({ id: d.id }, d.data()); })); }, function(e){ console.error(e); setExams([]); });
+      return function(){ try{ un(); }catch(e){} };
+    }, []);
+    var pool = React.useMemo(function(){ return (exams && D && D._buildPool) ? D._buildPool(exams) : { units: [], byUid: {} }; }, [exams]);
+    var noD = !D || !D._buildPool;   // (không return sớm ở đây — các hook bên dưới phải luôn được gọi)
+    var avail = {}; pool.units.forEach(function(u){ avail[u.sec] = (avail[u.sec] || 0) + u.items.length; });
+    var secKeys = (D.SEC_ORDER || []).filter(function(k){ return avail[k]; });
+    var students = (props.students || []).slice().sort(function(a, b){
+      var da = (a.specialAccess || []).indexOf('dgnl') > -1 ? 0 : 1, db = (b.specialAccess || []).indexOf('dgnl') > -1 ? 0 : 1;
+      return da - db || String(a.name || '').localeCompare(String(b.name || ''), 'vi');
+    });
+    var lops = {}; students.forEach(function(s){ if(s.lop) lops[s.lop] = (lops[s.lop] || 0) + 1; });
+    var roster = target === 'one' ? students.filter(function(s){ return s.id === sid; })
+      : students.filter(function(s){ return lop ? s.lop === lop : (s.specialAccess || []).indexOf('dgnl') > -1; });
+    var plan = (!noD && struct === 'full') ? D._buildFullExam(pool, {}) : null;
+    var nPerExam = struct === 'full' ? (plan ? plan.total : 0) : nQ;
+    var SEC_NAMES = D.SEC_NAMES || {};
+
+    async function histOf(stu){
+      var att = [];
+      try{ att = await OPCref.specialAttempts.loadForStudent(stu.id); }catch(e){}
+      att.sort(function(a, b){ return String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
+      return D._buildHistory(att, pool.byUid);
+    }
+    function pickUnits(hist){
+      if(struct === 'full') return D._buildFullExam(pool, hist).units;
+      return D._pickMini(pool, hist, secs, nQ, true, D._buildNanoStats(hist, pool.byUid));
+    }
+    async function toQuestions(units, imgCache){
+      var exById = {}; (exams || []).forEach(function(e){ exById[e.id] = e; });
+      var out = [], lastSec = '';
+      for(var i = 0; i < units.length; i++){
+        var u = units[i];
+        for(var k = 0; k < u.items.length; k++){
+          var it = u.items[k], ex = exById[it.exId]; if(!ex) continue;
+          if(!imgCache[ex.id]){
+            var imgs = ex.images || [];
+            if(imgs.length && !(imgs[0].url || imgs[0].dataUrl)){ try{ imgs = await OPCref.dgnlBank.loadExamImages(ex.id, imgs); }catch(e){} }
+            imgCache[ex.id] = imgs;
+          }
+          var raw = (ex.questions || []).filter(function(q){ return String(q.index) === String(it.index); })[0]; if(!raw) continue;
+          var q = toStudentQuestionShape(raw, ex.id, ex.title, imgCache[ex.id]);
+          q.part = 'I';
+          if(it.sec !== lastSec){ q._secHead = SEC_NAMES[it.sec] || 'Phần khác'; lastSec = it.sec; }
+          out.push(q);
+        }
+      }
+      return out;
+    }
+    function printCfg(qs, stu, code, logos, kicker){
+      var mins = (struct === 'full' && qs.length >= 120) ? 150 : Math.max(5, Math.ceil(qs.length * 1.25));
+      var secTxt = []; qs.forEach(function(q){ if(q._secHead) secTxt.push(q._secHead); });
+      return {
+        logos: logos, docTitle: 'Đề ĐGNL' + (stu ? ' — ' + stu.name : '') + ' — FaradayAI.vn', kicker: kicker, storeKey: 'dgnl_print',
+        heading: struct === 'full' ? 'ĐỀ LUYỆN THI ĐÁNH GIÁ NĂNG LỰC ĐHQG-HCM' : 'ĐỀ LUYỆN ĐGNL · ' + secTxt.join(' · ').toUpperCase(),
+        examCode: code, studentName: stu ? stu.name : '', lop: stu ? (stu.lop || '') : (lop || ''), dateLabel: new Date().toLocaleDateString('vi-VN'),
+        durationMin: mins, note: stu && kicker.indexOf('cá nhân') > -1 ? 'Đề chọn riêng theo kết quả luyện ĐGNL của em' : '', questions: qs,
+        brandSub: 'Luyện thi Đánh giá năng lực ĐHQG-HCM (V-ACT)', subjectLine: 'Đánh giá năng lực ĐHQG-HCM', extraCss: DGNL_PRINT_CSS,
+        partIntroI: ['Đề gồm ' + qs.length + ' câu trắc nghiệm 4 lựa chọn.', 'Mỗi câu chỉ chọn MỘT phương án đúng' + (secTxt.length > 1 ? ', thứ tự các phần: ' + secTxt.join(' – ') : '') + '.']
+      };
+    }
+    async function run(){
+      if(!roster.length){ props.fireToast(target === 'one' ? 'Chọn 1 học sinh.' : 'Lớp này chưa có học sinh.', true); return; }
+      if(struct === 'custom' && !secs.length){ props.fireToast('Chọn ít nhất 1 phần thi.', true); return; }
+      var win = openPrintWindow(); if(!win) return;
+      PDF_TEX_OVERRIDE = D.tex;
+      try{
+        var logos = await getPrintLogos(), imgCache = {}, htmls = [], base = 100 + Math.floor(Math.random() * 800), papers = [];
+        if(target === 'class' && share === 'common'){
+          setBusy('Đang gom kết quả của cả lớp…');
+          var merged = {};
+          for(var i = 0; i < roster.length; i++){ var hs = await histOf(roster[i]); Object.keys(hs).forEach(function(u){ merged[u] = merged[u] === 0 || hs[u] === 0 ? 0 : 1; }); }
+          setBusy('Đang tạo đề chung…');
+          var qs0 = await toQuestions(pickUnits(merged), imgCache);
+          if(!qs0.length) throw new Error('Ngân hàng ĐGNL chưa có câu phù hợp.');
+          var cfg0 = printCfg(qs0, null, String(base), logos, 'Đề ĐGNL · Lớp ' + (lop || 'ĐGNL'));
+          htmls.push(buildPrintExamHtml(cfg0));
+          roster.forEach(function(st0){ papers.push({ stu: st0, qs: qs0, code: String(base), title: cfg0.heading, common: true, mins: cfg0.durationMin }); });
+        } else {
+          for(var j = 0; j < roster.length; j++){
+            var stu = roster[j];
+            setBusy('Đang tạo đề cho ' + stu.name + ' (' + (j + 1) + '/' + roster.length + ')…');
+            var qs = await toQuestions(pickUnits(await histOf(stu)), imgCache);
+            if(!qs.length) continue;
+            var cfg1 = printCfg(qs, stu, String(base + j), logos, 'Đề ĐGNL cá nhân hoá');
+            htmls.push(buildPrintExamHtml(cfg1));
+            papers.push({ stu: stu, qs: qs, code: String(base + j), title: cfg1.heading, common: false, mins: cfg1.durationMin });
+          }
+          if(!htmls.length) throw new Error('Ngân hàng ĐGNL chưa có câu phù hợp.');
+        }
+        writePrintWindow(win, htmls.length > 1 ? ctCombinePrint(htmls) : htmls[0]);
+        // THÊM 28/11/2026 — ghi lại đề đã in của từng em (thứ tự câu đúng như trên giấy) để sau này CHỤP PHIẾU chấm tự động
+        setBusy('Đang lưu đề giấy để chấm phiếu…');
+        var nowIso = new Date().toISOString(), saved = 0;
+        await Promise.all(papers.map(function(pp, k){
+          var pid = 'dgnlp_' + Date.now().toString(36) + '_' + k + '_' + pp.code;
+          return OPCref.specialAttempts.save(pp.stu.id, pid, { track: 'dgnl-paper-pending', examTitle: pp.title, examCode: pp.code, common: pp.common, lop: pp.stu.lop || '',
+            createdAt: nowIso, qids: pp.qs.map(function(q){ return q.id; }), n: pp.qs.length, minutes: pp.mins, struct: struct }).then(function(){ saved++; }).catch(function(e){ console.warn('Chưa lưu được đề giấy:', e); });
+        }));
+        if(paperView) loadPapers();
+        props.fireToast('Đã tạo ' + htmls.length + ' đề — bấm "In / Lưu PDF" ở trang in.' + (saved ? ' Đã lưu ' + saved + ' đề để chấm phiếu (mục 📝 Chấm bài giấy).' : ' ⚠ Chưa lưu được đề để chấm phiếu.'), !saved);
+      }catch(err){
+        console.error(err);
+        writePrintWindow(win, '<meta charset="utf-8"><p style="font:16px system-ui;padding:24px;color:#b91c1c">Không tạo được bản in: ' + escapeHtmlPDF(err && err.message) + '</p>');
+      }finally{ PDF_TEX_OVERRIDE = null; setBusy(''); }
+    }
+    // ---------- THÊM 28/11/2026 — 📝 CHẤM BÀI GIẤY ĐGNL: đề đã in (lưu khi bấm "Tạo đề & mở bản in") → chụp phiếu → chấm, lưu lịch sử ----------
+    function paperRoster(){ return students.filter(function(s){ return pScope === '__all' ? true : pScope ? s.lop === pScope : (s.specialAccess || []).indexOf('dgnl') > -1; }); }
+    function loadPapers(){
+      var rs = paperRoster(); setPapers(null);
+      Promise.all(rs.map(function(stu){
+        return OPCref.specialAttempts.loadForStudent(stu.id).then(function(list){
+          var res = {}; list.forEach(function(a){ if(a.track === 'dgnl-paper' && a.paperId) res[a.paperId] = a; });
+          return list.filter(function(a){ return a.track === 'dgnl-paper-pending'; }).map(function(rec){ return { stu: stu, rec: rec, result: res[rec.id] || null }; });
+        }).catch(function(){ return []; });
+      })).then(function(all){
+        var flat = [].concat.apply([], all).sort(function(a, b){ return String(b.rec.createdAt || '').localeCompare(String(a.rec.createdAt || '')); });
+        setPapers(flat);
+      });
+    }
+    React.useEffect(function(){ if(paperView) loadPapers(); }, [paperView, pScope, students.length]);
+    function paperQuestions(rec){
+      var exById = {}; (exams || []).forEach(function(e){ exById[e.id] = e; });
+      var qs = [], raws = [];
+      (rec.qids || []).forEach(function(uid){
+        var m = /^(.*)_q(.+)$/.exec(String(uid)), ex = m ? exById[m[1]] : null;
+        var raw = ex ? (ex.questions || []).filter(function(q){ return String(q.index) === m[2]; })[0] : null;
+        if(!raw){   // câu đã bị xoá khỏi ngân hàng: giữ chỗ để số câu khớp phiếu (không tính điểm)
+          qs.push({ id: String(uid), part: 'I', stem: '(câu đã bị xoá khỏi ngân hàng)', options: [], correctKey: null }); raws.push(null); return;
+        }
+        var q = toStudentQuestionShape(raw, ex.id, ex.title, []); q.id = String(uid); q.part = 'I';
+        qs.push(q); raws.push(raw);
+      });
+      return { qs: qs, raws: raws };
+    }
+    function openEntry(row){
+      if(!exams){ props.fireToast('Ngân hàng ĐGNL chưa tải xong.', true); return; }
+      var pq = paperQuestions(row.rec);
+      setEntry({ stu: row.stu, rec: row.rec, result: row.result, qs: pq.qs, raws: pq.raws });
+    }
+    async function saveEntry(ans){
+      var e = entry, dq = [];
+      e.qs.forEach(function(q, i){ var raw = e.raws[i]; if(!raw) return;
+        dq.push({ index: q.id, section: raw.chuDeLon || '', topic: raw.dangBai || '', nano: raw.nanoName || '', options: raw.options || [] }); });
+      var r = D._score(dq, ans), nanos = D._nanoSummary ? D._nanoSummary(dq, ans) : {};
+      var sec = {}; Object.keys(r.sections).forEach(function(k){ sec[k] = { name: r.sections[k].name, correct: r.sections[k].correct, total: r.sections[k].total }; });
+      var clean = {}; Object.keys(ans || {}).forEach(function(k){ if(typeof ans[k] === 'string') clean[k] = ans[k]; });
+      var resId = 'dgnlpaper_' + e.rec.id, now = new Date().toISOString();
+      await OPCref.specialAttempts.save(e.stu.id, resId, { track: 'dgnl-paper', paperId: e.rec.id, examId: 'paper', examCode: e.rec.examCode || '',
+        examTitle: '🖨️ ' + (e.rec.examTitle || 'Đề ĐGNL') + ' · mã ' + (e.rec.examCode || ''), correct: r.correct, total: r.total, pct: Math.round(r.correct / Math.max(1, r.total) * 100),
+        sections: sec, nanos: nanos, autoScore: (r.full && r.total >= 100) ? r.est1200 : null, minutesUsed: e.rec.minutes || null, answers: clean, qids: e.rec.qids || [],
+        source: 'paper', createdAt: (e.result && e.result.createdAt) || now, updatedAt: now, enteredBy: (window.OPC_currentUser && window.OPC_currentUser.email) || '' });
+      await OPCref.specialAttempts.save(e.stu.id, e.rec.id, { gradedAt: now, resultId: resId, correct: r.correct, total: r.total });
+      return { score: r.correct / Math.max(1, r.total) * 10 };
+    }
+    function removePaper(row){
+      if(!window.confirm('Xoá đề giấy mã ' + (row.rec.examCode || '') + ' của ' + row.stu.name + ' khỏi danh sách chấm?' + (row.result ? ' (Kết quả đã chấm vẫn giữ trong lịch sử.)' : ''))) return;
+      OPCref.specialAttempts.remove(row.stu.id, row.rec.id).then(loadPapers).catch(function(err){ props.fireToast('Xoá thất bại: ' + (err && err.message), true); });
+    }
+    function paperSection(){
+      var nPending = (papers || []).filter(function(r){ return !r.result; }).length;
+      return h('div', null,
+        h('div', { style: row }, h('span', { style: lbl }, 'Học sinh'),
+          h('select', { className:'eb-select', value: pScope, onChange:function(e){ setPScope(e.target.value); }, style:{ minWidth:240 } },
+            h('option', { value:'' }, '🎯 Các em đã mở khoá ĐGNL'),
+            Object.keys(lops).sort().map(function(l){ return h('option', { key:l, value:l }, 'Lớp ' + l + ' (' + lops[l] + ' em)'); }),
+            h('option', { value:'__all' }, 'Tất cả học sinh')),
+          h('button', { type:'button', className:'btn btn-secondary', style:{ fontSize:'0.8rem', padding:'5px 10px' }, onClick: loadPapers }, '↻ Tải lại'),
+          papers ? h('span', { style:{ fontSize:'0.8rem', color:'var(--ink-2)' } }, papers.length + ' đề giấy · ' + nPending + ' chưa chấm') : null),
+        h('div', { style:{ fontSize:'0.8rem', color:'var(--ink-2)', margin:'-4px 0 8px', lineHeight:1.5 } }, 'Mỗi lần bấm "Tạo đề & mở bản in", đề của từng em được lưu ở đây (đúng thứ tự câu trên giấy). Em làm xong → bấm 📷 Chấm phiếu ở dòng của em → chụp phiếu tô đáp án (thấy trọn 4 ô vuông đen) → soát ✓/✗ → Lưu. Kết quả vào lịch sử ĐGNL của em (bảng trên, trang học sinh) và được dùng để chọn câu cho đề sau.'),
+        !papers ? h('p', { className:'sm-sub' }, 'Đang tải…') : !papers.length ? h('p', { className:'sm-sub' }, 'Chưa có đề giấy nào — tạo đề ở mục 🖨️ Tạo đề & in.') :
+        h('div', { className:'sm-table-wrap' }, h('table', { className:'sm-table' },
+          h('thead', null, h('tr', null, ['Học sinh', 'Mã đề', 'Ngày in', 'Số câu', 'Kết quả', ''].map(function(t, i){ return h('th', { key:i }, t); }))),
+          h('tbody', null, papers.map(function(r){
+            var res = r.result;
+            return h('tr', { key: r.stu.id + r.rec.id },
+              h('td', null, h('b', null, r.stu.name || '(chưa đặt tên)'), r.stu.lop ? h('div', { style:{ fontSize:'0.74rem', color:'var(--muted)' } }, r.stu.lop) : null),
+              h('td', null, h('b', null, r.rec.examCode || '—'), r.rec.common ? h('div', { style:{ fontSize:'0.72rem', color:'var(--muted)' } }, 'đề chung') : null),
+              h('td', { style:{ fontSize:'0.8rem' } }, r.rec.createdAt ? new Date(r.rec.createdAt).toLocaleDateString('vi-VN') : '—'),
+              h('td', null, r.rec.n || (r.rec.qids || []).length),
+              h('td', null, res ? h('span', null, h('b', null, res.correct + '/' + res.total + ' (' + res.pct + '%)'), res.autoScore ? h('div', { style:{ fontSize:'0.74rem' } }, res.autoScore + '/1.200') : null)
+                : h('span', { style:{ color:'#b45309', fontWeight:700, fontSize:'0.82rem' } }, 'Chưa chấm')),
+              h('td', { style:{ whiteSpace:'nowrap' } },
+                h('button', { type:'button', className: cx('btn', res ? 'btn-secondary' : 'btn-primary'), style:{ fontSize:'0.78rem', padding:'4px 10px' }, onClick:function(){ openEntry(r); } }, res ? '✏️ Xem / sửa' : '📷 Chấm phiếu'), ' ',
+                h('button', { type:'button', className:'btn btn-secondary', style:{ fontSize:'0.78rem', padding:'4px 8px' }, title:'Xoá đề giấy này khỏi danh sách', onClick:function(){ removePaper(r); } }, '🗑')));
+          })))),
+        entry ? h(PaperEntryModal, { key: entry.rec.id, student: entry.stu, questions: entry.qs, fireToast: props.fireToast,
+          title: (entry.rec.examTitle || 'Đề ĐGNL') + ' · Mã đề ' + (entry.rec.examCode || ''), examCode: entry.rec.examCode || '',
+          initialAnswers: entry.result ? entry.result.answers : undefined, scanId: 'dgnl_' + entry.rec.id + '_' + entry.stu.id,
+          headerExtra: h('div', null, h('div', { style:{ fontSize:'0.78rem', color:'var(--muted)' } }, 'Mã đề'), h('b', null, entry.rec.examCode || '—')),
+          customSave: function(ans){ return saveEntry(ans); },
+          onClose: function(){ setEntry(null); loadPapers(); } }) : null);
+    }
+    function seg(val, cur, set, label){ return h('button', { key: String(val), type:'button', className: cx('btn', cur === val ? 'btn-primary' : 'btn-secondary'), style:{ fontSize:'0.82rem', padding:'6px 12px' }, onClick:function(){ set(val); } }, label); }
+    var row = { display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', margin:'6px 0 10px' }, lbl = { fontWeight:700, fontSize:'0.86rem', minWidth:110 };
+    if(noD) return h('div', { className:'card', style:{ marginBottom:14 } }, 'Chưa tải được dgnl.js — tải lại trang admin.');
+    return h('div', { className:'card', style:{ marginBottom:14 } },
+      h('div', { style:{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' } },
+        h('h3', { style:{ margin:0, flex:1, minWidth:220 } }, paperView ? '📝 Chấm bài giấy ĐGNL' : '🖨️ Tạo đề ĐGNL cá nhân hoá & in'),
+        seg(false, paperView, setPaperView, '🖨️ Tạo đề & in'), seg(true, paperView, setPaperView, '📝 Chấm bài giấy')),
+      paperView ? paperSection() : null,
+      paperView ? null : h('p', { className:'sm-sub', style:{ margin:'4px 0 10px' } }, 'Bốc câu từ toàn bộ ngân hàng ĐGNL theo kết quả luyện của từng em (ưu tiên câu chưa làm, câu từng sai, phần & kiến thức còn yếu). Mở bản in giống đề Vật lí 12: phiếu tô đáp án, bảng đáp án, lời giải, bố cục 2 cột, In / Lưu PDF. Đề in được lưu lại để chụp phiếu chấm ở mục 📝 Chấm bài giấy.'),
+      paperView ? null : !exams ? h('p', { className:'sm-sub' }, 'Đang tải ngân hàng ĐGNL…') : !pool.units.length ? h('p', { className:'sm-sub' }, 'Ngân hàng ĐGNL chưa có câu trắc nghiệm có đáp án.') :
+      h('div', null,
+        h('div', { style: row }, h('span', { style: lbl }, 'Tạo cho'), seg('one', target, setTarget, '👤 1 học sinh'), seg('class', target, setTarget, '👥 Cả lớp'),
+          target === 'one'
+            ? h('select', { className:'eb-select', value: sid, onChange:function(e){ setSid(e.target.value); }, style:{ minWidth:240 } },
+                h('option', { value:'' }, '— Chọn học sinh —'),
+                students.map(function(s){ return h('option', { key:s.id, value:s.id }, (s.name || '(chưa đặt tên)') + (s.lop ? ' · ' + s.lop : '') + ((s.specialAccess || []).indexOf('dgnl') > -1 ? ' · 🎯' : '')); }))
+            : h('select', { className:'eb-select', value: lop, onChange:function(e){ setLop(e.target.value); }, style:{ minWidth:240 } },
+                h('option', { value:'' }, '🎯 Các em đã mở khoá ĐGNL (' + students.filter(function(s){ return (s.specialAccess || []).indexOf('dgnl') > -1; }).length + ')'),
+                Object.keys(lops).sort().map(function(l){ return h('option', { key:l, value:l }, 'Lớp ' + l + ' (' + lops[l] + ' em)'); }))),
+        target === 'class' ? h('div', { style: row }, h('span', { style: lbl }, 'Kiểu đề'), seg('each', share, setShare, 'Mỗi em 1 đề riêng (cá nhân hoá)'), seg('common', share, setShare, 'Cả lớp chung 1 đề')) : null,
+        h('div', { style: row }, h('span', { style: lbl }, 'Cấu trúc'), seg('full', struct, setStruct, '📝 Đủ 120 câu chuẩn V-ACT (150 phút)'), seg('custom', struct, setStruct, '🧩 Tự chọn phần + số câu')),
+        struct === 'full' && plan ? h('div', { style:{ fontSize:'0.8rem', color:'var(--ink-2)', margin:'-4px 0 10px' } }, 'Ngân hàng hiện đủ: ' + plan.parts.map(function(p){ return p.name + ' ' + p.got + '/' + p.need; }).join(' · ') + (plan.full ? '' : ' — phần thiếu sẽ ít câu hơn đề thật.')) : null,
+        struct === 'custom' ? h('div', null,
+          h('div', { style: row }, h('span', { style: lbl }, 'Phần thi'), secKeys.map(function(k){ var on = secs.indexOf(k) > -1;
+            return h('button', { key:k, type:'button', className: cx('btn', on ? 'btn-primary' : 'btn-secondary'), style:{ fontSize:'0.8rem', padding:'5px 11px' }, onClick:function(){ setSecs(on ? secs.filter(function(x){ return x !== k; }) : secs.concat([k])); } }, SEC_NAMES[k] + ' (' + avail[k] + ')'); })),
+          h('div', { style: row }, h('span', { style: lbl }, 'Số câu'), [10, 20, 30, 40, 60].map(function(n){ return seg(n, nQ, setNQ, n + ' câu · ' + Math.max(5, Math.ceil(n * 1.25)) + ' phút'); }))) : null,
+        h('div', { style:{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap', marginTop:6 } },
+          h('button', { type:'button', className:'btn btn-primary', disabled: !!busy || !roster.length, onClick: run },
+            busy ? '⏳ ' + busy : '🖨️ Tạo ' + (target === 'class' && share === 'each' ? roster.length + ' đề' : 'đề') + ' & mở bản in'),
+          h('span', { style:{ fontSize:'0.78rem', color:'var(--ink-2)' } }, (target === 'class' && share === 'each' ? roster.length + ' em × ' : '') + '~' + nPerExam + ' câu/đề · mỗi lần bấm tạo đề mới. Trang in: bật "Bảng đáp án" / "Lời giải" cho bản của thầy.'))));
   }
   function SpecialBankPanel(props){
     var OPCref = window.OPC;
@@ -11240,6 +11523,7 @@
       var tr = SPECIAL_TRACKS.filter(function(t){ return t.key === sub; })[0];
       return h('div', null, subTabs,
         sub === 'dgnl' ? h(DgnlResultsCard, { students: students }) : null,
+        sub === 'dgnl' ? h(DgnlPrintPanel, { students: students, fireToast: props.fireToast }) : null,   // THÊM 28/11/2026
         sub === 'dgnl' ? h('div', { className:'banner info', style:{ marginBottom:12 } }, h('span', null, '🎯'),
           h('div', null, h('b', null, 'Đề ĐGNL ĐHQG-HCM (V-ACT): '), 'câu 4 lựa chọn (\\choice), học sinh làm trên máy, chấm tự động, có điểm quy đổi tham khảo thang 1.200. Ghi PHẦN THI vào ô thứ 2 của tag mỗi câu: ',
             h('code', null, '%[M2][Toán học][Hàm số]'), ' · ', h('code', null, '%[M3][Phân tích số liệu][Đồ thị]'), ' · ', h('code', null, '%[M3][Suy luận khoa học][Vật lí]'),

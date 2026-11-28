@@ -1,0 +1,29 @@
+QUY TẮC LATEX CHO ĐỀ ĐGNL (dán thêm vào cuối hướng dẫn của Claude Project "NẠP ĐỀ ĐGNL 2027")
+— 28/11/2026 —
+
+Đề sẽ hiển thị trên web FaradayAI (không biên dịch bằng LaTeX thật), nên chỉ dùng các lệnh sau:
+
+1. CÔNG THỨC: mọi công thức, kể cả phương trình hoá học và công thức đứng riêng một dòng, đều đặt trong $...$.
+   KHÔNG dùng \[ \], $$ $$, \( \), equation, align, \ce{}.
+   Ví dụ hoá học: $6\text{CO}_2+12\text{H}_2\text{O}\xrightarrow{\text{ánh sáng, diệp lục}}\text{C}_6\text{H}_{12}\text{O}_6+6\text{O}_2+6\text{H}_2\text{O}$
+   Chỉ số dưới luôn nằm trong $: O$_2$ (không viết O_2 trần).
+
+2. BẢNG: chỉ dùng
+   \begin{tabular}{|c|c|c|}
+   \hline
+   \textbf{Cột 1} & \textbf{Cột 2} & \textbf{Cột 3} \\
+   \hline
+   ... & ... & ... \\
+   \hline
+   \end{tabular}
+   KHÔNG bọc \resizebox, \scalebox, \adjustbox, \begin{table}, \begin{center}. Không \multirow (ô gộp dọc thì để trống các ô bên dưới).
+   Không để ký tự % ở cuối dòng.
+
+3. CHỮ: in đậm \textbf{...}, nghiêng \textit{...}, gạch chân \underline{...} (giữ đúng các từ được gạch chân trong câu Tiếng Anh / Tiếng Việt).
+   KHÔNG dùng markdown (**...**, __...__, #).
+
+4. KHÔNG dùng lệnh căn lề / khoảng cách: \hspace, \hspace*{\fill}, \hfill, \vspace, \noindent, \quad (ngoài công thức), \newline, \centering.
+   Tên tác giả / nguồn trích dẫn sau đoạn văn: xuống dòng riêng, đặt trong ngoặc, vd:
+   (Nguyễn Đình Chiểu, Văn tế nghĩa sĩ Cần Giuộc)
+
+5. Ký tự đặc biệt trong chữ thường: viết \% \& \_ \#.
